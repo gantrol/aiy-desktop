@@ -2,6 +2,7 @@ import type { DictionaryBrowseContext } from '@/renderer/components/dictionary/d
 import type { CreationRelationFilter } from '@/shared/contracts';
 import type { GifWorkspaceState } from '@/shared/contracts/gif-making';
 import type { ContentLookupInput } from '@/shared/contracts/content-search';
+import type { ContentSource } from '@/shared/contracts/content-source';
 
 export type AppView =
   | 'creator'
@@ -120,6 +121,8 @@ export interface AppLocation {
   dictionary: DictionaryLocation;
   gallery: GalleryLocation;
   search: Pick<ContentLookupInput, 'query' | 'type'>;
+  /** One navigation's search evidence; ordinary workspace position persistence takes over after opening. */
+  contentSearchTarget?: { source: ContentSource; query: string };
   extensions: ExtensionsLocation;
   aiCenter: AiCenterLocation;
   documents: VideoDocumentsLocation;

@@ -1,4 +1,3 @@
-import { SettingsScreen } from '@/renderer/components/app/SettingsScreen';
 import { AboutScreen } from '@/renderer/components/app/AboutScreen';
 import { WorkspacePaneScope } from '@/renderer/components/workspace/WorkspacePaneScope';
 import { WorkbenchScopeProvider } from '@/renderer/components/workbench/WorkbenchScope';
@@ -34,7 +33,7 @@ import type {
   TransitionPreviewDto,
   WorkspaceArticleEditorStateDto,
 } from '@/shared/contracts';
-import { Activity, useCallback, useEffect, useRef, type ComponentProps } from 'react';
+import { useCallback, useEffect, useRef, type ComponentProps } from 'react';
 
 type WorkspaceViewProps = ComponentProps<typeof AppWorkspaceViews>;
 
@@ -46,7 +45,6 @@ export interface WorkspaceTabSurfaceProps {
   dataRevision: number;
   locale: Locale;
   defaultPromptLocale: Locale | null;
-  onPromptLocaleChange(locale: Locale | null): void;
   comparisonFullWindow: boolean;
   creationPromptFullWindow: boolean;
   loadingPreviews: readonly TransitionPreviewDto[];
@@ -191,35 +189,6 @@ export function WorkspaceTabSurface(props: WorkspaceTabSurfaceProps) {
         </WorkspacePaneScope>
       </WorkbenchScopeProvider>
     </PopoverNavigationScope>
-  );
-}
-
-function WorkspaceSettingsSurface({
-  props,
-  location,
-  visible,
-}: {
-  props: WorkspaceTabSurfaceProps;
-  location: AppLocation;
-  visible: boolean;
-}) {
-  if (location.view === 'about') return <AboutScreen active={visible} />;
-  if (location.view !== 'settings') return null;
-  return (
-    <Activity mode={visible ? 'visible' : 'hidden'}>
-      <SettingsScreen
-        promptLocale={props.defaultPromptLocale}
-        onPromptLocaleChange={props.onPromptLocaleChange}
-        onAiFeatureModelsOpen={() =>
-          props.onNewTab(props.tab.id, {
-            ...location,
-            view: 'aiCenter',
-            aiCenter: { tab: 'capabilities', recordId: null },
-          })
-        }
-        onContentManagementOpen={() => props.onNewTab(props.tab.id, 'contentManagement')}
-      />
-    </Activity>
   );
 }
 
@@ -456,7 +425,7 @@ function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
             }
             onGalleryNavigate={navigateGallery}
             onSearchNavigate={(search) => commit((current) => ({ ...current, search }), 'replace')}
-            onSearchResultOpen={(source) => onNewTab(tab.id, contentSearchLocation(source))}
+            onSearchResultOpen={(source, query) => onNewTab(tab.id, contentSearchLocation(source, query))}
             onCalendarOpenLocation={(location) => onNewTab(tab.id, location)}
             onOpenGalleryResult={openGalleryResult}
             onOpenGalleryTerm={openGalleryTerm}
@@ -469,7 +438,7 @@ function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
             onReEditGeneration={reEditGeneration}
             onRetryGeneration={onRetryGeneration}
           />
-          <WorkspaceSettingsSurface props={props} location={location} visible={visible} />
+          {location.view === 'about' && <AboutScreen active={visible} />}
           {visible && view === 'contentManagement' && (
             <ContentManagementScreen
               active={visible}

@@ -11,6 +11,8 @@ import {
 } from '@/renderer/components/ui/dropdown-menu';
 import { petalErrorText } from '@/shared/petal-errors';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
+import { TemporaryFilesPanel } from '@/renderer/features/desktop-petals/TemporaryFilesPanel';
 
 const actions = [
   {
@@ -40,46 +42,65 @@ export function DesktopPetalsMenuAction({ onOpened }: { onOpened(): void }) {
   const copy = messages.desktopPetals;
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [temporaryOpen, setTemporaryOpen] = useState(false);
   return (
-    <DropdownMenuSub>
-      <DropdownMenuSubTrigger data-action="desktop-petals-menu">
-        <AIYFlowerMark className="size-4" />
-        <span>{copy.menu.title}</span>
-      </DropdownMenuSubTrigger>
-      <DropdownMenuPortal>
-        <DropdownMenuSubContent className="w-60 max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto">
-          {actions.map(({ id, icon: Icon, run }) => (
-            <Fragment key={id}>
-              {id === 'settings' && <DropdownMenuSeparator />}
-              <DropdownMenuItem
-                data-action={`desktop-petals-${id}`}
-                className="h-9 w-full justify-start gap-2 px-2 font-normal"
-                disabled={busy}
-                onSelect={(event) => {
-                  event.preventDefault();
-                  setBusy(true);
-                  setError('');
-                  void Promise.resolve()
-                    .then(run)
-                    .then(onOpened)
-                    .catch((reason) => setError(String(reason)))
-                    .finally(() => setBusy(false));
-                }}
-              >
-                <Icon className="size-4" />
-                <span>
-                  {id === 'show' ? copy.actions.showHub : id === 'notes' ? copy.actions.myPetals : copy.menu[id]}
-                </span>
-              </DropdownMenuItem>
-            </Fragment>
-          ))}
-          {error && (
-            <p className="px-2 text-xs text-destructive" role="alert">
-              {petalErrorText(error, copy.errors)}
-            </p>
-          )}
-        </DropdownMenuSubContent>
-      </DropdownMenuPortal>
-    </DropdownMenuSub>
+    <>
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger data-action="desktop-petals-menu">
+          <AIYFlowerMark className="size-4" />
+          <span>{copy.menu.title}</span>
+        </DropdownMenuSubTrigger>
+        <DropdownMenuPortal>
+          <DropdownMenuSubContent className="w-60 max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto">
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault();
+                setTemporaryOpen(true);
+              }}
+            >
+              {copy.temporary.title}
+            </DropdownMenuItem>
+            {actions.map(({ id, icon: Icon, run }) => (
+              <Fragment key={id}>
+                {id === 'settings' && <DropdownMenuSeparator />}
+                <DropdownMenuItem
+                  data-action={`desktop-petals-${id}`}
+                  className="h-9 w-full justify-start gap-2 px-2 font-normal"
+                  disabled={busy}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    setBusy(true);
+                    setError('');
+                    void Promise.resolve()
+                      .then(run)
+                      .then(onOpened)
+                      .catch((reason) => setError(String(reason)))
+                      .finally(() => setBusy(false));
+                  }}
+                >
+                  <Icon className="size-4" />
+                  <span>
+                    {id === 'show' ? copy.actions.showHub : id === 'notes' ? copy.actions.myPetals : copy.menu[id]}
+                  </span>
+                </DropdownMenuItem>
+              </Fragment>
+            ))}
+            {error && (
+              <p className="px-2 text-xs text-destructive" role="alert">
+                {petalErrorText(error, copy.errors)}
+              </p>
+            )}
+          </DropdownMenuSubContent>
+        </DropdownMenuPortal>
+      </DropdownMenuSub>
+      <Dialog open={temporaryOpen} onOpenChange={setTemporaryOpen}>
+        <DialogContent aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>{copy.temporary.title}</DialogTitle>
+          </DialogHeader>
+          <TemporaryFilesPanel />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

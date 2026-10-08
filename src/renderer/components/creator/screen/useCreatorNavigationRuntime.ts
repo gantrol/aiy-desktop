@@ -148,6 +148,7 @@ export function useCreatorNavigationRuntime({
     panes: projection.panes,
     preserveParentSelection: Boolean(selected.selectedArticle || selected.selectedSocialPost),
     hasPendingInput: () => document.promptComposerRef.current?.hasPendingInput() ?? false,
+    hydratedVersionId: generation.hydration.hydratedVersionId,
     getSavedDraft: selection.creationDraftSession.getSavedDraft,
     isDraftInputSaved: selection.creationDraftSession.isCurrentInputSaved,
     preserveWorkingInput: draftInput.recovery.flush,
@@ -163,7 +164,6 @@ export function useCreatorNavigationRuntime({
     resetInputs: workflow.resetInputs,
     restoreAssistant: workflow.assistant.workflows.restoreScope,
     restoreDraft: generation.hydration.restoreDraft,
-    restoreInspiration: workflow.inspiration.restore,
     restoreVersion: generation.hydration.restoreVersion,
     saveDraft: selection.creationDraftSession.saveDraftNow,
     selected: {
@@ -198,7 +198,6 @@ export function useCreatorNavigationRuntime({
     setSelectedEvaluationSuiteId: selected.setSelectedEvaluationSuiteId,
     setSelectedIdeaCreationId: selected.setSelectedIdeaCreationId,
     setSelectedImageBreakdownId: selected.setSelectedImageBreakdownId,
-    setSelectedInspirationStashId: selected.setSelectedInspirationStashId,
     setSelectedSocialPostId: selected.setSelectedSocialPostId,
     setSeriesId: selection.setSeriesId,
     setTargetAlbumId: selection.setTargetAlbumId,

@@ -10,7 +10,14 @@ import {
   WholeWordIcon,
   XIcon,
 } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
@@ -18,6 +25,10 @@ import type { VideoDocumentWysiwygEditorLabels } from '@/renderer/features/video
 import { commandMatchesShortcut } from '@/renderer/commands/app-shortcuts';
 import { outlineNavigationFocus, revealOutlinePosition } from '@/renderer/features/content-editor/outlineViewState';
 import { cn } from '@/renderer/lib/utils';
+import {
+  cancelEditorSearchReveal,
+  revealEditorSearchMatch,
+} from '@/renderer/features/content-editor/revealEditorSearchMatch';
 
 export type VideoDocumentSearchReplaceMode = 'search' | 'replace' | null;
 
@@ -63,20 +74,43 @@ function editorOwnsShortcut(editor: Editor, searchRoot: HTMLDivElement | null) {
   );
 }
 
+function useSearchShortcuts(
+  { editor, mode, onModeChange }: Pick<Props, 'editor' | 'mode' | 'onModeChange'>,
+  queryRef: RefObject<string>,
+  searchRootRef: RefObject<HTMLDivElement | null>,
+  searchInputRef: RefObject<HTMLInputElement | null>,
+  replaceInputRef: RefObject<HTMLInputElement | null>,
+) {
+  useEffect(() => {
+    function handleShortcut(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.isComposing || !editorOwnsShortcut(editor, searchRootRef.current)) return;
+      if (event.key === 'Escape' && mode !== null) {
+        event.preventDefault();
+        onModeChange(null);
+        return;
+      }
+      const find = commandMatchesShortcut(event, window.desktopApi.appPlatform, 'document.find');
+      const replace = commandMatchesShortcut(event, window.desktopApi.appPlatform, 'document.replace');
+      if (!find && !replace) return;
+      event.preventDefault();
+      if (find && mode === null) onModeChange('search');
+      else if (replace && mode !== 'replace') onModeChange('replace');
+      else {
+        const input = replace && queryRef.current ? replaceInputRef.current : searchInputRef.current;
+        input?.focus();
+        input?.select();
+      }
+    }
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, [editor, mode, onModeChange, queryRef, searchRootRef, searchInputRef, replaceInputRef]);
+}
+
 function scrollCurrentResultIntoView(editor: Editor) {
   const storage = findAndReplaceStorage(editor);
   const current = storage?.results[storage.currentIndex ?? 0];
-  if (!current) return;
-  revealOutlinePosition(editor, current.from);
-  window.requestAnimationFrame(() => {
-    if (editor.isDestroyed) return;
-    const result = editor.view.dom.querySelector<HTMLElement>('.find-and-replace-result-current');
-    result?.scrollIntoView({
-      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-      block: 'center',
-      inline: 'nearest',
-    });
-  });
+  if (current) revealEditorSearchMatch(editor, current.from, '.find-and-replace-result-current');
+  else cancelEditorSearchReveal(editor);
 }
 
 function findAndReplaceStorage(editor: Editor) {
@@ -171,6 +205,7 @@ export function VideoDocumentSearchReplace({ editor, labels, mode, className, on
   const searchInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const searchRootRef = useRef<HTMLDivElement>(null);
+  const [composing, setComposing] = useState(false);
   const state =
     useEditorState({
       editor,
@@ -186,7 +221,7 @@ export function VideoDocumentSearchReplace({ editor, labels, mode, className, on
       },
     }) ?? emptySearchState;
   const currentResult = state.currentIndex === null ? 0 : state.currentIndex + 1;
-  const canNavigate = state.total > 0;
+  const canNavigate = state.total > 0 && !composing;
 
   useEffect(() => {
     const previousMode = previousModeRef.current;
@@ -225,48 +260,23 @@ export function VideoDocumentSearchReplace({ editor, labels, mode, className, on
     previousModeRef.current = mode;
     return () => {
       if (focusFrame !== null) window.cancelAnimationFrame(focusFrame);
+      cancelEditorSearchReveal(editor);
     };
   }, [editor, mode]);
 
-  useEffect(() => {
-    function handleShortcut(event: KeyboardEvent) {
-      if (event.defaultPrevented || event.isComposing || !editorOwnsShortcut(editor, searchRootRef.current)) return;
-      if (event.key === 'Escape' && mode !== null) {
-        event.preventDefault();
-        onModeChange(null);
-        return;
-      }
-      const find = commandMatchesShortcut(event, window.desktopApi.appPlatform, 'document.find');
-      const replace = commandMatchesShortcut(event, window.desktopApi.appPlatform, 'document.replace');
-      if (!find && !replace) return;
-      if (find) {
-        event.preventDefault();
-        if (mode === null) onModeChange('search');
-        else {
-          searchInputRef.current?.focus();
-          searchInputRef.current?.select();
-        }
-      } else {
-        event.preventDefault();
-        if (mode !== 'replace') onModeChange('replace');
-        else {
-          const input = queryRef.current ? replaceInputRef.current : searchInputRef.current;
-          input?.focus();
-          input?.select();
-        }
-      }
-    }
-    window.addEventListener('keydown', handleShortcut);
-    return () => window.removeEventListener('keydown', handleShortcut);
-  }, [editor, mode, onModeChange]);
+  useSearchShortcuts({ editor, mode, onModeChange }, queryRef, searchRootRef, searchInputRef, replaceInputRef);
 
   function updateQuery(value: string) {
     queryRef.current = value;
     setQuery(value);
+    if (composing) return;
     if (value) {
       editor.commands.setSearchTerm(value);
       scrollCurrentResultIntoView(editor);
-    } else editor.commands.clearSearch();
+    } else {
+      cancelEditorSearchReveal(editor);
+      editor.commands.clearSearch();
+    }
   }
 
   function updateReplacement(value: string) {
@@ -317,6 +327,18 @@ export function VideoDocumentSearchReplace({ editor, labels, mode, className, on
               aria-label={labels.search}
               placeholder={labels.search}
               onChange={(event) => updateQuery(event.target.value)}
+              onCompositionStart={() => {
+                setComposing(true);
+                cancelEditorSearchReveal(editor);
+              }}
+              onCompositionEnd={(event) => {
+                setComposing(false);
+                const value = event.currentTarget.value;
+                queryRef.current = value;
+                setQuery(value);
+                editor.commands.setSearchTerm(value);
+                scrollCurrentResultIntoView(editor);
+              }}
               onKeyDown={handleSearchKeyDown}
             />
             <output

@@ -68,6 +68,7 @@ export async function prepareArticleHandoff({
     copy,
     notify,
     preferredMediaAssetIds: overrides?.mediaOrder,
+    titleInBody: overrides?.titleInBody,
   });
 }
 

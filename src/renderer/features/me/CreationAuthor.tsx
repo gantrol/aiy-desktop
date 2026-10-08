@@ -1,11 +1,10 @@
-import { UserRoundIcon } from 'lucide-react';
 import type { CreationFormEntityRef } from '@/shared/contracts/creation-library';
 import type { ContentWriteContext } from '@/shared/contracts/authorship';
 import { Button } from '@/renderer/components/ui/button';
 import { Skeleton } from '@/renderer/components/ui/skeleton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
 import { useNavigationPopoverState } from '@/renderer/components/ui/popover-navigation-scope';
-import { ProfileAvatar } from '@/renderer/features/me/ProfileAvatar';
+import { AuthorAvatar } from '@/renderer/features/me/AuthorAvatar';
 import { AuthorPicker } from '@/renderer/features/me/AuthorPicker';
 import { authorDisplayName } from '@/renderer/features/me/AuthorNames';
 import { useCreationAuthor } from '@/renderer/features/me/useCreationAuthor';
@@ -43,11 +42,7 @@ export function CreationAuthor({
   const first = value.authors[0];
   const content = (
     <>
-      {first?.kind === 'AI' ? (
-        <UserRoundIcon aria-hidden="true" className="size-6 text-muted-foreground" />
-      ) : (
-        first && <ProfileAvatar src={first.avatarDataUrl} className="size-6" />
-      )}
+      {first && <AuthorAvatar author={first} className="size-6 text-muted-foreground" />}
       <span className="max-w-48 truncate">{name || copy.set}</span>
     </>
   );

@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, CheckIcon, ChevronRightIcon, FolderIcon, PlusIcon, XIcon } from 'lucide-react';
+import { ArrowLeftIcon, CheckIcon, ChevronRightIcon, GalleryVerticalEndIcon, PlusIcon, XIcon } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { Command, CommandInput, CommandItem, CommandList } from '@/renderer/components/ui/command';
@@ -165,7 +165,7 @@ export function AlbumPickerPanel({
                       'bg-selected text-selected-foreground data-[selected=true]:bg-selected data-[selected=true]:text-selected-foreground',
                   )}
                 >
-                  <FolderIcon className="size-4 shrink-0 opacity-60" />
+                  <GalleryVerticalEndIcon className="size-4 shrink-0 opacity-60" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{row.title}</span>
                     {searching && row.parentPath && (

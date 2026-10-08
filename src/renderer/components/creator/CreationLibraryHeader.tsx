@@ -1,93 +1,68 @@
-import { FolderPlusIcon, PlusIcon, SearchIcon } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
-import { Button } from '@/renderer/components/ui/button';
+import { CreationLibraryNewButton } from '@/renderer/components/creator/CreationLibraryNewButton';
 import { CreationLibraryToolbar } from '@/renderer/components/creator/CreationLibraryToolbar';
-import { useI18n } from '@/renderer/i18n/useI18n';
-import { cn } from '@/renderer/lib/utils';
+import { CreationLibraryFilterMenu } from '@/renderer/components/creator/CreationLibraryFilterMenu';
+import {
+  WorkbenchSidebarHeader,
+  WorkbenchSidebarHeaderScope,
+} from '@/renderer/components/workbench/WorkbenchSidebarHeader';
 
 interface Props extends ComponentProps<typeof CreationLibraryToolbar> {
   collapsed: boolean;
   busy: boolean;
-  canExpand: boolean;
   paneToggle: ReactNode;
-  onExpand(): void;
+  collapsedSearch: ReactNode;
   onNewCreation(): void;
+  onNewDocument(mode: 'outline' | 'manuscript'): void;
   onNewAlbum(): void;
+  newAlbumLabel?: string;
 }
 
 export function CreationLibraryHeader({
   collapsed,
   busy,
-  canExpand,
   paneToggle,
-  onExpand,
+  collapsedSearch,
   onNewCreation,
+  onNewDocument,
   onNewAlbum,
+  newAlbumLabel,
   ...toolbar
 }: Props) {
-  const { messages } = useI18n();
-  const labels = messages.creator.results;
   const creationActions = (
-    <div className={cn('flex shrink-0 items-center gap-1', collapsed && 'flex-col gap-2')}>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        data-action="new-creation"
-        disabled={busy}
-        title={labels.newCreation}
-        aria-label={labels.newCreation}
-        onClick={onNewCreation}
-      >
-        <PlusIcon className="size-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        data-action="new-album"
-        disabled={busy}
-        title={messages.creator.album.newAlbum}
-        aria-label={messages.creator.album.newAlbum}
-        onClick={onNewAlbum}
-      >
-        <FolderPlusIcon className="size-4" />
-      </Button>
-    </div>
+    <CreationLibraryNewButton
+      busy={busy}
+      collapsed={collapsed}
+      newAlbumLabel={newAlbumLabel}
+      onNewCreation={onNewCreation}
+      onNewDocument={onNewDocument}
+      onNewAlbum={onNewAlbum}
+    />
   );
 
-  if (collapsed) {
-    return (
-      <header className="grid shrink-0 place-items-center gap-2 py-2">
-        {paneToggle}
-        {creationActions}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          title={labels.search}
-          aria-label={labels.search}
-          disabled={!canExpand}
-          onClick={() => {
-            toolbar.onSearchOpenChange(true);
-            onExpand();
-          }}
-        >
-          <SearchIcon className="size-4" />
-        </Button>
-      </header>
-    );
-  }
-
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/60 px-2">
-      {paneToggle}
-      <div className="relative flex h-full min-w-0 flex-1 items-center justify-between gap-2">
-        {!(toolbar.searchOpen || toolbar.query) && creationActions}
-        <div className="flex shrink-0 items-center gap-1">
-          <CreationLibraryToolbar {...toolbar} />
-        </div>
+    <WorkbenchSidebarHeaderScope value={{ toggle: paneToggle, expanded: !collapsed }}>
+      <div className={collapsed ? 'flex shrink-0 flex-col' : 'contents'}>
+        <WorkbenchSidebarHeader>
+          <div className="relative flex h-full min-w-0 flex-1 items-center justify-between gap-1">
+            {!(toolbar.searchOpen || toolbar.query) && creationActions}
+            <div className="flex shrink-0 items-center gap-1">
+              <CreationLibraryToolbar {...toolbar} />
+            </div>
+          </div>
+        </WorkbenchSidebarHeader>
+        {collapsed && (
+          <div className="flex flex-col items-center gap-2 py-2">
+            {creationActions}
+            {collapsedSearch}
+            <CreationLibraryFilterMenu
+              filter={toolbar.filter}
+              authors={toolbar.authors}
+              onFilterChange={toolbar.onFilterChange}
+            />
+          </div>
+        )}
       </div>
-    </header>
+    </WorkbenchSidebarHeaderScope>
   );
 }

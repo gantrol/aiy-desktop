@@ -49,6 +49,7 @@ export interface CreatorPanes {
   beginResultResize(event: ReactPointerEvent<HTMLDivElement>): void;
   beginOutputResize(event: ReactPointerEvent<HTMLDivElement>): void;
   workspaceGridStyle: CSSProperties | undefined;
+  animateDisclosure: boolean;
 }
 
 export interface CreatorPaneGeometryInput {
@@ -133,8 +134,10 @@ export function useCreatorPanes({ showResultLibrary, showOutputInspector, compar
   const [compactPanel, setCompactPanel] = useState<'library' | 'creator' | 'output'>('creator');
   const [resultCollapsed, setResultCollapsed] = useState(stored.resultLibraryMode === 'images');
   const [panePriority, setPanePriority] = useState<'library' | 'output'>('output');
+  const [animateDisclosure, setAnimateDisclosure] = useState(false);
   const resultLibraryMode = resultCollapsed ? 'images' : 'full';
   function setResultLibraryMode(mode: ResultLibraryMode) {
+    setAnimateDisclosure(true);
     setResultCollapsed(mode === 'images');
     if (mode !== 'images') {
       setPanePriority('library');
@@ -206,6 +209,7 @@ export function useCreatorPanes({ showResultLibrary, showOutputInspector, compar
 
   useLayoutEffect(() => {
     activeDragCleanupRef.current?.();
+    setAnimateDisclosure(false);
   }, [comparisonFullWindow, scope, showOutputInspector, showResultLibrary, workspaceWidth]);
 
   useEffect(() => {
@@ -258,8 +262,10 @@ export function useCreatorPanes({ showResultLibrary, showOutputInspector, compar
     if (!canExpandResultLibrary) return;
     if (next < minimumResultListWidth) {
       setResultLibraryMode('images');
+      setAnimateDisclosure(false);
       return;
     }
+    setAnimateDisclosure(false);
     setResultPanelWidth(Math.max(minimumResultListWidth, next));
     setResultCollapsed(false);
     setPanePriority('library');
@@ -322,5 +328,6 @@ export function useCreatorPanes({ showResultLibrary, showOutputInspector, compar
     beginResultResize,
     beginOutputResize,
     workspaceGridStyle,
+    animateDisclosure,
   };
 }

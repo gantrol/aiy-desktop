@@ -3,10 +3,12 @@ import { createRoot } from 'react-dom/client';
 import { App } from '@/renderer/App';
 import { I18nProvider } from '@/renderer/i18n/I18nProvider';
 import { installRendererDiagnostics, reportRendererError } from '@/renderer/lib/rendererDiagnostics';
+import { removeRetiredPreferences } from '@/renderer/lib/retiredPreferences';
 import './styles/index.css';
 import '@/renderer/features/font-settings/installFontPreferences';
 
 const disposeDiagnostics = installRendererDiagnostics();
+removeRetiredPreferences();
 if (import.meta.hot) import.meta.hot.dispose(disposeDiagnostics);
 
 createRoot(document.getElementById('root')!, {

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { ComponentProps, ReactNode } from 'react';
+import type { ComponentProps } from 'react';
 import type { Locale, TermListItem } from '@/shared/contracts';
 import { DictionaryContextSidebar } from '@/renderer/components/dictionary/DictionaryContextSidebar';
 import { useDictionarySiblingPage } from '@/renderer/components/dictionary/useDictionarySiblingPage';
@@ -11,7 +11,6 @@ export function DictionaryBrowsePane({
   locale,
   origin,
   detail,
-  toggle,
   ...props
 }: Omit<
   ComponentProps<typeof DictionaryContextSidebar>,
@@ -30,7 +29,6 @@ export function DictionaryBrowsePane({
   locale: Locale;
   origin: TermListItem[] | null;
   detail: TermListItem | null;
-  toggle: ReactNode;
 }) {
   const page = useDictionarySiblingPage(locale, context, active && !origin);
   const updateTerm = page.updateTerm;
@@ -47,7 +45,7 @@ export function DictionaryBrowsePane({
     <DictionaryContextSidebar
       {...props}
       mode="expanded"
-      headerControl={toggle}
+      headerControl={null}
       className="size-full border-r-0"
       onModeChange={() => undefined}
       terms={terms}

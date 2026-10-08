@@ -1,4 +1,5 @@
-import { MoreHorizontalIcon } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDownIcon } from 'lucide-react';
 import type { BrowserCompanionTarget } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
 import {
@@ -6,12 +7,14 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
   DropdownMenuSub,
-  DropdownMenuSubTrigger,
   DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
 } from '@/renderer/components/ui/dropdown-menu';
+import { ArticleDeliveryPresetEditor } from '@/renderer/components/creator/article-editor/ArticleDeliveryPresetEditor';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { readArticleDeliveryPresets } from '@/renderer/features/article-delivery/articleDeliveryPresets';
 import {
   readDefaultArticleDeliveryPreferences,
   saveDefaultArticleDeliveryPreferences,
@@ -37,6 +40,7 @@ export function ArticleDeliveryPresetMenu({
   notify(message: string): void;
 }) {
   const copy = useI18n().messages.articleDelivery.batch;
+  const [presets, setPresets] = useState(readArticleDeliveryPresets);
   function hasTargets(targets: readonly BrowserCompanionTarget[]) {
     return targets.every((target) =>
       configured.some((choice) => choice.kind === 'BROWSER' && choice.target === target),
@@ -51,46 +55,70 @@ export function ArticleDeliveryPresetMenu({
     });
   }
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="icon-sm" disabled={disabled} aria-label={copy.sources.DEFAULT}>
-          <MoreHorizontalIcon className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={() => onChange(readDefaultArticleDeliveryPreferences())}>
-          {copy.useDefault}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() =>
-            notify(saveDefaultArticleDeliveryPreferences(preferences) ? copy.defaultSaved : copy.preferenceFailed)
-          }
-        >
-          {copy.saveDefault}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger>{copy.categories}</DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuItem
-              disabled={!hasTargets(['wechat', 'xiaohongshu'])}
-              onSelect={() => selectPreset(['wechat', 'xiaohongshu'])}
-            >
-              {copy.presetWechatXhs}
+    <div className="flex flex-wrap items-center gap-1 px-4 pb-3">
+      <DropdownMenu
+        onOpenChange={(open) => {
+          if (open) setPresets(readArticleDeliveryPresets());
+        }}
+      >
+        <DropdownMenuTrigger asChild>
+          <Button type="button" variant="outline" size="sm" disabled={disabled}>
+            {copy.sources.DEFAULT}
+            <ChevronDownIcon className="size-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuItem onSelect={() => onChange(readDefaultArticleDeliveryPreferences())}>
+            {copy.useDefault}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {presets.map((preset) => (
+            <DropdownMenuItem key={preset.name} onSelect={() => onChange(preset.preferences)}>
+              <span className="max-w-64 truncate">{preset.name}</span>
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={!hasTargets(['weibo', 'x'])} onSelect={() => selectPreset(['weibo', 'x'])}>
-              {copy.presetWeiboX}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem disabled={loading} onSelect={() => onChange({ ...preferences, targets: selectable })}>
-              {copy.selectAll}
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onChange({ ...preferences, targets: [] })}>
-              {copy.deselectAll}
-            </DropdownMenuItem>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          ))}
+          {presets.length > 0 && <DropdownMenuSeparator />}
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>{copy.categories}</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem
+                disabled={!hasTargets(['wechat', 'xiaohongshu'])}
+                onSelect={() => selectPreset(['wechat', 'xiaohongshu'])}
+              >
+                {copy.presetWechatXhs}
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={!hasTargets(['weibo', 'x'])} onSelect={() => selectPreset(['weibo', 'x'])}>
+                {copy.presetWeiboX}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled={loading} onSelect={() => onChange({ ...preferences, targets: selectable })}>
+                {copy.selectAll}
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ArticleDeliveryPresetEditor disabled={disabled} preferences={preferences} notify={notify} />
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={disabled}
+        onClick={() =>
+          notify(saveDefaultArticleDeliveryPreferences(preferences) ? copy.defaultSaved : copy.preferenceFailed)
+        }
+      >
+        {copy.saveDefault}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={disabled || !preferences.targets.length}
+        onClick={() => onChange({ ...preferences, targets: [] })}
+      >
+        {copy.clear}
+      </Button>
+    </div>
   );
 }

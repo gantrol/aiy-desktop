@@ -29,14 +29,8 @@ import {
 } from '@/renderer/features/content-editor/contentEditorLoadDiagnostics';
 import { useContentFigureReferences } from '@/renderer/features/content-editor/useContentFigureReferences';
 import { useContentBlockNavigation } from '@/renderer/features/content-editor/useContentBlockNavigation';
-import { OutlineListItem } from '@/renderer/features/content-editor/OutlineListItem';
-import { OutlineEditing } from '@/renderer/features/content-editor/outlineEditing';
+import { outlineExtensions } from '@/renderer/features/content-editor/outlineExtensions';
 import { useOutlineFocusNavigation } from '@/renderer/features/content-editor/useOutlineFocusNavigation';
-import {
-  OutlineBulletList,
-  OutlineOrderedList,
-  OutlineTaskList,
-} from '@/renderer/features/content-editor/OutlineListRoles';
 import {
   activeArticleOutlineHeadingIndex,
   articleCheckBlocks,
@@ -72,6 +66,7 @@ import {
   articleImagePlacements,
   moveArticleImage,
   removeArticleImage,
+  describeArticleImage,
 } from '@/renderer/features/video-documents/articleImageOperations';
 import type {
   VideoDocumentWysiwygEditorProps as Props,
@@ -192,8 +187,10 @@ function useEditorRegistration(
     let capturedComments = refs.comments.current;
     let publishedSnapshot = refs.persistence.current;
     const handle: VideoDocumentWysiwygEditorHandle = {
-      applySharedDocument: (before, next) =>
-        !refs.inputs.isPending() && !refs.composition.isInputPending() && applySharedDocument(editor, before, next),
+      applySharedDocument: (before, next, addToHistory) =>
+        !refs.inputs.isPending() &&
+        !refs.composition.isInputPending() &&
+        applySharedDocument(editor, before, next, addToHistory),
       insertFigureReference: (assetId, label) =>
         !refs.inputs.isPending() && !refs.composition.isInputPending() && insertFigureReference(assetId, label),
       getImagePlacements: () => articleImagePlacements(editor),
@@ -213,6 +210,10 @@ function useEditorRegistration(
         !refs.inputs.isPending() && !refs.composition.isInputPending() && moveArticleImage(editor, elementId, targetId),
       removeImage: (elementId) =>
         !refs.inputs.isPending() && !refs.composition.isInputPending() && removeArticleImage(editor, elementId),
+      describeImage: (elementId, expected, alt) =>
+        !refs.inputs.isPending() &&
+        !refs.composition.isInputPending() &&
+        describeArticleImage(editor, elementId, expected, alt),
       removeImageAssets: (assetIds, removeReferences) =>
         (!removeReferences || (!refs.inputs.isPending() && !refs.composition.isInputPending())) &&
         removeContentImageAssets(editor, assetIds, removeReferences),
@@ -509,16 +510,6 @@ function useReferenceMediaAdoption(onImageImported: Props['onImageImported']) {
   });
 }
 
-function outlineExtensions(preferenceKey: string | undefined) {
-  return [
-    OutlineEditing.configure({ preferenceKey: preferenceKey ?? null }),
-    OutlineListItem,
-    OutlineBulletList,
-    OutlineOrderedList,
-    OutlineTaskList,
-  ];
-}
-
 function useEditorImageRecovery(
   editor: Editor | null,
   callbacks: { current: Pick<Props, 'onImageImported' | 'onImageImportError'> },
@@ -749,9 +740,11 @@ function ContentBlockEditorSession(props: Props) {
     <VideoDocumentEditorSurfaces
       onFigureReferenceClick={props.onFigureReferenceClick}
       missingNavigationTarget={missingNavigationTarget}
+      searching={searchReplaceMode !== null}
       outlineMode={props.outlineMode}
       beforeReferenceCapture={props.beforeReferenceCapture}
       onTransferSaved={props.onTransferSaved}
+      createOutlinePage={props.createOutlinePage}
       onAddComment={props.readOnly ? undefined : props.articleElementControls?.onAddComment}
       toolbarRoot={props.toolbarRoot}
       contentSource={

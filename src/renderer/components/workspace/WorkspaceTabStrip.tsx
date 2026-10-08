@@ -16,6 +16,7 @@ import {
 import { shortcutEventAvailable } from '@/renderer/commands/app-shortcuts';
 import { workspaceShortcutLayerOpen } from '@/renderer/commands/shortcut-context';
 import { cn } from '@/renderer/lib/utils';
+import { workspaceTabIcon } from '@/renderer/components/workspace/workspace-tab-icon';
 
 export function WorkspaceTabStrip(props: WorkspaceTabStripProps) {
   const { data, group, active, collapsed = false, onActivate, onClose } = props;
@@ -121,11 +122,11 @@ export function WorkspaceTabStrip(props: WorkspaceTabStripProps) {
       <div
         data-workspace-group-rail={collapsed ? '' : undefined}
         className={cn(
-          'flex min-h-0 min-w-0 shrink-0 items-center bg-muted/70',
-          !collapsed && 'h-9 border-b',
+          'relative flex min-h-0 min-w-0 flex-1 shrink-0 items-center bg-surface-sunken',
+          !collapsed &&
+            'h-9 after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-border',
           collapsed &&
             (vertical ? 'absolute inset-y-0 h-full w-8 flex-col border-x' : 'absolute inset-x-0 h-9 w-full border-y'),
-          active && 'bg-muted',
         )}
         role="group"
         aria-label={labels.tabs}
@@ -140,10 +141,11 @@ export function WorkspaceTabStrip(props: WorkspaceTabStripProps) {
           aria-label={labels.tabs}
           aria-orientation={vertical ? 'vertical' : 'horizontal'}
           className={cn(
-            'flex min-h-0 min-w-0 flex-1 items-center gap-0.5 overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+            'flex min-h-0 min-w-0 flex-1 gap-0.5 overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
             vertical
-              ? 'w-full flex-col overflow-x-hidden overflow-y-auto py-1'
-              : 'h-full overflow-x-auto overflow-y-hidden px-1',
+              ? 'w-full flex-col items-center overflow-x-hidden overflow-y-auto py-1'
+              : 'h-full items-end overflow-x-auto overflow-y-hidden',
+            !vertical && (collapsed ? 'px-1' : 'px-2'),
           )}
         >
           {visibleTabs.map((tab) => (
@@ -151,6 +153,7 @@ export function WorkspaceTabStrip(props: WorkspaceTabStripProps) {
               key={tab.id}
               id={tab.id}
               title={workspaceTabTitle(activeLocation(tab), data, titleLabels)}
+              icon={workspaceTabIcon(activeLocation(tab))}
               index={indexes.get(tab.id) ?? 0}
               count={group.tabs.length}
               selected={tab.id === activeTab.id}

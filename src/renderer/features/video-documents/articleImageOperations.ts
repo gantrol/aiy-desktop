@@ -8,6 +8,7 @@ export interface ArticleImagePlacement {
   elementId: string;
   assetId: string;
   path: string;
+  alt?: string;
 }
 
 function locatedImages(editor: Editor) {
@@ -26,6 +27,7 @@ export function articleImagePlacements(editor: Editor): ArticleImagePlacement[] 
     elementId,
     assetId: String(node.attrs.assetId ?? ''),
     path: String(node.attrs.mediaPath || node.attrs.sourcePath || node.attrs.src || ''),
+    ...(node.attrs.alt ? { alt: String(node.attrs.alt) } : {}),
   }));
 }
 
@@ -54,6 +56,19 @@ export function removeArticleImage(editor: Editor, elementId: string) {
   const source = locatedImages(editor).find((image) => image.elementId === elementId);
   if (!source) return false;
   editor.view.dispatch(closeHistory(editor.state.tr).delete(source.position, source.position + source.node.nodeSize));
+  editor.view.dispatch(closeHistory(editor.state.tr));
+  return true;
+}
+
+/** Change only this occurrence's alternative text, preserving node identity and undo history. */
+export function describeArticleImage(editor: Editor, elementId: string, expected: string, alt: string) {
+  if (editor.isDestroyed || !editor.isEditable || editor.view.composing) return false;
+  const image = locatedImages(editor).find((entry) => entry.elementId === elementId);
+  if (!image || image.node.attrs.importId || String(image.node.attrs.alt ?? '') !== expected) return false;
+  if (expected === alt) return true;
+  editor.view.dispatch(
+    closeHistory(editor.state.tr).setNodeMarkup(image.position, undefined, { ...image.node.attrs, alt }),
+  );
   editor.view.dispatch(closeHistory(editor.state.tr));
   return true;
 }

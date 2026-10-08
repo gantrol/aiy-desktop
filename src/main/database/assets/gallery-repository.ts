@@ -490,7 +490,7 @@ export class GalleryRepository {
         CASE
           WHEN gallery_material.kind = 'VIDEO' OR asset.mime_type LIKE 'video/%' THEN 'VIDEO'
           ELSE 'IMAGE'
-        END AS material_kind,
+        END AS material_kind, video.duration_ms,
         creation.run_id, creation.imported_output_id, creation.creation_created_at,
         creation.is_output AS creation_is_output, creation.relation_roles AS creation_relation_roles,
         creation.version_no, creation.series_id,
@@ -514,6 +514,7 @@ export class GalleryRepository {
         realism_rating.id AS realism_rating_id, realism_rating.score AS realism_score,
         realism_rating.updated_at AS realism_updated_at
       FROM image_assets asset
+      LEFT JOIN video_assets video ON video.image_asset_id = asset.id
       LEFT JOIN creation ON creation.asset_id = asset.id
       LEFT JOIN dictionary ON dictionary.asset_id = asset.id
       LEFT JOIN favorite ON favorite.asset_id = asset.id
@@ -682,6 +683,7 @@ export class GalleryRepository {
       id: text(row.id),
       materialId: row.gallery_material_id ? text(row.gallery_material_id) : null,
       materialKind: text(row.material_kind) === 'VIDEO' ? 'VIDEO' : 'IMAGE',
+      ...(row.duration_ms != null ? { durationMs: Number(row.duration_ms) } : {}),
       source:
         hasCreationOutput && hasDictionary
           ? 'BOTH'

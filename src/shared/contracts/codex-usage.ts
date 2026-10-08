@@ -82,6 +82,7 @@ export const codexUsageScanInputSchema = z
     timeZone: codexUsageTimeZoneSchema.default('UTC'),
     granularity: codexUsageGranularitySchema.default('AUTO'),
     detailedStatistics: z.boolean().default(false),
+    sourceInvestigationId: z.string().uuid().optional(),
   })
   .strict()
   .refine(customRangeIsConsistent, {
@@ -352,8 +353,9 @@ export const codexUsageTurnSpeedComparisonSchema = z
 
 export const codexUsageTurnSpeedAnalysisSchema = z
   .object({
-    definition: z.literal('TASK_COMPLETE_DURATION'),
-    algorithmVersion: z.literal(1),
+    definition: z.enum(['TASK_COMPLETE_DURATION', 'OWNED_USER_COMPLETED_TURN_DURATION']),
+    algorithmVersion: z.union([z.literal(1), z.literal(2)]),
+    samplesTruncated: z.boolean().default(false),
     comparisonScope: z.literal('SINGLE_NORMALIZED_MODEL_AND_REASONING_EFFORT'),
     rangeAssignment: z.literal('COMPLETION_TIMESTAMP'),
     // Accept old reports, but never reuse their model-independent speed claim.
@@ -546,6 +548,8 @@ export const codexUsageWarningCodeSchema = z.enum([
 
 export const codexUsagePricingBasisSchema = z
   .object({
+    // Saved reports without this field retain the previous Standard-only valuation.
+    apiRateMode: z.enum(['STANDARD', 'RECORDED_SERVICE_TIER']).optional(),
     apiVerifiedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     apiSourceUrl: z.string().url(),
     creditVerifiedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -587,6 +591,7 @@ export const codexUsageInvestigationSchema = z
     quotaMessage: z.string().max(2_000).nullable(),
     quotaPurity: codexUsageQuotaPuritySchema.nullable().default(null),
     quotaPurityIssue: z.enum(['READ_FAILED', 'CACHE_WRITE_FAILED']).nullable().default(null),
+    quotaCalculatedAt: z.string().datetime().nullable().optional(),
     quota: codexUsageQuotaSnapshotSchema.nullable(),
     pricing: codexUsagePricingBasisSchema,
     warnings: z.array(codexUsageWarningCodeSchema).max(20),
@@ -672,8 +677,11 @@ export const codexUsageStateSchema = z
   .object({
     task: codexUsageTaskSchema.nullable(),
     history: z.array(codexUsageHistoryItemSchema).max(50),
+    historyCursor: z.string().uuid().nullable().default(null),
   })
   .strict();
+
+export const codexUsageStateInputSchema = z.object({ beforeInvestigationId: z.string().uuid().optional() }).strict();
 
 export const codexUsageCleanupLevelSchema = z.enum(['HISTORY', 'ANALYSIS_CACHE', 'LOCAL_INDEX']);
 

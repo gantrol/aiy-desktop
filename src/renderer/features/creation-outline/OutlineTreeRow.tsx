@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { DragEvent, MouseEvent, KeyboardEvent, Ref } from 'react';
 import { Button } from '@/renderer/components/ui/button';
+import { ItemActions } from '@/renderer/components/ui/item-actions';
 import { itemDragStart } from '@/renderer/components/albums/itemDrag';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
@@ -109,7 +110,7 @@ export function OutlineTreeRow({
       onDragOver={actions.onDragOver}
       onDrop={actions.onDrop}
       className={cn(
-        'group flex h-10 min-w-0 items-center gap-1 pr-2 text-sm outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+        'group/item flex h-10 min-w-0 items-center gap-1 pr-2 text-sm outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
         selected && 'bg-selected text-selected-foreground hover:bg-selected',
         current && 'font-semibold text-selected-foreground ring-1 ring-inset ring-selected-foreground',
         drop && 'ring-2 ring-inset ring-ring',
@@ -139,12 +140,7 @@ export function OutlineTreeRow({
         <span className="flex h-9 w-14 shrink-0 items-center justify-end pr-1">{preview}</span>
       )}
       <span className="min-w-0 flex-1 truncate">{node.title}</span>
-      <div
-        data-item-drag-ignore
-        className="flex shrink-0 items-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
-        onClick={(event) => event.stopPropagation()}
-        onDoubleClick={(event) => event.stopPropagation()}
-      >
+      <ItemActions onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -165,7 +161,7 @@ export function OutlineTreeRow({
           onMove={actions.onMove}
           onOpenSource={actions.onOpenSource}
         />
-      </div>
+      </ItemActions>
     </div>
   );
 }

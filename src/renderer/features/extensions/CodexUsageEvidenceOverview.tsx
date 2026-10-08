@@ -1,10 +1,12 @@
 import { useMemo, type ReactNode } from 'react';
 import { CircleDollarSignIcon, GaugeIcon, SearchIcon, TimerIcon } from 'lucide-react';
 import type { CodexUsageInvestigation } from '@/shared/contracts/codex-usage';
-import { bestSupportedSpeedComparison, evidencePercent, recordedModeCoverage } from '@/shared/codex-usage-evidence';
+import { defaultComparisonGroups, evidencePercent, recordedModeCoverage } from '@/shared/codex-usage-evidence';
 import { Button } from '@/renderer/components/ui/button';
 import { CodexUsageEvidenceHelp } from '@/renderer/features/extensions/CodexUsageEvidenceHelp';
 import { CodexUsagePurityOverview } from '@/renderer/features/extensions/CodexUsagePurity';
+import { CodexOutputThroughputValue } from '@/renderer/features/extensions/CodexOutputThroughput';
+import { CodexTurnDurationPercentiles } from '@/renderer/features/extensions/CodexTurnDurationPercentiles';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 export type CodexUsageDetailTopic = 'money' | 'quota' | 'speed' | 'records' | 'sessions';
@@ -67,8 +69,11 @@ export function CodexUsageEvidenceOverview({
   const text = labels.evidence;
   const { numbers, tokens, money } = formatters;
   const totals = investigation.totals;
+  const throughput = investigation.modelComparison?.outputThroughput?.overall;
   const percent = (value: number | null) => (value === null ? '—' : `${numbers.format(value)}%`);
-  const primary = bestSupportedSpeedComparison(investigation.turnSpeed?.comparisons ?? []);
+  const durationGroups = defaultComparisonGroups(
+    (investigation.modelComparison?.byReasoningEffort ?? []).filter((row) => row.distributions?.durationMs),
+  );
   const modeCoverage = recordedModeCoverage(investigation.models, totals.totalTokens);
   const chart = useMemo(() => {
     const sorted = [...investigation.days].sort((a, b) => a.date.localeCompare(b.date));
@@ -85,17 +90,51 @@ export function CodexUsageEvidenceOverview({
     return buckets;
   }, [investigation.days]);
   const maximum = Math.max(1, ...chart.map((bucket) => bucket.value ?? 0));
-  const maximumDuration = Math.max(1, primary?.standard.medianDurationMs ?? 0, primary?.fast.medianDurationMs ?? 0);
   return (
     <section
-      className="grid min-w-0 gap-3 @3xl/codex-usage:grid-cols-2 @6xl/codex-usage:grid-cols-4"
+      className="grid min-w-0 gap-3 @3xl/codex-usage:grid-cols-2 @min-[90rem]/codex-usage:grid-cols-4"
       aria-label={text.glance}
     >
+      <dl className="col-span-full grid grid-cols-2 overflow-hidden border-y bg-muted/20 @min-[90rem]/codex-usage:grid-cols-4">
+        <div className="min-w-0 border-b px-4 py-3 @min-[90rem]/codex-usage:border-b-0">
+          <dt className="text-xs text-muted-foreground">{labels.overview.sessions}</dt>
+          <dd className="mt-1 text-xl font-semibold tracking-tight tabular-nums">
+            {numbers.format(investigation.sessionCount)}
+          </dd>
+        </div>
+        <div className="min-w-0 border-b border-l px-4 py-3 @min-[90rem]/codex-usage:border-b-0">
+          <dt className="text-xs text-muted-foreground">{labels.overview.completedTurns}</dt>
+          <dd className="mt-1 text-xl font-semibold tracking-tight tabular-nums">
+            {throughput ? numbers.format(throughput.completedTurnCount) : '—'}
+          </dd>
+        </div>
+        <div className="min-w-0 px-4 py-3 @min-[90rem]/codex-usage:border-l">
+          <dt className="text-xs text-muted-foreground">{labels.overview.requests}</dt>
+          <dd className="mt-1 text-xl font-semibold tracking-tight tabular-nums">
+            {numbers.format(investigation.requestCount)}
+          </dd>
+        </div>
+        <div className="min-w-0 border-l px-4 py-3">
+          <dt className="text-xs text-muted-foreground">{messages.extensions.codexThroughput.turn}</dt>
+          <dd className="mt-1 min-w-0 text-xl font-semibold tracking-tight tabular-nums">
+            <CodexOutputThroughputValue throughput={throughput} />
+          </dd>
+        </div>
+      </dl>
+      <OverviewCard
+        title={text.speed}
+        icon={<TimerIcon aria-hidden="true" className="size-4" />}
+        action={text.inspect}
+        note={`${text.durationNote} ${text.sampleNote}`}
+        onInspect={() => onInspect('speed')}
+      >
+        <CodexTurnDurationPercentiles rows={durationGroups} numbers={numbers} />
+      </OverviewCard>
       <OverviewCard
         title={text.money}
         icon={<CircleDollarSignIcon aria-hidden="true" className="size-4" />}
         action={text.inspect}
-        note={text.moneyNote}
+        note={`${text.moneyNote} ${investigation.pricing.apiRateMode === 'RECORDED_SERVICE_TIER' ? labels.apiEquivalentNote : labels.legacyApiEquivalentNote}`}
         onInspect={() => onInspect('money')}
       >
         <p className="text-xl font-semibold tabular-nums">
@@ -146,44 +185,6 @@ export function CodexUsageEvidenceOverview({
       >
         {quotaSamplingControl}
         <CodexUsagePurityOverview investigation={investigation} formatters={formatters} />
-      </OverviewCard>
-      <OverviewCard
-        title={text.speed}
-        icon={<TimerIcon aria-hidden="true" className="size-4" />}
-        action={text.inspect}
-        note={`${text.speedNote} ${text.sampleNote}`}
-        onInspect={() => onInspect('speed')}
-      >
-        {primary ? (
-          <>
-            <p className="break-words font-mono">
-              {primary.model} · {primary.reasoningEffort}
-            </p>
-            {(['standard', 'fast'] as const).map((tier) => (
-              <div key={tier} className="grid gap-1">
-                <p className="flex flex-wrap justify-between gap-2">
-                  <span>{tier === 'fast' ? 'Fast' : 'Standard'}</span>
-                  <span>
-                    {primary[tier].medianDurationMs === null
-                      ? '—'
-                      : `${numbers.format(primary[tier].medianDurationMs / 1_000)} ${labels.turnSpeed.units.seconds}`}{' '}
-                    · n={numbers.format(primary[tier].completedTurnCount)}
-                  </span>
-                </p>
-                <div className="h-1.5 bg-muted" aria-hidden="true">
-                  <div
-                    className="h-full bg-foreground/60"
-                    style={{ width: `${((primary[tier].medianDurationMs ?? 0) / maximumDuration) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-            <p>{text.median}</p>
-          </>
-        ) : (
-          <p>{text.noData}</p>
-        )}
-        <p>{text.generationMissing}</p>
       </OverviewCard>
       <OverviewCard
         title={text.records}

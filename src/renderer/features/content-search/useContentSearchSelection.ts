@@ -5,9 +5,10 @@ import { contentSearchSourceKey } from '@/renderer/features/content-search/conte
 
 type SearchItem = ContentLookupResult['items'][number];
 
-export function useContentSearchSelection(active: boolean, context: string, saveFailed: string) {
+export function useContentSearchSelection(active: boolean, context: string, saveFailed: string, query: string) {
   const flush = useArticleEditorSessionFlush();
   const [selected, setSelected] = useState<SearchItem | null>(null);
+  const [selectedQuery, setSelectedQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const pending = useRef(false);
@@ -23,9 +24,13 @@ export function useContentSearchSelection(active: boolean, context: string, save
   }, [active, context, invalidate]);
   const select = async (item: SearchItem) => {
     if (!active || pending.current) return false;
-    if (selected && contentSearchSourceKey(selected.source) === contentSearchSourceKey(item.source)) return true;
+    if (selected && contentSearchSourceKey(selected.source) === contentSearchSourceKey(item.source)) {
+      setSelectedQuery(query);
+      return true;
+    }
     if (!selected) {
       setSelected(item);
+      setSelectedQuery(query);
       return true;
     }
     const current = ++request.current;
@@ -36,6 +41,7 @@ export function useContentSearchSelection(active: boolean, context: string, save
       if (!(await flush())) throw new Error('CONTENT_EDITOR_SAVE_PENDING');
       if (current !== request.current) return false;
       setSelected(item);
+      setSelectedQuery(query);
       return true;
     } catch {
       if (current === request.current) setError(saveFailed);
@@ -47,5 +53,5 @@ export function useContentSearchSelection(active: boolean, context: string, save
       }
     }
   };
-  return { selected, select, busy, error };
+  return { selected, selectedQuery, select, busy, error };
 }

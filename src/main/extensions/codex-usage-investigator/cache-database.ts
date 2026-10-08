@@ -10,6 +10,7 @@ import codexUsageCacheRevision5Sql from '@/main/database/sql/v03-codex-usage-cac
 import codexUsageCacheRevision6Sql from '@/main/database/sql/v03-codex-usage-cache-revision-006.sql?raw';
 import codexUsageCacheRevision6ContextCompactionsSql from '@/main/database/sql/v03-codex-usage-cache-revision-006-context-compactions.sql?raw';
 import codexUsageCacheRevision6TurnSpeedSql from '@/main/database/sql/v03-codex-usage-cache-revision-006-turn-speed.sql?raw';
+import codexUsageTurnBoundariesSql from '@/main/database/sql/v03-codex-usage-cache-revision-009-turn-boundaries.sql?raw';
 import {
   codexUsageCleanupCountsSchema,
   codexUsageHistoryItemSchema,
@@ -45,7 +46,6 @@ import {
 } from '@/main/extensions/codex-usage-investigator/session-length-cache';
 import { codexUsageSourceCacheKey } from '@/main/extensions/codex-usage-investigator/source-cache-key';
 import type { CodexUsageServiceTierFallback } from '@/main/extensions/codex-usage-investigator/service-tier-fallback';
-import { readCodexTurnSpeedAnalysis } from '@/main/extensions/codex-usage-investigator/turn-speed';
 import { readCodexModelComparison } from '@/main/extensions/codex-usage-investigator/model-comparison';
 import { sqlitePages } from '@/main/extensions/codex-usage-investigator/sqlite-pages';
 import { cachedUsageEventPages } from '@/main/extensions/codex-usage-investigator/cache-events';
@@ -57,8 +57,7 @@ export { codexUsageSourceCacheKey } from '@/main/extensions/codex-usage-investig
 
 export type { CodexUsageEventCoverage, CodexUsageFileFingerprint };
 
-const DATABASE_SCHEMA_VERSION = 6;
-const UNRELEASED_DATABASE_SCHEMA_VERSIONS = new Set([7, 8]);
+const DATABASE_SCHEMA_VERSION = 9;
 const MAX_TASK_JSON_BYTES = 256 * 1024;
 const MAX_HISTORY_JSON_BYTES = 64 * 1024;
 const MAX_INVESTIGATION_JSON_BYTES = 32 * 1024 * 1024;
@@ -73,7 +72,7 @@ const exportLengthRowSchema = z.object({ exportBytes: z.number().int().nonnegati
 const exportRowSchema = z.object({ exportRowsJson: z.string() }).strict();
 const sourceKeyRowSchema = z.object({ cacheKey: z.string() }).strict();
 const sourceStateRowSchema = z
-  .object({ sessionId: z.string(), cacheKey: z.string(), needsModeRecovery: z.union([z.literal(0), z.literal(1)]) })
+  .object({ sessionId: z.string(), cacheKey: z.string(), needsSourceRecovery: z.union([z.literal(0), z.literal(1)]) })
   .strict();
 const revisionRowSchema = z.object({ dataRevision: z.number().int().nonnegative().safe() }).strict();
 const sqliteTableInfoRowSchema = z.object({ name: z.string() }).passthrough();
@@ -196,8 +195,8 @@ export class CodexUsageCacheDatabase {
     return this.database.transaction(() => read(this.currentDataRevision()))();
   }
 
-  state(): CodexUsageState {
-    return codexUsageStateSchema.parse({ task: this.latestPendingTask(), history: this.listHistory() });
+  state(beforeInvestigationId?: string): CodexUsageState {
+    return codexUsageStateSchema.parse({ task: this.latestPendingTask(), ...this.listHistory(beforeInvestigationId) });
   }
 
   cleanup(level: CodexUsageCleanupLevel): CodexUsageCleanupCounts {
@@ -305,11 +304,12 @@ export class CodexUsageCacheDatabase {
   *ingestedSourcePages() {
     const statement = this.database.prepare(
       `SELECT source.session_id AS sessionId, source.cache_key AS cacheKey,
-         CASE WHEN unresolved.source_session_id IS NULL THEN 0 ELSE 1 END AS needsModeRecovery
+         CASE WHEN unresolved.source_session_id IS NULL AND source.turn_metadata_complete = 1
+           THEN 0 ELSE 1 END AS needsSourceRecovery
        FROM usage_source_files AS source
        LEFT JOIN (
          SELECT DISTINCT source_session_id FROM usage_events
-         WHERE service_tier = 'UNKNOWN' AND turn_id IS NULL
+         WHERE turn_id IS NULL AND (service_tier = 'UNKNOWN' OR total_tokens > 0)
        ) AS unresolved ON unresolved.source_session_id = source.session_id`,
     );
     yield* sqlitePages(statement.iterate(), sourceStateRowSchema);
@@ -377,8 +377,21 @@ export class CodexUsageCacheDatabase {
     yield* readSessionAnalysisEventPages(this.database, turns);
   }
 
-  turnSpeedAnalysis(fromEpoch: number | null, toEpoch: number) {
-    return readCodexTurnSpeedAnalysis(this.database, fromEpoch, toEpoch);
+  sourceIssues(fromEpoch: number | null, toEpoch: number) {
+    return z.object({ invalidRecords: z.number(), oversizedRecords: z.number() }).parse(
+      this.database
+        .prepare(
+          `
+      SELECT COALESCE(SUM(invalid_records), 0) AS invalidRecords,
+        COALESCE(SUM(oversized_records), 0) AS oversizedRecords FROM usage_source_files
+      WHERE (first_event_ms IS NULL AND last_event_ms IS NULL)
+        OR (first_event_ms <= @toEpoch AND last_event_ms >= COALESCE(@fromEpoch, 0))
+        OR EXISTS (SELECT 1 FROM usage_chat_turns AS turn WHERE turn.source_session_id = usage_source_files.session_id
+          AND turn.terminal_ms BETWEEN COALESCE(@fromEpoch, 0) AND @toEpoch)
+    `,
+        )
+        .get({ fromEpoch, toEpoch }),
+    );
   }
 
   latestTurnTimestamp(): number | null {
@@ -475,17 +488,6 @@ export class CodexUsageCacheDatabase {
     })();
   }
 
-  saveInvestigationPurity(investigation: CodexUsageInvestigation) {
-    const parsed = codexUsageInvestigationSchema.parse(investigation);
-    const payload = JSON.stringify(parsed);
-    if (Buffer.byteLength(payload, 'utf8') > MAX_INVESTIGATION_JSON_BYTES) {
-      throw new Error('Codex usage investigation is too large');
-    }
-    this.database
-      .prepare(`UPDATE scan_tasks SET investigation_json = ? WHERE task_id = ? AND status = 'COMPLETED'`)
-      .run(payload, parsed.investigationId);
-  }
-
   investigation(investigationId: string) {
     const length = investigationLengthRowSchema.safeParse(
       this.database
@@ -554,23 +556,31 @@ export class CodexUsageCacheDatabase {
     return task && ['RUNNING', 'PAUSED', 'INTERRUPTED', 'FAILED'].includes(task.status) ? task : null;
   }
 
-  private listHistory() {
-    const rows = z.array(historyRowSchema).safeParse(
+  private listHistory(beforeInvestigationId?: string) {
+    const anchor = beforeInvestigationId
+      ? (this.database
+          .prepare('SELECT updated_at AS timestamp FROM scan_tasks WHERE task_id = ?')
+          .get(beforeInvestigationId) as { timestamp: string } | undefined)
+      : undefined;
+    if (beforeInvestigationId && !anchor) return { history: [], historyCursor: null };
+    const rows = z.array(historyRowSchema.extend({ investigationId: z.string().uuid() })).safeParse(
       this.database
         .prepare(
-          `SELECT history_json AS historyJson
+          `SELECT task_id AS investigationId, history_json AS historyJson
            FROM scan_tasks
            WHERE status = 'COMPLETED' AND history_json IS NOT NULL
-           ORDER BY updated_at DESC
-           LIMIT 50`,
+             AND (@before IS NULL OR (updated_at, task_id) < (@timestamp, @before))
+           ORDER BY updated_at DESC, task_id DESC
+           LIMIT 51`,
         )
-        .all(),
+        .all({ before: beforeInvestigationId ?? null, timestamp: anchor?.timestamp ?? null }),
     );
-    if (!rows.success) return [];
-    return rows.data.flatMap((row) => {
+    if (!rows.success) return { history: [], historyCursor: null };
+    const history = rows.data.slice(0, 50).flatMap((row) => {
       const item = parseBoundedJson(row.historyJson, MAX_HISTORY_JSON_BYTES, codexUsageHistoryItemSchema);
       return item ? [item] : [];
     });
+    return { history, historyCursor: rows.data.length > 50 ? (rows.data[49]?.investigationId ?? null) : null };
   }
 
   private recoverInterruptedTasks() {
@@ -591,7 +601,7 @@ export class CodexUsageCacheDatabase {
       .int()
       .nonnegative()
       .parse(this.database.pragma('user_version', { simple: true }));
-    if (version > DATABASE_SCHEMA_VERSION && !UNRELEASED_DATABASE_SCHEMA_VERSIONS.has(version)) {
+    if (version > DATABASE_SCHEMA_VERSION) {
       throw new Error('Codex usage cache database is newer than this app');
     }
     const hasEventFingerprintColumn = z
@@ -756,6 +766,7 @@ export class CodexUsageCacheDatabase {
       if (!hasContextCompactionCountColumn) this.database.exec(codexUsageCacheRevision6ContextCompactionsSql);
       if (!hasTurnSpeedColumns) this.database.exec(codexUsageCacheRevision6TurnSpeedSql);
       if (!hasRetainedHistoryColumn) this.database.exec(codexUsageSourceHistorySql);
+      if (version < 9) this.database.exec(codexUsageTurnBoundariesSql);
       this.database.pragma(`user_version = ${DATABASE_SCHEMA_VERSION}`);
     })();
   }

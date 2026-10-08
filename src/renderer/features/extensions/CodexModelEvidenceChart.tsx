@@ -1,4 +1,4 @@
-import { useId, useMemo } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { empiricalSteps, type CodexSampleSummary } from '@/shared/codex-usage-evidence';
 import { Badge } from '@/renderer/components/ui/badge';
 import {
@@ -6,7 +6,9 @@ import {
   type CodexModelChartGroup,
 } from '@/renderer/features/extensions/codexModelComparisonChart';
 import { CodexUsageEvidenceHelp } from '@/renderer/features/extensions/CodexUsageEvidenceHelp';
-import type { useI18n } from '@/renderer/i18n/useI18n';
+import { Label } from '@/renderer/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
 type EvidenceLabels = ReturnType<typeof useI18n>['messages']['extensions']['codexUsageInvestigator']['evidence'];
 
@@ -28,21 +30,38 @@ export function CodexModelEvidenceChart({
   text: EvidenceLabels;
 }) {
   const id = useId();
+  const workspace = useI18n().messages.extensions.codexUsageInvestigator.workspace;
+  const [scale, setScale] = useState('linear');
   const samples = useMemo(
     () => [displayCodexModelChartSamples(groups[0]), displayCodexModelChartSamples(groups[1])] as const,
     [groups],
   );
   const maximum = Math.max(...summaries.map((summary) => summary.values.at(-1) ?? 0)) || 1;
-  const x = (value: number) => PLOT.left + (value / maximum) * PLOT.width;
+  const tick = (fraction: number) =>
+    scale === 'log' ? Math.expm1(Math.log1p(maximum) * fraction) : maximum * fraction;
+  const x = (value: number) =>
+    PLOT.left + (scale === 'log' ? Math.log1p(value) / Math.log1p(maximum) : value / maximum) * PLOT.width;
   const y = (percent: number) => PLOT.top + PLOT.height * (1 - percent / 100);
   if (summaries.every((summary) => !summary.valid))
     return <p className="text-sm text-muted-foreground">{text.noData}</p>;
   const caption = view === 'points' ? text.chartNote : text.cumulativeNote;
   return (
     <figure className="grid min-w-0 gap-2">
+      <div className="flex items-center gap-2">
+        <Label htmlFor={`${id}-scale`}>{workspace.scale}</Label>
+        <Select value={scale} onValueChange={setScale}>
+          <SelectTrigger id={`${id}-scale`} className="w-auto min-w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="linear">{workspace.linear}</SelectItem>
+            <SelectItem value="log">{workspace.log}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       <svg
         viewBox="0 0 608 224"
-        role="img"
+        role="group"
         aria-labelledby={`${id}-title ${id}-description`}
         className="block h-auto w-full max-w-3xl text-foreground"
       >
@@ -53,19 +72,19 @@ export function CodexModelEvidenceChart({
         {[0, 0.25, 0.5, 0.75, 1].map((fraction) => (
           <g key={fraction}>
             <line
-              x1={x(maximum * fraction)}
-              x2={x(maximum * fraction)}
+              x1={x(tick(fraction))}
+              x2={x(tick(fraction))}
               y1={PLOT.top}
               y2={PLOT.top + PLOT.height}
               className="stroke-border"
             />
             <text
-              x={x(maximum * fraction)}
+              x={x(tick(fraction))}
               y={PLOT.top + PLOT.height + 22}
               textAnchor={fraction === 0 ? 'start' : fraction === 1 ? 'end' : 'middle'}
               className="fill-muted-foreground text-[10px]"
             >
-              {format(maximum * fraction)}
+              {format(tick(fraction))}
             </text>
             {view === 'cumulative' && (
               <text
@@ -101,6 +120,9 @@ export function CodexModelEvidenceChart({
                 {samples[index].map((sample) => (
                   <circle
                     key={sample.key}
+                    tabIndex={0}
+                    role="img"
+                    aria-label={`${index ? 'B' : 'A'} · ${sample.configuration.label} · ${format(sample.value)}`}
                     cx={x(sample.value)}
                     cy={y(sample.cumulativePercent)}
                     r="2.25"
@@ -144,6 +166,9 @@ export function CodexModelEvidenceChart({
               {samples[index].map((sample, point) => (
                 <circle
                   key={sample.key}
+                  tabIndex={0}
+                  role="img"
+                  aria-label={`${index ? 'B' : 'A'} · ${sample.configuration.label} · ${format(sample.value)}`}
                   cx={x(sample.value)}
                   cy={baseline + ((point % 5) - 2) * 3}
                   r="2.5"

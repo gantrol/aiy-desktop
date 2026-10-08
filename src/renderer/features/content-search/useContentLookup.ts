@@ -1,5 +1,38 @@
 import { useEffect, useState } from 'react';
 import type { ContentLookupApi, ContentLookupInput, ContentLookupResult } from '@/shared/contracts/content-search';
+import { contentSearchSourceKey } from '@/renderer/features/content-search/contentSearchSelection';
+
+interface LookupData {
+  key: string;
+  requestKey: string;
+  result: ContentLookupResult;
+  resetRevision: number;
+}
+
+function receivePage(
+  previous: LookupData | null,
+  page: ContentLookupResult,
+  key: string,
+  requestKey: string,
+  offset: number,
+): LookupData {
+  const current = previous?.key === key ? previous : null;
+  const append = offset > 0 && !page.reset && current?.result.snapshot === page.snapshot;
+  const items = new Map(
+    (append ? current.result.items : []).map((item) => [contentSearchSourceKey(item.source), item]),
+  );
+  for (const item of page.items) items.set(contentSearchSourceKey(item.source), item);
+  return {
+    key,
+    requestKey,
+    result: {
+      ...page,
+      items: [...items.values()],
+      reset: page.reset || (current?.requestKey === requestKey && current.result.reset),
+    },
+    resetRevision: (current?.resetRevision ?? 0) + (page.reset && current?.result.snapshot !== page.snapshot ? 1 : 0),
+  };
+}
 
 /** Indexing advances only while this search is active, visible and outside IME composition. */
 export function useContentLookup(
@@ -8,25 +41,44 @@ export function useContentLookup(
   type: ContentLookupInput['type'],
   enabled = true,
 ) {
-  const [request, setRequest] = useState({ query, type, offset: 0, snapshot: '', revision: 0, retry: false });
+  const [request, setRequest] = useState({
+    query,
+    type,
+    offset: 0,
+    snapshot: '',
+    revision: 0,
+    attempt: 0,
+    retry: false,
+  });
   const [paused, setPaused] = useState(false);
-  const [data, setData] = useState<{ key: string; result: ContentLookupResult; offset: number } | null>(null);
+  const [data, setData] = useState<LookupData | null>(null);
   const [error, setError] = useState<{ key: string; message: string } | null>(null);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const matching = request.query === query && request.type === type;
   const offset = matching ? request.offset : 0;
-  const key = JSON.stringify([query, type, offset, request.revision]);
+  const key = JSON.stringify([query, type, request.revision]);
+  const requestKey = JSON.stringify([key, offset, request.attempt]);
   useEffect(() => {
     if (!enabled) return;
     if (!matching) {
-      setRequest((current) => ({ query, type, offset: 0, snapshot: '', revision: current.revision + 1, retry: false }));
+      setRequest((current) => ({
+        query,
+        type,
+        offset: 0,
+        snapshot: '',
+        revision: current.revision + 1,
+        attempt: 0,
+        retry: false,
+      }));
       return;
     }
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let retry = matching && request.retry;
+    let pageOffset = offset;
+    let snapshot = request.snapshot;
     setError(null);
-    setPendingKey(key);
+    setPendingKey(requestKey);
     const run = async () => {
       if (cancelled) return;
       if (document.hidden) {
@@ -37,19 +89,22 @@ export function useContentLookup(
         const result = await api.lookup({
           query,
           type,
-          offset,
-          snapshot: matching ? request.snapshot : undefined,
+          offset: pageOffset,
+          snapshot,
           retryUnavailable: retry,
           advanceIndex: !paused,
         });
         retry = false;
         if (cancelled) return;
-        setData({ key, result, offset: result.reset ? 0 : offset });
+        const receivedOffset = pageOffset;
+        setData((current) => receivePage(current, result, key, requestKey, receivedOffset));
+        if (result.reset) pageOffset = 0;
+        snapshot = result.snapshot;
         setPendingKey(null);
         if (result.coverage.pending && !paused) timer = setTimeout(() => void run(), 80);
       } catch (reason) {
         if (!cancelled) {
-          setError({ key, message: String(reason) });
+          setError({ key: requestKey, message: String(reason) });
           setPendingKey(null);
         }
       }
@@ -59,37 +114,43 @@ export function useContentLookup(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [api, key, query, type, offset, matching, request.retry, request.snapshot, paused, enabled]);
+  }, [api, key, requestKey, query, type, offset, matching, request.retry, request.snapshot, paused, enabled]);
   const result = data?.key === key ? data.result : null;
-  const pageOffset = result?.reset ? 0 : offset;
-  const changePage = (next: number) => {
-    if (!result) return;
-    setRequest((current) => ({
-      query,
-      type,
-      offset: next,
-      snapshot: result.snapshot,
-      revision: current.revision + 1,
-      retry: false,
-    }));
-  };
+  const failure = error?.key === requestKey ? error.message : '';
+  const busy = enabled && (pendingKey === requestKey || (data?.requestKey !== requestKey && !failure));
   return {
-    key,
+    key: JSON.stringify([key, data?.key === key ? data.resetRevision : 0]),
     result,
-    error: error?.key === key ? error.message : '',
-    busy: enabled && (pendingKey === key || (!result && error?.key !== key)),
+    error: failure,
+    busy,
+    loadingMore: busy && offset > 0 && Boolean(result?.items.length),
     paused,
-    page: Math.floor(pageOffset / 30) + 1,
-    hasPrevious: pageOffset > 0,
-    canPage: result
-      ? pageOffset > 0 || result.nextOffset !== null
-      : Boolean(data && (data.offset > 0 || data.result.nextOffset !== null)),
+    hasMore: result?.nextOffset != null,
     pause: () => setPaused((value) => !value),
     refresh: () =>
-      setRequest((current) => ({ query, type, offset: 0, snapshot: '', revision: current.revision + 1, retry: true })),
+      setRequest((current) => ({
+        query,
+        type,
+        offset: 0,
+        snapshot: '',
+        revision: current.revision + 1,
+        attempt: 0,
+        retry: true,
+      })),
     more: () => {
-      if (result?.nextOffset != null) changePage(result.nextOffset);
+      if (!enabled || busy || result?.nextOffset == null) return;
+      const nextOffset = result.nextOffset;
+      setRequest((current) => {
+        // Multiple intersection notifications must schedule only one page request.
+        if (current.offset === nextOffset && current.snapshot === result.snapshot && !failure) return current;
+        return {
+          ...current,
+          offset: nextOffset,
+          snapshot: result.snapshot,
+          attempt: current.attempt + 1,
+          retry: false,
+        };
+      });
     },
-    previous: () => changePage(Math.max(0, pageOffset - 30)),
   };
 }

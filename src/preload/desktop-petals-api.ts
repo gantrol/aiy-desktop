@@ -18,6 +18,7 @@ import {
 } from '@/shared/contracts/desktop-petals';
 import { pinSourceSchema, pinSummarySchema } from '@/shared/contracts/petal-board';
 import { petalQuotaSchema } from '@/shared/contracts/petal-hub';
+import { screenMagnifierActionSchema } from '@/shared/contracts/screen-magnifier';
 import { petalLanguageSchema } from '@/shared/contracts/petal-language';
 import { petalError, type PetalCommandResult } from '@/shared/petal-errors';
 import { ipcRenderer } from 'electron';
@@ -27,6 +28,9 @@ import { petalDrawerFrameSchema, petalDrawerPointerSchema } from '@/shared/contr
 import { petalPreviewSchema } from '@/shared/petal-preview';
 import { petalPluckPointerSchema } from '@/shared/contracts/petal-pluck';
 import { contentAlbumOptionSchema } from '@/shared/content-album-options';
+import { temporaryFilesCommandSchema, temporaryFilesSnapshotSchema } from '@/shared/contracts/temporary-files';
+import { imageEditCommandSchema, imageEditSnapshotSchema } from '@/shared/contracts/image-edit';
+import { imagePrivacyCommandSchema, imagePrivacyResultSchema } from '@/shared/contracts/image-privacy';
 
 export function createDesktopPetalsApi(): DesktopPetalsApi {
   const command = async <T = unknown>(name: string, value?: unknown): Promise<T> => {
@@ -54,6 +58,15 @@ export function createDesktopPetalsApi(): DesktopPetalsApi {
       .catch(() => undefined);
   });
   return {
+    magnifier: async (action) => {
+      await command('magnifier', screenMagnifierActionSchema.parse(action));
+    },
+    imageEdit: async (input) =>
+      imageEditSnapshotSchema.parse(await command('image-edit', imageEditCommandSchema.parse(input))),
+    imagePrivacy: async (input) =>
+      imagePrivacyResultSchema.parse(await command('image-privacy', imagePrivacyCommandSchema.parse(input))),
+    temporaryFiles: async (input) =>
+      temporaryFilesSnapshotSchema.parse(await command('temporary-files', temporaryFilesCommandSchema.parse(input))),
     workspace: async () => petalWorkspaceSnapshotSchema.parse(await command('workspace', { kind: 'list' })),
     workspaceAction: async (input) =>
       petalWorkspaceResultSchema.parse(await command('workspace', petalWorkspaceCommandSchema.parse(input))),

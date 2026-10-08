@@ -35,6 +35,8 @@ import {
 } from '@/renderer/features/extensions/CodexUsageTaskControls';
 import { useCodexUsageInvestigationSelection } from '@/renderer/features/extensions/useCodexUsageInvestigationSelection';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { useCodexUsageActions } from '@/renderer/features/extensions/useCodexUsageActions';
+import { useCodexUsageHistory } from '@/renderer/features/extensions/useCodexUsageHistory';
 import { cn } from '@/renderer/lib/utils';
 
 interface Props {
@@ -42,6 +44,7 @@ interface Props {
   extension: ExtensionDto;
   standalone?: boolean;
   workspaceNavigation?: ReactNode;
+  navigationToggleHost?: HTMLElement | null;
   notify(message: string): void;
 }
 
@@ -68,6 +71,7 @@ function CodexUsageExportButtons({
   exporting: CodexUsageExportFormat | null;
   onExport(format: CodexUsageExportFormat): void;
 }) {
+  const labels = useI18n().messages.extensions.codexUsageInvestigator.workspace;
   return (
     <>
       {(['CSV', 'JSON'] as const).map((format) => (
@@ -84,7 +88,7 @@ function CodexUsageExportButtons({
           ) : (
             <DownloadIcon className="size-4" />
           )}
-          {format}
+          {format === 'CSV' ? labels.reportCsv : labels.reportJson}
         </Button>
       ))}
     </>
@@ -157,6 +161,7 @@ function CodexUsageToolbar({
         </div>
       )}
       <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className="text-xs text-muted-foreground">{labels.workspace.nextScan}</span>
         <CodexUsageDateRangePicker
           className="w-full @md/codex-usage:w-auto"
           collapseLabel
@@ -252,23 +257,22 @@ export function CodexUsageInvestigatorConfiguration({
   extension,
   standalone = false,
   workspaceNavigation,
+  navigationToggleHost,
   notify,
 }: Props) {
   const { locale, messages } = useI18n();
   const l = messages.extensions.codexUsageInvestigator;
   const [range, setRange] = useState<CodexUsageRange>('TODAY');
   const [dateRange, setDateRange] = useState<CodexUsageDateRange | null>(null);
-  const [granularity, setGranularity] = useState<CodexUsageGranularity>('AUTO');
+  const [granularity] = useState<CodexUsageGranularity>('AUTO');
   const { enabled: detailedStatistics, setEnabled: setDetailedStatistics } =
     useCodexUsageDetailedStatisticsPreference();
   const systemTimeZone = useSystemTimeZone(active);
   const [displayTimeZone, setDisplayTimeZone] = useState(currentSystemTimeZone);
   const [investigation, setInvestigation] = useState<CodexUsageInvestigation | null>(null);
-  const [history, setHistory] = useState<CodexUsageHistoryItem[]>([]);
   const [task, setTask] = useState<CodexUsageTask | null>(null);
-  const [taskAction, setTaskAction] = useState<CodexUsageTaskAction>(null);
-  const [exporting, setExporting] = useState<CodexUsageExportFormat | null>(null);
   const [error, setError] = useState('');
+  const { history, historyCursor, loadingHistory, loadMore, setHistoryState } = useCodexUsageHistory(setError);
   const authorized = extensionAuthorized(extension);
   const { numberLocale, numbers, historyDate } = useCodexUsageFormats(locale);
 
@@ -283,10 +287,8 @@ export function CodexUsageInvestigatorConfiguration({
     selectRange,
     loading,
   } = useCodexUsageInvestigationSelection({
-    history,
     setRange,
     setDateRange,
-    setGranularity,
     setDisplayTimeZone,
     setInvestigation,
     setError,
@@ -297,6 +299,20 @@ export function CodexUsageInvestigatorConfiguration({
     if (investigation && history.length === 0) clearInvestigation();
   }, [clearInvestigation, history, investigation]);
 
+  const { taskAction, setTaskAction, exporting, controlsLocked, scan, pause, resume, exportReport } =
+    useCodexUsageActions({
+      authorized,
+      selectionBusy: loading || loadingHistory,
+      task,
+      investigation,
+      scanInput: { range, dateRange, timeZone: systemTimeZone, granularity, detailedStatistics },
+      setTask,
+      setError,
+      expectCompletedInvestigation,
+      cancelExpectedInvestigation,
+      notify,
+      exportedLabel: l.notices.exported,
+    });
   useCodexUsageTaskState({
     active,
     authorized,
@@ -304,7 +320,7 @@ export function CodexUsageInvestigatorConfiguration({
     loadInitialInvestigation,
     loadCompletedInvestigation,
     setTask,
-    setHistory,
+    setHistoryState,
     setTaskAction,
     setError,
   });
@@ -312,7 +328,6 @@ export function CodexUsageInvestigatorConfiguration({
   const running = task?.status === 'RUNNING';
   const resumable = Boolean(task && ['PAUSED', 'INTERRUPTED'].includes(task.status));
   const progress = running || resumable ? task?.progress : null;
-  const controlsLocked = running || taskAction !== null || loading;
   const changeQuotaSampling = useCallback(
     (minimumQuotaPercent: number) => {
       if (!investigation || controlsLocked || !authorized || exporting) return;
@@ -323,72 +338,6 @@ export function CodexUsageInvestigatorConfiguration({
     },
     [authorized, controlsLocked, exporting, investigation, loadInvestigation],
   );
-
-  async function scan() {
-    if (!authorized || controlsLocked) return;
-    expectCompletedInvestigation();
-    setTaskAction('SCAN');
-    setError('');
-    try {
-      setTask(
-        await window.desktopApi.codexUsageScan({
-          range,
-          dateRange,
-          timeZone: systemTimeZone,
-          granularity,
-          detailedStatistics,
-        }),
-      );
-    } catch (reason) {
-      cancelExpectedInvestigation();
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setTaskAction(null);
-    }
-  }
-
-  async function pause() {
-    if (taskAction !== null) return;
-    setTaskAction('PAUSE');
-    setError('');
-    try {
-      await window.desktopApi.codexUsagePause();
-    } catch (reason) {
-      setTaskAction(null);
-      setError(reason instanceof Error ? reason.message : String(reason));
-    }
-  }
-
-  async function resume() {
-    if (!task || !['PAUSED', 'INTERRUPTED'].includes(task.status) || taskAction !== null) return;
-    setTaskAction('RESUME');
-    setError('');
-    try {
-      setTask(await window.desktopApi.codexUsageResume({ taskId: task.taskId }));
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setTaskAction(null);
-    }
-  }
-
-  async function exportReport(format: CodexUsageExportFormat) {
-    if (!investigation || exporting || loading) return;
-    setExporting(format);
-    setError('');
-    try {
-      const result = await window.desktopApi.codexUsageExport({
-        investigationId: investigation.investigationId,
-        format,
-        minimumQuotaPercent: investigation.quotaPurity?.minimumQuotaPercent,
-      });
-      if (result.status === 'exported') notify(`${l.notices.exported}: ${result.fileName}`);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setExporting(null);
-    }
-  }
 
   const report = (navigationAction: ReactNode = null) => (
     <div
@@ -409,7 +358,7 @@ export function CodexUsageInvestigatorConfiguration({
         running={running}
         resumable={resumable}
         taskAction={taskAction}
-        authorized={authorized && !loading}
+        authorized={authorized && !loading && !exporting && !loadingHistory}
         exporting={exporting}
         labels={l}
         locale={locale}
@@ -425,16 +374,28 @@ export function CodexUsageInvestigatorConfiguration({
         onError={setError}
         onCleared={(result) => {
           setTask(result.state.task);
-          setHistory(result.state.history);
+          setHistoryState(result.state);
           clearInvestigation();
         }}
       />
 
+      {!standalone && historyCursor && (
+        <Button variant="ghost" size="sm" disabled={loadingHistory} onClick={() => void loadMore()}>
+          {loadingHistory ? l.workspace.loading : l.workspace.loadMore}
+        </Button>
+      )}
+      {progress && task && (
+        <p className="text-xs text-muted-foreground">
+          {l.evidence.scope}:{' '}
+          {task.fromEpoch === null ? l.evidence.allHistory : historyDate.format(new Date(task.fromEpoch))} –{' '}
+          {historyDate.format(new Date(task.toEpoch))} · {task.timeZone}
+        </p>
+      )}
       {progress && (
         <CodexUsageScanProgress
           progress={progress}
           active={running}
-          phaseLabel={running ? l.phases[progress.phase] : l.paused}
+          phaseLabel={running ? `${l.workspace.phaseProgress} · ${l.phases[progress.phase]}` : l.paused}
           backgroundLabel={l.background}
           etaLabel={l.eta}
           elapsedLabel={l.elapsed}
@@ -459,11 +420,18 @@ export function CodexUsageInvestigatorConfiguration({
           quotaSamplingBusy={loading}
           quotaSamplingDisabled={controlsLocked || !authorized || Boolean(exporting)}
           onQuotaSamplingChange={changeQuotaSampling}
+          onRescan={() => void scan(investigation.investigationId)}
         />
       )}
       {error && (
         <div role="alert" className="border-l-2 border-destructive/30 py-1 pl-3 text-sm text-destructive">
-          {error.includes(CODEX_USAGE_FACT_BACKUP_FAILED) ? l.factBackupFailed : error}
+          {error.includes(CODEX_USAGE_FACT_BACKUP_FAILED)
+            ? l.factBackupFailed
+            : error.includes('CODEX_USAGE_BUSY')
+              ? l.workspace.busy
+              : error.includes('CODEX_USAGE_WORKER_FAILED')
+                ? l.workspace.workerFailed
+                : error}
         </div>
       )}
     </div>
@@ -481,15 +449,27 @@ export function CodexUsageInvestigatorConfiguration({
             collectionWidth={240}
             minimumDetailWidth={600}
             selectionKey={investigation?.investigationId ?? 'new-report'}
-            collection={({ toggle, revealDetail }) => (
+            toggleHost={navigationToggleHost}
+            collectionHeader={() => (
+              <>
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold">{l.history}</span>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {new Intl.NumberFormat(locale).format(history.length)}
+                  {historyCursor ? '+' : ''}
+                </span>
+              </>
+            )}
+            collection={({ revealDetail }) => (
               <CodexUsageHistoryRail
                 history={history}
+                hasMore={Boolean(historyCursor)}
+                loading={loadingHistory}
+                onLoadMore={() => void loadMore()}
                 locale={locale}
                 labels={l}
                 selectedId={investigation?.investigationId ?? null}
                 task={task}
                 workspaceNavigation={workspaceNavigation}
-                headerControl={toggle}
                 onSelect={(id) => {
                   if (id === investigation?.investigationId) revealDetail();
                   else selectHistory(id);

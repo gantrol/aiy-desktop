@@ -81,6 +81,7 @@ export function ActionMenuButton({
   label,
   className,
   contentClassName,
+  onCloseAutoFocus,
   side = 'right',
   align = 'start',
   variant = 'ghost',
@@ -89,6 +90,7 @@ export function ActionMenuButton({
   label: string;
   className?: string;
   contentClassName?: string;
+  onCloseAutoFocus?: ComponentProps<typeof DropdownMenuContent>['onCloseAutoFocus'];
   side?: ComponentProps<typeof DropdownMenuContent>['side'];
   align?: ComponentProps<typeof DropdownMenuContent>['align'];
   variant?: ComponentProps<typeof Button>['variant'];
@@ -112,7 +114,12 @@ export function ActionMenuButton({
         </Button>
       </DropdownMenuTrigger>
       {open && (
-        <DropdownMenuContent side={side} align={align} className={cn('w-48', contentClassName)}>
+        <DropdownMenuContent
+          side={side}
+          align={align}
+          className={cn('w-48', contentClassName)}
+          onCloseAutoFocus={onCloseAutoFocus}
+        >
           <ActionDropdownMenuItems actions={actions} />
         </DropdownMenuContent>
       )}

@@ -115,6 +115,7 @@ function toTurn(
     id: text(row.id),
     scope: { kind: row.scope_kind, id: row.scope_id },
     mode: request.mode,
+    ...(request.documentTask ? { documentTask: request.documentTask } : {}),
     prompt: request.prompt,
     message: request.message,
     attachments: attachmentAssetIds.flatMap((assetId) => {
@@ -250,7 +251,7 @@ export class CreatorAgentRepository {
     const limit = boundedLimit(requestedLimit, 20);
     return this.db.transaction(() => {
       const selection = this.selectRows(scope, null, limit);
-      return hydrateTurns([...selection.rows].reverse(), this.db);
+      return hydrateTurns([...selection.rows].reverse(), this.db).filter((turn) => !turn.documentTask);
     })();
   }
 
@@ -266,9 +267,10 @@ export class CreatorAgentRepository {
           ? this.db
               .prepare(
                 `SELECT id FROM creation_drafts
-          WHERE id = ? AND consumed_at IS NULL AND deleted_at IS NULL`,
+          WHERE id = ? AND (? = 1 OR consumed_at IS NULL) AND deleted_at IS NULL`,
               )
-              .get(scope.id)
+              // A writing candidate may arrive after its input draft has become an article.
+              .get(scope.id, input.documentTask ? 1 : 0)
           : this.db.prepare('SELECT id FROM prompt_series WHERE id = ? AND deleted_at IS NULL').get(scope.id);
       if (!target) throw new Error('Agent conversation target is no longer available');
       const id = ulid();

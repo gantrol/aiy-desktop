@@ -7,7 +7,7 @@ export function usePetalHubData(snapshot: DesktopPetalSnapshot) {
   const [quota, setQuota] = useState<PetalQuota | null>(null);
   const { mode, codexLimitId } = snapshot.hubSettings;
   useEffect(() => {
-    if (mode !== 'clock' && mode !== 'pomodoro') return;
+    if (mode !== 'clock' && mode !== 'pomodoro' && snapshot.hubView !== 'settings') return;
     const update = () => {
       if (!document.hidden) setNow(Date.now());
     };
@@ -18,7 +18,7 @@ export function usePetalHubData(snapshot: DesktopPetalSnapshot) {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', update);
     };
-  }, [mode]);
+  }, [mode, snapshot.hubView]);
   useEffect(() => {
     setQuota(null);
     const readsMetric = isPetalCenterMetricProvider(mode);

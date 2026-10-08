@@ -22,7 +22,6 @@ interface NavigationActions {
   chooseEvaluationSuite(id: string, mode: NavigationMode | null): Promise<boolean>;
   chooseIdeaCreation(id: string, mode: NavigationMode | null): Promise<boolean>;
   chooseImageBreakdown(id: string, mode: NavigationMode | null): Promise<boolean>;
-  chooseInspirationStash(id: string, mode: NavigationMode | null): Promise<boolean>;
   chooseSeries(id: string, assetId?: string, mode?: NavigationMode | null, versionId?: string): Promise<boolean>;
   chooseSocialPost(id: string, mode: NavigationMode | null): Promise<boolean>;
   resumeCreationDraft(draftId: string, mode: NavigationMode | null): Promise<boolean>;
@@ -65,11 +64,28 @@ export function useCreatorLocationSynchronization(options: Options) {
   const chooseEvaluationSuite = useStableCallback(options.actions.chooseEvaluationSuite);
   const chooseIdeaCreation = useStableCallback(options.actions.chooseIdeaCreation);
   const chooseImageBreakdown = useStableCallback(options.actions.chooseImageBreakdown);
-  const chooseInspirationStash = useStableCallback(options.actions.chooseInspirationStash);
   const chooseSeries = useStableCallback(options.actions.chooseSeries);
   const resumeDerivedVisual = useStableCallback(options.actions.resumeDerivedVisual);
   const chooseSocialPost = useStableCallback(options.actions.chooseSocialPost);
-  const resumeCreationDraft = useStableCallback(options.actions.resumeCreationDraft);
+  const finishDraftRestore = useStableCallback((restored: boolean, application: CreatorLocationApplication) => {
+    if (
+      !options.active ||
+      options.locationApplicationRef.current !== application ||
+      navigationLocationKey(options.location) !== application.requestedKey
+    )
+      return;
+    if (restored) {
+      application.appliedKey = application.requestedKey;
+      return;
+    }
+    // A restored tab can outlive its draft. Keep the editor and repair only its location.
+    const fallback = options.workbenchLocation();
+    if (navigationLocationKey(fallback) !== application.requestedKey) options.commit(fallback, 'replace');
+  });
+  const resumeCreationDraft = useStableCallback(async (draftId: string, application: CreatorLocationApplication) => {
+    const restored = await options.actions.resumeCreationDraft(draftId, null);
+    finishDraftRestore(restored, application);
+  });
   const startNewCreation = useStableCallback(options.actions.startNewCreation);
   const onActiveAlbumChange = useStableCallback(options.onActiveAlbumChange);
 
@@ -128,8 +144,9 @@ export function useCreatorLocationSynchronization(options: Options) {
     closePrompt();
     const location = options.location;
     const visual = derivedVisualForLocation(options.data, location);
-    // Derived workspaces finish asynchronously; their commit confirms the restored view.
-    options.locationApplicationRef.current = { requestedKey: key, appliedKey: visual ? null : key };
+    // Drafts and derived workspaces confirm the restored view only after loading succeeds.
+    const application = { requestedKey: key, appliedKey: visual || location.surface === 'creation-draft' ? null : key };
+    options.locationApplicationRef.current = application;
     if (visual) {
       void resumeDerivedVisual(
         visual.id,
@@ -152,12 +169,12 @@ export function useCreatorLocationSynchronization(options: Options) {
     else if (location.surface === 'existing-creation')
       void chooseSeries(location.seriesId, location.assetId ?? undefined, null, location.versionId);
     else if (location.surface === 'idea-creation') void chooseIdeaCreation(location.creationId, null);
-    else if (location.surface === 'inspiration-stash') void chooseInspirationStash(location.stashId, null);
+    else if (location.surface === 'inspiration-stash') void chooseArticle(location.stashId, 'replace');
     else if (location.surface === 'image-breakdown') void chooseImageBreakdown(location.breakdownId, null);
     else if (location.surface === 'evaluation-suite') void chooseEvaluationSuite(location.suiteId, null);
     else if (location.surface === 'social-post') void chooseSocialPost(location.postId, null);
     else if (location.surface === 'article') void chooseArticle(location.articleId, null);
-    else if (location.surface === 'creation-draft') void resumeCreationDraft(location.draftId, null);
+    else if (location.surface === 'creation-draft') void resumeCreationDraft(location.draftId, application);
     else if (location.surface === 'new-creation') void startNewCreation(location.albumId, null);
   }, [
     chooseAlbum,
@@ -165,7 +182,6 @@ export function useCreatorLocationSynchronization(options: Options) {
     chooseEvaluationSuite,
     chooseIdeaCreation,
     chooseImageBreakdown,
-    chooseInspirationStash,
     chooseSeries,
     chooseSocialPost,
     closePrompt,

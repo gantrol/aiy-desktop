@@ -63,6 +63,8 @@ export function useCreatorDraftInputSession({
   const document = prompt.promptDocument;
   const catalog = prompt.dictionaryCatalog;
   const draftProjection = useCreatorDraftProjection({
+    startMode: selection.creationStartMode,
+    writingInstruction: selection.writingInstruction,
     appliedPalettes: document.appliedPalettes,
     canvasPresetKey: generation.canvasPreset?.stableKey ?? null,
     capturePrompt: document.capture,

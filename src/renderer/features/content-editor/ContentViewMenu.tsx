@@ -29,9 +29,14 @@ export function ContentViewMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="sm" aria-label={editorCopy.viewOptions}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={editorCopy.viewOptions}
+          title={editorCopy.viewOptions}
+        >
           <LayoutPanelTopIcon className="size-4" />
-          {copy.view}
           <ChevronDownIcon className="size-3.5" />
         </Button>
       </DropdownMenuTrigger>

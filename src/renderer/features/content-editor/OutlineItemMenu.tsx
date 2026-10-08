@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
+import { contextualActionVisibilityClassName } from '@/renderer/components/ui/item-actions';
 import { Kbd } from '@/renderer/components/ui/kbd';
 import {
   DropdownMenu,
@@ -366,7 +367,8 @@ export function OutlineItemMenu({ editor, node, getPos, editable, selected, sele
           <Button
             size="icon-sm"
             variant="ghost"
-            className="size-6 text-muted-foreground opacity-40 hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+            data-outline-item-menu
+            className={`size-6 text-muted-foreground ${contextualActionVisibilityClassName}`}
             aria-label={messages.contentEditor.blocks}
             onMouseDown={(event) => event.preventDefault()}
           >

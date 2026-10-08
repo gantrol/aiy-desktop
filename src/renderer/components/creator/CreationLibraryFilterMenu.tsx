@@ -1,17 +1,19 @@
 import { CrosshairIcon, SlidersHorizontalIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
+import { ItemActions, itemActionButtonClassName } from '@/renderer/components/ui/item-actions';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { CreationLibraryAuthorSelect } from '@/renderer/components/creator/CreationLibraryAuthorSelect';
 import type { CreationLibraryAuthorOption } from '@/renderer/components/creator/creationLibraryAuthorFilter';
 import {
+  useCreationLibraryFilterLabels,
+  type CreationLibraryFilterOption,
+} from '@/renderer/components/creator/useCreationLibraryFilterLabels';
+import {
   allCreationLibraryFilters,
   emptyCreationLibraryFilters,
-  isAllCreationLibraryFilter,
-  isAllCreationLibraryTypes,
   type CreationLibraryFilter,
-  type CreationLibraryTypeFilter,
 } from '@/renderer/components/creator/creationLibraryFilter';
 
 interface Props {
@@ -20,39 +22,12 @@ interface Props {
   authors?: readonly CreationLibraryAuthorOption[];
 }
 
-interface FilterOption {
-  keys: (keyof CreationLibraryTypeFilter)[];
-  label: string;
-}
-
 export function CreationLibraryFilterMenu({ filter, onFilterChange, authors = [] }: Props) {
   const { messages } = useI18n();
   const labels = messages.creator.results;
-  const kinds = messages.creator.album.formKinds;
-  const options: FilterOption[] = [
-    { keys: ['animations'], label: kinds.ANIMATION },
-    { keys: ['images'], label: labels.filterImages },
-    { keys: ['documents'], label: labels.filterDocuments },
-    { keys: ['articles', 'socialPosts'], label: messages.creator.manuscriptEditor.kind },
-    { keys: ['outlines'], label: kinds.OUTLINE },
-    { keys: ['inspirations'], label: kinds.INSPIRATION },
-    { keys: ['evaluations'], label: kinds.EVALUATION_SUITE },
-  ];
-  const allSelected = isAllCreationLibraryTypes(filter);
-  const selectedOptions = options.filter(({ keys }) => keys.some((key) => filter[key]));
-  const noneSelected = selectedOptions.length === 0;
-  const valueLabel = allSelected
-    ? labels.filterAll
-    : noneSelected
-      ? labels.filterNone
-      : selectedOptions.map(({ label }) => label).join(', ');
-  const authorLabel =
-    filter.author === 'UNASSIGNED'
-      ? labels.filterAuthorUnconfirmed
-      : authors.find((author) => author.value === filter.author)?.label;
-  const controlLabel = `${labels.filter}: ${valueLabel}${filter.author && filter.author !== 'ALL' ? ` · ${labels.filterAuthor}: ${authorLabel ?? labels.filterAuthorUnavailable}` : ''}`;
+  const { options, allSelected, noneSelected, controlLabel, active } = useCreationLibraryFilterLabels(filter, authors);
 
-  function updateOption(keys: FilterOption['keys'], checked: boolean, only = false) {
+  function updateOption(keys: CreationLibraryFilterOption['keys'], checked: boolean, only = false) {
     const next = { ...filter, ...(only ? emptyCreationLibraryFilters : {}) };
     for (const key of keys) next[key] = checked;
     onFilterChange(next);
@@ -63,13 +38,14 @@ export function CreationLibraryFilterMenu({ filter, onFilterChange, authors = []
       <PopoverTrigger asChild>
         <Button
           type="button"
-          variant={isAllCreationLibraryFilter(filter) ? 'ghost' : 'secondary'}
+          variant={active ? 'secondary' : 'ghost'}
           size="icon-sm"
-          className="h-8 shrink-0"
+          className="relative h-8 shrink-0"
           title={controlLabel}
           aria-label={controlLabel}
         >
-          <SlidersHorizontalIcon className="size-4 shrink-0" />
+          <SlidersHorizontalIcon className="size-4 shrink-0" aria-hidden />
+          {active && <span className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-current" aria-hidden />}
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -110,10 +86,7 @@ export function CreationLibraryFilterMenu({ filter, onFilterChange, authors = []
               ? 'indeterminate'
               : false;
           return (
-            <div
-              key={keys[0]}
-              className="group/filter-option flex items-center rounded-sm hover:bg-hover focus-within:bg-hover"
-            >
+            <div key={keys[0]} className="group/item flex items-center rounded-sm hover:bg-hover focus-within:bg-hover">
               <label className="flex h-7 min-w-0 flex-1 cursor-pointer items-center gap-2 px-2 text-xs">
                 <Checkbox
                   checked={checked}
@@ -124,17 +97,19 @@ export function CreationLibraryFilterMenu({ filter, onFilterChange, authors = []
                   {label}
                 </span>
               </label>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="pointer-events-none size-7 rounded-sm text-muted-foreground opacity-0 group-hover/filter-option:pointer-events-auto group-hover/filter-option:opacity-100 hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100"
-                aria-label={labels.filterOnlyType(label)}
-                title={labels.filterOnlyType(label)}
-                onClick={() => updateOption(keys, true, true)}
-              >
-                <CrosshairIcon aria-hidden="true" className="size-3.5" />
-              </Button>
+              <ItemActions>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className={itemActionButtonClassName}
+                  aria-label={labels.filterOnlyType(label)}
+                  title={labels.filterOnlyType(label)}
+                  onClick={() => updateOption(keys, true, true)}
+                >
+                  <CrosshairIcon aria-hidden="true" className="size-3.5" />
+                </Button>
+              </ItemActions>
             </div>
           );
         })}
@@ -143,6 +118,16 @@ export function CreationLibraryFilterMenu({ filter, onFilterChange, authors = []
           options={authors}
           onChange={(author) => onFilterChange({ ...filter, author })}
         />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mt-1 w-full justify-start border-t text-xs"
+          disabled={!active}
+          onClick={() => onFilterChange({ ...allCreationLibraryFilters })}
+        >
+          {labels.filterReset}
+        </Button>
       </PopoverContent>
     </Popover>
   );

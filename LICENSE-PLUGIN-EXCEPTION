@@ -1,0 +1,65 @@
+AIY Plugin Exception 1.0
+
+Additional permission under section 7 of the GNU Affero General Public
+License, version 3 (AGPLv3).
+
+1. Scope and definitions
+
+"Program" means AIY code made available under AGPLv3 with this exception.
+Each copyright holder who makes their code available with this exception
+grants the following permission for that code.
+
+An "Independent Plugin" is a separately identifiable, independently
+authored module that extends or interoperates with the Program through its
+plugin or extension interfaces, manifests, declared contribution points,
+or documented host APIs. It must not incorporate or be derived from the
+Program's implementation code, except for the interface material permitted
+below. Merely using those interfaces, depending on the Program to function,
+linking with it, or running in the same process does not disqualify a module
+from being an Independent Plugin.
+
+2. Permission for independent plugins
+
+You may develop, use, reproduce, link or combine the Program with
+Independent Plugins, and convey the resulting combination or provide
+remote network access to it. Independent Plugins may be licensed and
+distributed under terms of their authors' choice, including proprietary
+licenses, and may be provided for a fee.
+
+Solely as a result of that combination or interaction, you are not required
+to license an Independent Plugin under AGPLv3 or to provide its source code.
+For the purposes of AGPLv3 sections 5, 6 and 13, the Independent Plugin is
+excluded from the Program's Corresponding Source, and AGPLv3 does not
+extend to the Independent Plugin under this additional permission.
+
+You may copy and adapt interface type declarations, manifest schemas and
+other non-executable interface descriptions from the Program into an
+Independent Plugin solely to implement interoperability. Such interface
+material may be distributed under the plugin's license, provided its
+existing copyright notices are retained. This permission does not cover
+the Program's executable implementation code or other assets.
+
+3. Obligations that remain
+
+All AGPLv3 obligations remain in effect for the Program itself and for
+modifications to it, including the applicable source-code obligations on
+conveyance and remote network interaction. The license of an Independent
+Plugin must not restrict recipients' AGPLv3 rights in the Program.
+
+Moving, copying or adapting the Program's implementation into a plugin
+does not make that implementation eligible for this exception. AIY's
+bundled extensions and host adapters remain under their existing applicable
+licenses; their directory names or plugin identifiers do not by themselves
+permit proprietary relicensing.
+
+You must also comply with each Independent Plugin's license. This exception
+does not grant rights in third-party code or assets whose copyright holders
+have not granted this permission, and does not grant trademark rights.
+
+4. Modified versions
+
+If you modify the Program, you may extend this exception to your version
+for code you have authority to license, but you are not required to do so.
+As permitted by AGPLv3 section 7, you may remove this additional permission
+from a copy or part of a copy that you convey. If you remove it, remove the
+corresponding notices that claim it applies to that copy or part.

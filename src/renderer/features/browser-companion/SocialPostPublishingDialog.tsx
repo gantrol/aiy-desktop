@@ -227,7 +227,7 @@ export function SocialPostPublishingDialog({
                   {rowStatus(row)}
                 </span>
               </div>
-              {row.prepared && <PublicationPreview prepared={row.prepared} assets={assets} />}
+              {row.prepared && <PublicationPreview prepared={row.prepared} assets={assets} target={row.target} />}
               {row.receipt && !row.receipt.result && !batch.fault && (
                 <p className="text-xs text-muted-foreground">{copy.retrySettings}</p>
               )}

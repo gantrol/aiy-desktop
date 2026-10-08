@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { DesktopPetalSnapshot } from '@/shared/contracts/desktop-petals';
 import { useRoseFold } from '@/renderer/features/desktop-petals/use-rose-fold';
 import { FLOWER_MOTION } from '@/shared/flower-geometry';
+import { screenMagnifierRunning } from '@/shared/contracts/screen-magnifier';
 
 export function usePetalDock(snapshot: DesktopPetalSnapshot, onError: (reason: unknown) => void) {
   const pointX = snapshot.point.x;
@@ -15,7 +16,11 @@ export function usePetalDock(snapshot: DesktopPetalSnapshot, onError: (reason: u
   const wasCollapsed = useRef(snapshot.dock?.collapsed ?? false);
   const revision = useRef(0);
   // Keep docking paused until the active menu or pluck finishes its handoff.
-  const canCollapse = snapshot.hubView === 'flower' && snapshot.dock?.collapsed === false && !snapshot.flowerPreview;
+  const canCollapse =
+    snapshot.hubView === 'flower' &&
+    snapshot.dock?.collapsed === false &&
+    !snapshot.flowerPreview &&
+    !screenMagnifierRunning(snapshot.magnifier);
   const cancel = useCallback(() => {
     revision.current++;
     if (timer.current) clearTimeout(timer.current);
@@ -70,7 +75,12 @@ export function usePetalDock(snapshot: DesktopPetalSnapshot, onError: (reason: u
     timer.current = setTimeout(() => {
       timer.current = null;
       animate(1, () => {
-        if (current !== revision.current || latest.current.flowerPreview) return;
+        if (
+          current !== revision.current ||
+          latest.current.flowerPreview ||
+          screenMagnifierRunning(latest.current.magnifier)
+        )
+          return;
         void window.desktopPetals
           .revealDock(false)
           .then(() => window.desktopPetals.snapshot())

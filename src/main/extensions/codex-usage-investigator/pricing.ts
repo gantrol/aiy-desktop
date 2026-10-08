@@ -11,7 +11,7 @@ import {
 } from '@/shared/codex-usage-rate-card';
 
 const TOKENS_PER_MILLION = 1_000_000;
-const PRICING_ALGORITHM_VERSION = 2;
+const PRICING_ALGORITHM_VERSION = 3;
 export const CODEX_USAGE_LONG_CONTEXT_THRESHOLD = CODEX_USAGE_RATE_CARD.longContextThresholdTokens;
 // Rates and calculation changes invalidate derived statistics while retaining imported usage events.
 export const CODEX_USAGE_PRICING_CACHE_KEY = createHash('sha256')
@@ -19,9 +19,10 @@ export const CODEX_USAGE_PRICING_CACHE_KEY = createHash('sha256')
   .digest('hex');
 
 export const CODEX_USAGE_PRICING_BASIS: CodexUsagePricingBasis = {
+  apiRateMode: 'RECORDED_SERVICE_TIER',
   apiVerifiedAt: CODEX_USAGE_RATE_CARD.updatedAt,
   apiSourceUrl: CODEX_USAGE_RATE_CARD.apiSourceUrl,
-  creditVerifiedAt: CODEX_USAGE_RATE_CARD.updatedAt,
+  creditVerifiedAt: CODEX_USAGE_RATE_CARD.creditUpdatedAt ?? CODEX_USAGE_RATE_CARD.updatedAt,
   creditSourceUrl: CODEX_USAGE_RATE_CARD.creditSourceUrl,
   longContextThresholdTokens: CODEX_USAGE_LONG_CONTEXT_THRESHOLD,
 };
@@ -96,7 +97,9 @@ function estimateApiUsage(
   apiPrice: CodexUsageApiPricePeriod | null,
 ): Pick<CodexUsagePriceEstimate, 'apiEquivalentUsd' | 'apiCacheSavingsUsd' | 'longContext'> {
   const longContext = Boolean(apiPrice?.longContext && usage.inputTokens > CODEX_USAGE_LONG_CONTEXT_THRESHOLD);
-  if (!apiPrice) return { apiEquivalentUsd: null, apiCacheSavingsUsd: null, longContext };
+  if (!apiPrice || (apiPrice.maxInputTokens !== undefined && usage.inputTokens > apiPrice.maxInputTokens)) {
+    return { apiEquivalentUsd: null, apiCacheSavingsUsd: null, longContext };
+  }
 
   const inputMultiplier = longContext ? 2 : 1;
   const outputMultiplier = longContext ? 1.5 : 1;
@@ -116,7 +119,6 @@ function estimateApiUsage(
   const cacheReadUsd = tokenValue(input.cachedInputTokens, apiPrice.cachedInputPerMillionUsd ?? 0);
   const cacheWriteUsd = tokenValue(input.cacheWriteInputTokens, apiPrice.cacheWriteInputPerMillionUsd ?? 0);
   const outputUsd = tokenValue(usage.outputTokens, apiPrice.outputPerMillionUsd);
-  // API-equivalent estimates always use Standard rates, regardless of the recorded service mode.
   const apiEquivalentUsd = (inputUsd + cacheReadUsd + cacheWriteUsd) * inputMultiplier + outputUsd * outputMultiplier;
   return { apiEquivalentUsd, apiCacheSavingsUsd, longContext };
 }
@@ -148,7 +150,9 @@ export function estimateCodexUsage(
 ): CodexUsagePriceEstimate {
   const normalizedModel = normalizeCodexUsageModel(model);
   const modelPrice = codexUsageModelPrice(normalizedModel);
-  const apiPrice = codexUsagePriceAt(modelPrice?.api ?? [], occurredAt);
+  // API Fast prices are independent of Codex Credits and included-usage multipliers.
+  const apiPeriods = serviceTier === 'STANDARD' ? modelPrice?.api : serviceTier === 'FAST' ? modelPrice?.apiFast : [];
+  const apiPrice = codexUsagePriceAt(apiPeriods ?? [], occurredAt);
   const creditPrice = codexUsagePriceAt(modelPrice?.credits ?? [], occurredAt);
   const creditMultiplier = codexUsageSpeedCreditMultiplier(normalizedModel, serviceTier);
   const input = billableInputTokens(usage);

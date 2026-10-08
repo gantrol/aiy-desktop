@@ -168,16 +168,10 @@ export function AiCenterScreen({
           <h1 className="text-lg font-semibold tracking-tight">{l.title}</h1>
           <span className="text-2xs tabular-nums text-muted-foreground">{l.stats.recordCount(records.length)}</span>
         </div>
-        <TabsList className="h-10 max-w-full gap-1 overflow-x-auto border-0">
-          <TabsTrigger value="activity" className="h-10 px-4">
-            {l.tabs.activity}
-          </TabsTrigger>
-          <TabsTrigger value="statistics" className="h-10 px-4">
-            {l.tabs.statistics}
-          </TabsTrigger>
-          <TabsTrigger value="capabilities" className="h-10 px-4">
-            {l.tabs.capabilities}
-          </TabsTrigger>
+        <TabsList className="max-w-full overflow-x-auto border-0">
+          <TabsTrigger value="activity">{l.tabs.activity}</TabsTrigger>
+          <TabsTrigger value="statistics">{l.tabs.statistics}</TabsTrigger>
+          <TabsTrigger value="capabilities">{l.tabs.capabilities}</TabsTrigger>
         </TabsList>
       </header>
       <TabsContent value="activity" className="min-h-0 min-w-0 flex-1">

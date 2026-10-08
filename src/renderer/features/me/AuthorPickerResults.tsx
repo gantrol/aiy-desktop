@@ -1,4 +1,4 @@
-import { CheckIcon, EllipsisIcon, PencilIcon, LibraryIcon, UserRoundIcon } from 'lucide-react';
+import { CheckIcon, EllipsisIcon, PencilIcon, LibraryIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { CommandItem } from '@/renderer/components/ui/command';
 import {
@@ -7,7 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/renderer/components/ui/dropdown-menu';
-import { ProfileAvatar } from '@/renderer/features/me/ProfileAvatar';
+import { AuthorAvatar } from '@/renderer/features/me/AuthorAvatar';
 import { authorDisplayName } from '@/renderer/features/me/AuthorNames';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type { Author } from '@/shared/contracts/me';
@@ -48,11 +48,7 @@ export function AuthorPickerResults({
           onSelect={() => onSelect(author.id)}
           aria-label={checked ? copy.remove(name) : copy.select(name)}
         >
-          {author.kind === 'AI' ? (
-            <UserRoundIcon className="size-6 shrink-0" />
-          ) : (
-            <ProfileAvatar src={author.avatarDataUrl} className="size-6 shrink-0" />
-          )}
+          <AuthorAvatar author={author} className="size-6 shrink-0" />
           <span className="min-w-0 truncate">{name}</span>
           {author.isCurrentUser && <span className="text-xs text-muted-foreground">{copy.me}</span>}
           {author.application && author.name && (

@@ -3,16 +3,19 @@ import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as Reac
 type Axis = 'width' | 'height';
 const defaultSize = { width: 320, height: 256 };
 
-function keyFor(key: string | undefined, panel: string | undefined, axis: Axis) {
-  return key && panel ? `aiy.content-workspace.${key}.${panel.toLowerCase()}.${axis}` : null;
+function keyFor(key: string | undefined, axis: Axis) {
+  return key ? `aiy.content-workspace.${key}.${axis}` : null;
 }
 
 function loadSize(key: string | undefined, panel: string | undefined) {
   const size = { ...defaultSize };
   try {
     for (const axis of ['width', 'height'] as const) {
-      const keyName = keyFor(key, panel, axis);
-      const stored = keyName ? window.localStorage.getItem(keyName) : null;
+      const keyName = keyFor(key, axis);
+      const legacyKey = key && panel ? `aiy.content-workspace.${key}.${panel.toLowerCase()}.${axis}` : null;
+      const stored =
+        (keyName ? window.localStorage.getItem(keyName) : null) ??
+        (legacyKey ? window.localStorage.getItem(legacyKey) : null);
       const value = Number(stored);
       if (stored !== null && Number.isFinite(value) && value > 0) size[axis] = value;
     }
@@ -23,6 +26,7 @@ function loadSize(key: string | undefined, panel: string | undefined) {
 }
 
 export function useContentWorkspacePanelSize({
+  dockedAt,
   preferenceKey,
   selected,
   panelWidth,
@@ -30,6 +34,7 @@ export function useContentWorkspacePanelSize({
   maximumWidth,
   onPanelWidthChange,
 }: {
+  dockedAt: number;
   preferenceKey?: string;
   selected?: string;
   panelWidth?: number;
@@ -39,10 +44,11 @@ export function useContentWorkspacePanelSize({
 }) {
   const asideRef = useRef<HTMLElement>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const initialPanel = useRef(selected);
   const [size, setSize] = useState(() => loadSize(preferenceKey, selected));
   const [drag, setDrag] = useState<{ axis: Axis; value: number } | null>(null);
   const [available, setAvailable] = useState({ width: 960, height: 640 });
-  const compact = available.width < 960;
+  const compact = available.width < dockedAt;
   const maximumHeight = Math.max(0, available.height - Math.min(160, available.height * 0.4));
   const minimumHeight = Math.min(120, maximumHeight);
   const maxWidth = Math.max(minimumWidth, Math.min(maximumWidth, available.width - 480));
@@ -57,13 +63,23 @@ export function useContentWorkspacePanelSize({
   const height = clamp('height', drag?.axis === 'height' ? drag.value : size.height);
 
   useEffect(() => {
-    setSize(loadSize(preferenceKey, selected));
-  }, [preferenceKey, selected]);
+    const restored = loadSize(preferenceKey, initialPanel.current);
+    setSize(restored);
+    try {
+      // Persist the shared size so reopening on a different tab cannot revive its old dimensions.
+      for (const axis of ['width', 'height'] as const) {
+        const key = keyFor(preferenceKey, axis);
+        if (key) window.localStorage.setItem(key, String(restored[axis]));
+      }
+    } catch {
+      /* Sizing remains available without persistent storage. */
+    }
+  }, [preferenceKey]);
 
   useLayoutEffect(() => {
     const container = asideRef.current?.parentElement;
     if (!container) return;
-    // clientWidth rounds fractional widths and can disagree with the 960px CSS container query.
+    // clientWidth rounds fractional widths and can disagree with the CSS container query.
     const update = ({ width, height }: DOMRectReadOnly) => setAvailable({ width, height });
     update(container.getBoundingClientRect());
     const observer = new ResizeObserver(([entry]) => {
@@ -73,7 +89,7 @@ export function useContentWorkspacePanelSize({
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => () => cleanupRef.current?.(), [preferenceKey, selected, available.width, available.height]);
+  useEffect(() => () => cleanupRef.current?.(), [preferenceKey, available.width, available.height]);
 
   function change(axis: Axis, value: number) {
     const next = clamp(axis, value);
@@ -81,7 +97,7 @@ export function useContentWorkspacePanelSize({
     else {
       setSize((current) => ({ ...current, [axis]: next }));
       try {
-        const key = keyFor(preferenceKey, selected, axis);
+        const key = keyFor(preferenceKey, axis);
         if (key) window.localStorage.setItem(key, String(next));
       } catch {
         /* Keep the current size for this session. */

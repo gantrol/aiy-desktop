@@ -1,5 +1,7 @@
 import { ChevronRightIcon, FilePenLineIcon, LoaderCircleIcon, Trash2Icon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
+import { ItemActions, itemActionButtonClassName } from '@/renderer/components/ui/item-actions';
+import { cn } from '@/renderer/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { ActionMenuButton } from '@/renderer/components/ui/action-menu';
@@ -83,18 +85,20 @@ export function CreationDraftList({ drafts, selectedId, busy, onSelect, onDelete
                     dataAttributes={{ 'data-creation-draft-id': draft.id }}
                     aria-disabled={busy}
                     controls={
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="pointer-events-none absolute top-1/2 right-1 z-20 size-6 -translate-y-1/2 rounded-sm text-muted-foreground opacity-0 hover:text-destructive group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100"
-                        title={labels.deleteDraft}
-                        aria-label={labels.deleteDraftLabel(title)}
-                        disabled={busy}
-                        onClick={() => onDelete(draft.id)}
-                      >
-                        <Trash2Icon className="size-3.5" />
-                      </Button>
+                      <ItemActions>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className={cn(itemActionButtonClassName, 'hover:text-destructive')}
+                          title={labels.deleteDraft}
+                          aria-label={labels.deleteDraftLabel(title)}
+                          disabled={busy}
+                          onClick={() => onDelete(draft.id)}
+                        >
+                          <Trash2Icon className="size-3.5" />
+                        </Button>
+                      </ItemActions>
                     }
                     onOpen={() => {
                       if (!busy) onSelect(draft.id);

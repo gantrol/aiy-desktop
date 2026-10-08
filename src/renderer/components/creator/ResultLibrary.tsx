@@ -9,7 +9,6 @@ import {
   ArchiveIcon,
   BookmarkIcon,
   FileTextIcon,
-  FolderOpenIcon,
   FolderInputIcon,
   GalleryVerticalEndIcon,
   ImageIcon,
@@ -27,6 +26,8 @@ import {
   Trash2Icon,
 } from 'lucide-react';
 import {
+  memo,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -46,12 +47,14 @@ import type {
   VideoDocumentSummaryDto,
 } from '@/shared/contracts';
 import { cn } from '@/renderer/lib/utils';
+import { ItemActions, itemActionButtonClassName } from '@/renderer/components/ui/item-actions';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { usePinContentAction } from '@/renderer/features/desktop-petals/PinContentAction';
 import { AlbumMoveDialog, type AlbumMoveTarget } from '@/renderer/components/albums/AlbumMoveDialog';
 import { AlbumTreePreview } from '@/renderer/components/albums/AlbumTreePreview';
+import { creationAlbumContentPreviews } from '@/renderer/components/creator/creationAlbumContentPreviews';
 import { buildAlbumTreeIndex } from '@/renderer/components/albums/albumTree';
-import { itemDragStart, itemDragScopeProps } from '@/renderer/components/albums/itemDrag';
+import { itemDragStart } from '@/renderer/components/albums/itemDrag';
 import {
   TreeBranchCollapseProvider,
   TreeBranchCollapseRail,
@@ -76,7 +79,8 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/
 import { QuietEmpty } from '@/renderer/components/ui/quiet-empty';
 import { CreatorPaneResizeHandle } from '@/renderer/components/creator/CreatorPaneResizeHandle';
 import { CreationLibraryChildList } from '@/renderer/components/creator/CreationLibraryChildDisclosure';
-import { CreationLibraryHeader } from '@/renderer/components/creator/CreationLibraryHeader';
+import { CreationLibraryPane } from '@/renderer/components/creator/CreationLibraryPane';
+import { useCreationLibrarySearch } from '@/renderer/components/creator/useCreationLibrarySearch';
 import {
   CreationLibraryStickyBranch,
   CreationLibraryTreeViewport,
@@ -121,6 +125,10 @@ import { CreationLibraryAssetPreview } from '@/renderer/components/creator/Creat
 import { creationSessionCoverFirstAssets } from '@/renderer/components/creator/creationCoverFirstAssets';
 import type { DerivedVisualWorkspaceViewState } from '@/renderer/components/creator/derivedVisualWorkspace';
 import { useCreationDraftSidebar } from '@/renderer/components/creator/useCreationDraftSidebar';
+import {
+  CreationDraftSidebarFeedback,
+  CreationDraftSidebarState,
+} from '@/renderer/components/creator/CreationDraftSidebarState';
 import { useCreationAlbumDraft } from '@/renderer/components/creator/useCreationAlbumDraft';
 import type { CreationAlbumRequest } from '@/renderer/components/creator/CreationLibraryAlbumDraft';
 import './CreationLibraryTree.css';
@@ -189,6 +197,7 @@ interface Props {
   onSelectAlbum(albumId: string): void;
   onMore(seriesId: string): void;
   onNew(): void;
+  onNewDocument(mode: 'outline' | 'manuscript'): void;
   onNewInAlbum(albumId: string): void;
   onRenameSeries(series: PromptSeriesDto): void;
   onRenameAlbum(album: AlbumDto): void;
@@ -206,11 +215,6 @@ interface Props {
 
 type RootEntry = { kind: 'ALBUM'; album: AlbumDto } | { kind: 'ITEM'; item: CreationItemProjection };
 type AlbumChildEntry = RootEntry;
-
-const rowControlsClassName =
-  'pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100';
-const rowControlClassName =
-  'shrink-0 rounded-sm text-muted-foreground hover:bg-hover-strong hover:text-foreground data-[state=open]:bg-hover-strong data-[state=open]:text-foreground';
 
 function creationSidebarEntryKey(entry: RootEntry) {
   return entry.kind === 'ALBUM' ? `ALBUM:${entry.album.id}` : `CREATION_ITEM:${entry.item.key}`;
@@ -274,6 +278,7 @@ function uniqueDocuments(items: readonly VideoDocumentSummaryDto[]) {
 function CreationLibraryEmptyState({
   rootCount,
   hasDraftContent,
+  searchingInPopover,
   query,
   filter,
   surface,
@@ -283,6 +288,7 @@ function CreationLibraryEmptyState({
 }: {
   rootCount: number;
   hasDraftContent: boolean;
+  searchingInPopover: boolean;
   query: string;
   filter: CreationLibraryFilter;
   surface: ResultLibrarySurface;
@@ -291,7 +297,15 @@ function CreationLibraryEmptyState({
   onNew(): void;
 }) {
   const { creator } = useI18n().messages;
-  if (rootCount || hasDraftContent) return null;
+  const drafts = useContext(CreationDraftSidebarState);
+  if (rootCount || hasDraftContent || (!searchingInPopover && drafts.hasContent)) return null;
+  if (searchingInPopover) {
+    return (
+      <p role="status" className="px-4 py-8 text-center text-sm text-muted-foreground">
+        {creator.results.emptyFiltered}
+      </p>
+    );
+  }
   return (
     <QuietEmpty
       title={query || !isAllCreationLibraryFilter(filter) ? creator.results.emptyFiltered : creator.results.empty}
@@ -333,16 +347,36 @@ function ResultLibraryResizeHandle({
   );
 }
 
-export function ResultLibrary({
+type TreeProps = Omit<Props, 'selectedDraftId' | 'onSelectDraft' | 'onBeforeDeleteDraft' | 'onDraftsDeleted'>;
+
+export function ResultLibrary(props: Props) {
+  const { selectedDraftId, onSelectDraft, onBeforeDeleteDraft, onDraftsDeleted, ...treeProps } = props;
+  const drafts = useCreationDraftSidebar({
+    active: props.active,
+    data: props.data,
+    mode: props.mode,
+    selectedId: selectedDraftId,
+    busy: props.lifecycleBusy ?? false,
+    onSelect: onSelectDraft,
+    onBeforeDelete: onBeforeDeleteDraft,
+    onDeleted: onDraftsDeleted,
+    notify: props.notify,
+  });
+  return (
+    <CreationDraftSidebarState.Provider value={drafts}>
+      <MemoizedResultLibraryTree {...treeProps} />
+    </CreationDraftSidebarState.Provider>
+  );
+}
+
+const MemoizedResultLibraryTree = memo(ResultLibraryTree);
+
+function ResultLibraryTree({
   active,
   data,
   locale,
   filter,
   selectedSeriesId,
-  selectedDraftId,
-  onSelectDraft,
-  onBeforeDeleteDraft,
-  onDraftsDeleted,
   selectedDerivedVisualId = null,
   selectedAnimationId,
   selectedCreationId,
@@ -383,6 +417,7 @@ export function ResultLibrary({
   onSelectAlbum,
   onMore,
   onNew,
+  onNewDocument,
   onNewInAlbum,
   onRenameSeries,
   onRenameAlbum,
@@ -396,7 +431,7 @@ export function ResultLibrary({
   onToggleCreationItemPin,
   onImportExternalFiles,
   notify,
-}: Props) {
+}: TreeProps) {
   const { messages } = useI18n();
   const pinContentAction = usePinContentAction(notify);
   const formKindLabel = (form: CreationFormProjection) => creationFormKindLabel(form, messages.creator.album);
@@ -405,22 +440,29 @@ export function ResultLibrary({
   const libraryLabels = messages.creator.results;
   const creatorAlbumLabels = messages.creator.album;
   const albumLabels = messages.gallery.albums;
-  const [query, setQuery] = useState('');
-  const [searchOpen, setSearchOpen] = useState(false);
+  const search = useCreationLibrarySearch({
+    active,
+    collapsed: mode === 'images',
+    selectionKey: JSON.stringify([
+      surface,
+      selectedAlbumId,
+      selectedSeriesId,
+      selectedDerivedVisualId,
+      selectedAnimationId,
+      selectedCreationId,
+      selectedInspirationStashId,
+      selectedImageBreakdownId,
+      selectedEvaluationSuiteId,
+      selectedSocialPostId,
+      selectedArticleId,
+      selectedDocumentId,
+    ]),
+  });
+  const { query, setQuery, setSearchOpen } = search;
+  const listVisible = mode === 'full' || search.popoverOpen;
   const [previewAsset, setPreviewAsset] = useState<AssetDto | null>(null);
   const [moveTarget, setMoveTarget] = useState<AlbumMoveTarget | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const draftSidebar = useCreationDraftSidebar({
-    active,
-    data,
-    mode,
-    selectedId: selectedDraftId,
-    busy: lifecycleBusy,
-    onSelect: onSelectDraft,
-    onBeforeDelete: onBeforeDeleteDraft,
-    onDeleted: onDraftsDeleted,
-    notify,
-  });
   const libraryScroll = useCreationTreeScrollMemory();
   const albumExpansion = useTreeBranchExpansion(viewportRef);
   const itemExpansion = useTreeBranchExpansion(viewportRef);
@@ -431,12 +473,12 @@ export function ResultLibrary({
   const queryKey = normalized(query, locale);
   const includeDocuments = filter.documents;
   const documentNavigation = useVideoDocumentNavigation({
-    active: active && mode === 'full' && includeDocuments,
+    active: active && listVisible && includeDocuments,
     refreshKey: documentNavigationRevision,
     notify,
   });
   const documentSearch = useVideoDocumentList({
-    active: active && mode === 'full' && includeDocuments && Boolean(queryKey),
+    active: active && listVisible && includeDocuments && Boolean(queryKey),
     refreshKey: documentNavigationRevision,
     query,
     albumId: null,
@@ -686,11 +728,11 @@ export function ResultLibrary({
   }, [selectedAlbumId, selectedAlbumPath, selectedDocumentId, selectedFormId, selectedItemId, setAlbumPersistent]);
 
   useEffect(() => {
-    if (!active || mode !== 'full' || !includeDocuments) return;
+    if (!active || !listVisible || !includeDocuments) return;
     for (const branchId of albumExpansion.openIds) {
       if (branchId.startsWith('album:')) documentNavigation.ensureChildren(branchId.slice('album:'.length));
     }
-  }, [active, albumExpansion.openIds, documentNavigation, includeDocuments, mode]);
+  }, [active, albumExpansion.openIds, documentNavigation, includeDocuments, listVisible]);
 
   const visibleItems = useMemo(() => {
     return projection.items.filter((item) => {
@@ -1017,13 +1059,13 @@ export function ResultLibrary({
           )
         }
         controls={
-          <div data-result-library-row-control className={rowControlsClassName}>
+          <ItemActions data-result-library-row-control>
             <ActionMenuButton
               actions={actions}
               label={`${creatorAlbumLabels.moreActions}: ${title}`}
-              className={cn(rowControlClassName, 'size-6')}
+              className={itemActionButtonClassName}
             />
-          </div>
+          </ItemActions>
         }
         onOpen={() => openForm(form)}
       />
@@ -1168,7 +1210,7 @@ export function ResultLibrary({
     if (!openTarget) return null;
     const visibleItem = { ...item, orderedForms: forms, defaultForm: openTarget };
     const expandable = forms.length > 1;
-    const expanded = itemExpansion.isOpen(branchId);
+    const expanded = expandable && itemExpansion.isOpen(branchId);
     const title = forms.length === 1 ? formDisplayTitle(openTarget) : itemLifecycleTitle(item);
     const assets = creationItemAssets(visibleItem);
     const compact = assets.length === 0;
@@ -1218,26 +1260,46 @@ export function ResultLibrary({
         controls={
           <>
             {compact && item.item.pinned && (
-              <PinIcon className="pointer-events-none relative z-10 size-3 text-muted-foreground" />
+              <PinIcon
+                className="pointer-events-none relative z-10 size-3.5 shrink-0 text-muted-foreground"
+                role="img"
+                aria-label={libraryLabels.pinnedLabel}
+              />
             )}
-            <div data-result-library-row-control data-item-drag-ignore className={rowControlsClassName}>
+            <ItemActions data-result-library-row-control>
               <ActionMenuButton
                 actions={actions}
                 label={libraryLabels.itemActionsLabel(title)}
-                className={cn(rowControlClassName, 'size-6')}
+                className={itemActionButtonClassName}
               />
-            </div>
+            </ItemActions>
           </>
         }
         draggable={!lifecycleBusy}
         onDragStart={(event) => drag.startCreationItemDrag(event, item.key)}
         onDragEnd={drag.clearDrag}
-        onGestureExpand={() => itemExpansion.expandFromGesture(branchId)}
-        onPointerTrackStart={(clientY) => itemExpansion.beginPointerTrack(branchId, clientY)}
-        onPointerTrack={(clientY) => itemExpansion.trackPointer(branchId, clientY)}
+        onGestureExpand={expandable ? () => itemExpansion.expandFromGesture(branchId) : undefined}
+        onPointerTrackStart={expandable ? (clientY) => itemExpansion.beginPointerTrack(branchId, clientY) : undefined}
+        onPointerTrack={expandable ? (clientY) => itemExpansion.trackPointer(branchId, clientY) : undefined}
         onOpen={() => openForm(openTarget)}
       />
     );
+    const contextMenu = (
+      <ContextMenu>
+        <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+        <ContextMenuContent>
+          <ActionContextMenuItems actions={actions} />
+        </ContextMenuContent>
+      </ContextMenu>
+    );
+    if (!expandable) {
+      return (
+        <div key={item.key} className="relative" data-tree-branch-id={branchId} data-creation-item-branch={item.key}>
+          {topology && <TreeBranchTransitRail topology={topology} />}
+          {contextMenu}
+        </div>
+      );
+    }
     return (
       <CreationLibraryStickyBranch
         key={item.key}
@@ -1258,12 +1320,7 @@ export function ResultLibrary({
         data-creation-item-branch={item.key}
       >
         {topology && <TreeBranchTransitRail topology={topology} />}
-        <ContextMenu>
-          <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-          <ContextMenuContent>
-            <ActionContextMenuItems actions={actions} />
-          </ContextMenuContent>
-        </ContextMenu>
+        {contextMenu}
         {expanded && expandable && (
           <TreeBranchCollapseRail
             label={libraryLabels.collapseForms}
@@ -1433,6 +1490,12 @@ export function ResultLibrary({
     const actions = albumActions(album, expanded, expandable);
     const previewAssets = creationAlbumPreviewAssets(album, filter);
     const compact = previewAssets.length === 0;
+    const contentPreviews = compact
+      ? creationAlbumContentPreviews(
+          children.flatMap((entry) => (entry.kind === 'ITEM' ? [entry.item] : [])),
+          { forms: visibleItemForms, title: formDisplayTitle, icon: formIcon, open: openForm },
+        )
+      : [];
     const click: MouseEventHandler<HTMLButtonElement> = (event) => {
       if (event.detail <= 1) onSelectAlbum(album.id);
     };
@@ -1447,7 +1510,7 @@ export function ResultLibrary({
         role="group"
         aria-label={album.title}
         className={cn(
-          'group relative flex h-[4.25rem] min-w-0 cursor-pointer items-center gap-1 rounded-sm px-1 transition-colors hover:bg-hover',
+          'group/item relative flex h-[4.25rem] min-w-0 cursor-pointer items-center gap-1 rounded-sm px-1 transition-colors hover:bg-hover',
           compact && 'h-9',
           selected &&
             'text-selected-foreground before:pointer-events-none before:absolute before:inset-y-0.5 before:left-0 before:right-0 before:rounded-sm before:bg-selected hover:bg-transparent',
@@ -1462,6 +1525,7 @@ export function ResultLibrary({
           variant="ghost"
           aria-label={`${albumLabels.open}: ${album.title}`}
           aria-current={selected ? 'page' : undefined}
+          data-action="open-creation-tree-item"
           className={cn(
             'absolute inset-0 z-0 size-auto rounded-sm p-0 hover:bg-transparent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
             selected && 'active:bg-transparent',
@@ -1472,6 +1536,7 @@ export function ResultLibrary({
         <AlbumTreePreview
           size="creation-tree"
           assets={previewAssets}
+          contentPreviews={contentPreviews}
           title={album.title}
           open={expanded}
           expandable={expandable}
@@ -1486,7 +1551,7 @@ export function ResultLibrary({
           onClick={click}
           onDoubleClick={doubleClick}
         />
-        <span className="pointer-events-none relative z-10 min-w-0 flex-1 px-1 pr-8 text-left">
+        <span className="pointer-events-none relative z-10 min-w-0 flex-1 px-1 text-left">
           <strong
             className={cn(
               'line-clamp-2 break-words text-base font-medium leading-5',
@@ -1497,14 +1562,21 @@ export function ResultLibrary({
             {album.title}
           </strong>
         </span>
-        {album.pinned && <PinIcon className="pointer-events-none relative z-10 size-3.5 text-muted-foreground" />}
-        <div data-result-library-row-control data-item-drag-ignore className={rowControlsClassName}>
+        {album.pinned && (
+          <PinIcon
+            className="pointer-events-none relative z-10 size-3.5 shrink-0 text-muted-foreground"
+            role="img"
+            aria-label={libraryLabels.pinnedLabel}
+          />
+        )}
+        <ItemActions data-result-library-row-control>
           <ActionMenuButton
             actions={actions}
             label={`${albumLabels.moreActions}: ${album.title}`}
-            className={cn(rowControlClassName, 'size-6')}
+            className={itemActionButtonClassName}
+            onCloseAutoFocus={albumDraft.onMenuCloseAutoFocus}
           />
-        </div>
+        </ItemActions>
       </div>
     );
     return (
@@ -1514,7 +1586,7 @@ export function ResultLibrary({
         path={{
           id: branchId,
           title: album.title,
-          icon: FolderOpenIcon,
+          icon: GalleryVerticalEndIcon,
           openLabel: `${albumLabels.open}: ${album.title}`,
           collapseLabel: messages.gallery.albums.collapse,
           selected,
@@ -1530,7 +1602,7 @@ export function ResultLibrary({
         {topology && <TreeBranchTransitRail topology={topology} />}
         <ContextMenu>
           <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-          <ContextMenuContent>
+          <ContextMenuContent onCloseAutoFocus={albumDraft.onMenuCloseAutoFocus}>
             <ActionContextMenuItems actions={actions} />
           </ContextMenuContent>
         </ContextMenu>
@@ -1618,72 +1690,50 @@ export function ResultLibrary({
   const collapseButton = (
     <CreationLibraryPaneToggle mode={mode} visible={showModeToggle} canExpand={canExpand} onModeChange={onModeChange} />
   );
-  const header = (
-    <CreationLibraryHeader
-      collapsed={mode === 'images'}
-      busy={lifecycleBusy}
-      canExpand={canExpand}
-      paneToggle={collapseButton}
-      onExpand={() => onModeChange('full')}
-      onNewCreation={onNew}
-      onNewAlbum={() => onCreateAlbum(null)}
-      searchOpen={searchOpen}
-      onSearchOpenChange={setSearchOpen}
-      query={query}
-      filter={filter}
-      authors={authorOptions}
-      onQueryChange={setQuery}
-      onFilterChange={onFilterChange}
-    />
-  );
-
-  if (mode === 'images') {
-    return (
-      <aside
-        {...itemDragScopeProps}
-        aria-label={libraryLabels.library}
-        className="relative isolate flex size-full min-h-0 flex-col border-r bg-surface-sunken"
+  const createAlbumParent = tree.byId.get(selectedAlbumPath[0] ?? '') ?? null;
+  const treeContent = listVisible && (
+    <CreationLibraryTreeViewport viewportRef={viewportRef} label={libraryLabels.library}>
+      <div
+        data-result-library-root
+        data-rendered-root-count={roots.length}
+        className="creation-library-tree min-h-full space-y-0.5 px-2 py-2"
+        {...drag.dropProps(null)}
       >
-        {resizeHandle}
-        {header}
-        <div className="min-h-0 flex-1" />
-        {draftSidebar.feedback}
-        {moveDialog}
-      </aside>
-    );
-  }
-
+        {albumDraft.renderAt(null)}
+        {roots.map((entry) => (entry.kind === 'ALBUM' ? renderAlbum(entry.album) : renderCreationItem(entry.item)))}
+        <CreationLibraryEmptyState
+          rootCount={roots.length}
+          hasDraftContent={Boolean(createAlbumRequest)}
+          searchingInPopover={search.popoverOpen}
+          query={queryKey}
+          filter={filter}
+          surface={surface}
+          busy={lifecycleBusy}
+          onCreateAlbum={onCreateAlbum}
+          onNew={onNew}
+        />
+      </div>
+    </CreationLibraryTreeViewport>
+  );
   return (
-    <aside
-      aria-label={libraryLabels.library}
-      {...itemDragScopeProps}
-      className="relative isolate flex min-h-0 min-w-0 flex-col border-r bg-surface-sunken"
+    <CreationLibraryPane
+      collapsed={mode === 'images'}
+      search={search}
+      results={treeContent}
+      resizeHandle={resizeHandle}
+      busy={lifecycleBusy}
+      paneToggle={collapseButton}
+      filter={filter}
+      onFilterChange={onFilterChange}
+      authors={authorOptions}
+      onNewCreation={onNew}
+      onNewDocument={onNewDocument}
+      onNewAlbum={() => onCreateAlbum(createAlbumParent)}
+      newAlbumLabel={
+        createAlbumParent ? libraryLabels.newAlbumIn(createAlbumParent.title) : creatorAlbumLabels.newAlbum
+      }
     >
-      {resizeHandle}
-      {header}
-      <CreationLibraryTreeViewport viewportRef={viewportRef} label={libraryLabels.library}>
-        <div
-          data-result-library-root
-          data-rendered-root-count={roots.length}
-          className="creation-library-tree min-h-full space-y-0.5 px-2 py-2"
-          {...drag.dropProps(null)}
-        >
-          {albumDraft.renderAt(null)}
-          {roots.map((entry) => (entry.kind === 'ALBUM' ? renderAlbum(entry.album) : renderCreationItem(entry.item)))}
-          <CreationLibraryEmptyState
-            rootCount={roots.length}
-            hasDraftContent={draftSidebar.hasContent || Boolean(createAlbumRequest)}
-            query={queryKey}
-            filter={filter}
-            surface={surface}
-            busy={lifecycleBusy}
-            onCreateAlbum={onCreateAlbum}
-            onNew={onNew}
-          />
-        </div>
-      </CreationLibraryTreeViewport>
-      {draftSidebar.content}
-      {draftSidebar.feedback}
+      <CreationDraftSidebarFeedback />
       {moveDialog}
       <CreationLibraryAssetPreview asset={previewAsset} onClose={() => setPreviewAsset(null)} />
       <span
@@ -1693,6 +1743,6 @@ export function ResultLibrary({
         className="hidden"
         aria-hidden="true"
       />
-    </aside>
+    </CreationLibraryPane>
   );
 }

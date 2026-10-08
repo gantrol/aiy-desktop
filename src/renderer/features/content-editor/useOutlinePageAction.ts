@@ -2,9 +2,7 @@ import type { Editor } from '@tiptap/core';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useContentReferenceHost } from '@/renderer/features/content-editor/ContentReferenceHost';
 import { useOutlineContentLinkHost } from '@/renderer/features/content-editor/OutlineContentLinkHost';
-import { useReferenceNavigation } from '@/renderer/features/content-editor/contentReferenceNavigation';
 import { contentLibraryApi } from '@/renderer/features/content-editor/contentLibraryClient';
-import { announceArticleCreated } from '@/renderer/features/content-editor/articleCreated';
 import { activeOutlineView } from '@/renderer/features/content-editor/outlineActiveView';
 import { outlineViewState, setOutlineView } from '@/renderer/features/content-editor/outlineViewState';
 import { outlineSelectionRoots } from '@/shared/outline-move';
@@ -49,7 +47,6 @@ function pageFailure(reason: unknown, copy: ReturnType<typeof useI18n>['messages
 export function useOutlinePageAction(editor: Editor) {
   const host = useContentReferenceHost();
   const linkHost = useOutlineContentLinkHost();
-  const navigate = useReferenceNavigation();
   const copy = useI18n().messages.referenceOutline;
   const state = stateFor(editor);
   const busy = useSyncExternalStore(state.subscribe, state.get, state.get);
@@ -60,9 +57,7 @@ export function useOutlinePageAction(editor: Editor) {
       mounted.current = false;
     };
   }, []);
-  const supported = Boolean(
-    linkHost && host.outline && host.beforeCapture && host.onTransferSaved && !host.sharedEditor,
-  );
+  const supported = Boolean(linkHost && host.outline && host.createOutlinePage && !host.sharedEditor);
 
   const create = async (ids: readonly string[]) => {
     if (
@@ -81,39 +76,27 @@ export function useOutlinePageAction(editor: Editor) {
     state.set(true);
     editor.setEditable(false, false);
     try {
-      const saved = await host.beforeCapture!();
-      if (!saved?.revisionId || saved.kind !== 'ARTICLE' || saved.id !== linkHost.articleId)
-        throw new Error('REFERENCE_SAVE_FAILED');
-      if (!mounted.current || editor.isDestroyed || !editor.state.doc.eq(document))
-        throw new Error('REFERENCE_TARGET_CHANGED');
-      if (state.pending && JSON.stringify(state.pending.selectedIds) !== JSON.stringify(roots)) state.pending = null;
-      state.pending ??= {
-        spaceId: linkHost.spaceId,
-        requestId: crypto.randomUUID(),
-        sourceArticleId: saved.id,
-        expectedRevisionId: saved.revisionId,
-        selectedIds: roots,
-        untitledTitle: copy.untitledOutline,
-      };
-      const result = await contentLibraryApi().outlinePageCreate(state.pending);
-      state.pending = null;
-      announceArticleCreated({
-        spaceId: result.link.spaceId,
-        article: result.page,
-        creationItem: result.creationItem,
-      });
-      try {
-        if (mounted.current && !editor.isDestroyed) {
+      const created = await host.createOutlinePage!(async (saved) => {
+        if (!saved.revisionId || saved.id !== linkHost.articleId) throw new Error('REFERENCE_SAVE_FAILED');
+        if (!mounted.current || editor.isDestroyed || !editor.state.doc.eq(document))
+          throw new Error('REFERENCE_TARGET_CHANGED');
+        if (state.pending && JSON.stringify(state.pending.selectedIds) !== JSON.stringify(roots))
+          throw new Error('REFERENCE_TARGET_CHANGED');
+        state.pending ??= {
+          spaceId: linkHost.spaceId,
+          requestId: crypto.randomUUID(),
+          sourceArticleId: saved.id,
+          expectedRevisionId: saved.revisionId,
+          selectedIds: roots,
+          untitledTitle: copy.untitledOutline,
+        };
+        const result = await contentLibraryApi().outlinePageCreate(state.pending);
+        state.pending = null;
+        if (mounted.current && !editor.isDestroyed)
           setOutlineView(editor, { ...outlineViewState(editor.state), selected: [], anchor: null, active: null });
-          // Navigate before adopting the saved source: adopting it can remount this
-          // editor, which correctly cancels navigation requests from an old view.
-          await navigate({ source: { kind: 'ARTICLE', id: result.link.target.id } }, { placement: 'beside' });
-        }
-      } catch {
-        linkHost.notify?.(copy.pageOpenFailed);
-      } finally {
-        host.onTransferSaved!(result.source);
-      }
+        return result;
+      });
+      if (!created) throw new Error('REFERENCE_SAVE_FAILED');
       return true;
     } catch (reason) {
       const message = String(reason);

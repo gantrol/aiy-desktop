@@ -1,3 +1,4 @@
+import { codexTurnBelongsToThread } from '@/main/extensions/codex-usage-investigator/turn-identity';
 import { stat } from 'node:fs/promises';
 import { readThreadDescriptor, safeRolloutPath } from '@/main/extensions/codex-history-search/thread-reader';
 import type { CodexHistorySourcePaths } from '@/main/extensions/codex-history-search/source-reader';
@@ -12,6 +13,7 @@ import {
 } from '@/main/extensions/codex-usage-investigator/pricing';
 import type { CodexHistoryThreadUsage } from '@/shared/contracts/codex-history-search';
 import { summarizeThreadThroughput } from '@/main/extensions/codex-history-search/thread-throughput';
+import { codexTurnDuration } from '@/shared/codex-output-throughput';
 
 function summarizeThreadTiming(result: SessionReadResult, createdAtMs: number | null) {
   const timing: CodexHistoryThreadUsage['timing'] = {
@@ -25,20 +27,19 @@ function summarizeThreadTiming(result: SessionReadResult, createdAtMs: number | 
     partial: createdAtMs === null || !result.turnMetadataComplete,
   };
   for (const turn of result.chatTurns) {
-    const startedMs = Date.parse(turn.startedAt);
-    if (createdAtMs !== null && startedMs < createdAtMs) continue;
+    const startedMs = turn.startedAt === null ? null : Date.parse(turn.startedAt);
+    const terminalMs = turn.terminalAt === null ? null : Date.parse(turn.terminalAt);
+    if (!codexTurnBelongsToThread(turn.turnId, startedMs, terminalMs, createdAtMs)) continue;
     timing.turnCount += 1;
     if (turn.terminalState === 'COMPLETED') timing.completedTurnCount += 1;
     else if (turn.terminalState === 'ABORTED') timing.abortedTurnCount += 1;
     else timing.unfinishedTurnCount += 1;
     // Older rollouts and aborted turns lack duration_ms; explicit boundaries still give elapsed time.
-    const elapsedMs = turn.terminalAt === null ? null : Date.parse(turn.terminalAt) - startedMs;
-    const durationMs = turn.terminalState === null ? null : (turn.durationMs ?? elapsedMs);
+    const durationMs = turn.terminalState === null ? null : codexTurnDuration(startedMs, terminalMs, turn.durationMs);
     if (
       durationMs === null ||
       durationMs < 0 ||
       !Number.isSafeInteger(durationMs) ||
-      (elapsedMs !== null && elapsedMs < 0) ||
       !Number.isSafeInteger((timing.totalDurationMs ?? 0) + durationMs)
     ) {
       timing.partial = true;

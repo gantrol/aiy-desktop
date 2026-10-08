@@ -3,6 +3,7 @@ import type {
   VideoDocumentNavigationEntry,
   VideoDocumentNavigationReorderInput,
 } from '@/shared/contracts/video-document';
+import { useStableCallback } from '@/renderer/lib/useStableCallback';
 
 interface NavigationPageState {
   items: VideoDocumentNavigationEntry[];
@@ -46,6 +47,8 @@ export function useVideoDocumentNavigation({ active, refreshKey = 0, notify }: O
   const [children, setChildren] = useState<Record<string, NavigationPageState>>({});
   const [revision, setRevision] = useState(0);
   const requestGeneration = useRef(0);
+  const loadedScope = useRef<{ refreshKey: number; revision: number } | null>(null);
+  const reportError = useStableCallback(notify);
   const activeRef = useRef(active);
   const rootRef = useRef(root);
   const childrenRef = useRef(children);
@@ -86,23 +89,40 @@ export function useVideoDocumentNavigation({ active, refreshKey = 0, notify }: O
         }));
       } catch (reason) {
         if (request !== requestGeneration.current) return;
+        loadedScope.current = null;
         update((page) => ({ ...page, loaded: true, loading: false, loadingMore: false }));
-        notify(reason instanceof Error ? reason.message : String(reason));
+        reportError(reason instanceof Error ? reason.message : String(reason));
       }
     },
-    [notify],
+    [reportError],
   );
 
   useEffect(() => {
     if (!active) return;
     requestGeneration.current += 1;
-    rootRef.current = emptyPage;
-    childrenRef.current = {};
-    setRoot(emptyPage);
-    setChildren({});
-    void load(null, false);
+    if (loadedScope.current?.refreshKey !== refreshKey || loadedScope.current.revision !== revision) {
+      loadedScope.current = { refreshKey, revision };
+      rootRef.current = { ...emptyPage, items: rootRef.current.items };
+      childrenRef.current = {};
+      setRoot(rootRef.current);
+      setChildren(childrenRef.current);
+    }
+    if (!rootRef.current.loaded) void load(null, false);
     return () => {
       requestGeneration.current += 1;
+      if (rootRef.current.loading || rootRef.current.loadingMore) {
+        rootRef.current = { ...rootRef.current, loading: false, loadingMore: false };
+        setRoot(rootRef.current);
+      }
+      if (Object.values(childrenRef.current).some((page) => page.loading || page.loadingMore)) {
+        childrenRef.current = Object.fromEntries(
+          Object.entries(childrenRef.current).map(([id, page]) => [
+            id,
+            { ...page, loading: false, loadingMore: false },
+          ]),
+        );
+        setChildren(childrenRef.current);
+      }
     };
   }, [active, load, refreshKey, revision]);
 

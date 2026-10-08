@@ -101,6 +101,8 @@ export function rendererContentSecurityPolicy(developmentRendererUrl?: URL | nul
     `media-src 'self' blob: aiy-media:`,
     `style-src 'self' 'unsafe-inline'`,
     `script-src 'self'${inlineScriptPolicy}${developmentSources}`,
+    `worker-src 'self'${developmentSources}`,
+    `font-src 'self' data: blob:`,
     `connect-src 'self'${developmentSources}`,
     `object-src 'none'`,
     demoResponse ? `frame-src 'none'` : `frame-src ${CODEX_VISUALIZATION_PREVIEW_SCHEME}: ${demoUrl.href}`,

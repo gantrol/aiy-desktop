@@ -149,7 +149,7 @@ export const CreationLibraryTreeItem = forwardRef<HTMLDivElement, CreationLibrar
         role="group"
         aria-label={ariaLabel}
         className={cn(
-          'group relative flex h-[4.25rem] min-w-0 cursor-pointer items-center gap-1 rounded-sm px-1 transition-colors hover:bg-hover',
+          'group/item relative flex h-[4.25rem] min-w-0 cursor-pointer items-center gap-1 rounded-sm px-1 transition-colors hover:bg-hover',
           selected &&
             'text-selected-foreground before:pointer-events-none before:absolute before:inset-y-0.5 before:left-0 before:right-0 before:rounded-sm before:bg-selected hover:bg-transparent',
           compact && 'h-9',
@@ -186,7 +186,7 @@ export const CreationLibraryTreeItem = forwardRef<HTMLDivElement, CreationLibrar
           {typeof preview === 'function' ? preview(previewGesture.previewExpanded) : preview}
         </CreationTreeNodeFrame>
         {leadingContent}
-        <span className="pointer-events-none relative z-10 min-w-0 flex-1 px-1 pr-8 text-left">
+        <span className="pointer-events-none relative z-10 min-w-0 flex-1 px-1 text-left">
           <strong
             className={cn(
               'line-clamp-2 break-words text-base font-medium leading-5',

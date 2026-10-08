@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TEMPORARY_SCOPE } from '@/shared/contracts/temporary-files';
 
 export const NOTE_FILE_LIMITS = { count: 100, fileBytes: 64 * 1024 * 1024, batchBytes: 256 * 1024 * 1024 } as const;
 export const noteFileSchema = z
@@ -28,5 +29,7 @@ export const noteFileCommandSchema = z.discriminatedUnion('kind', [
 ]);
 export type NoteFileCommand = z.infer<typeof noteFileCommandSchema>;
 export function noteFileMediaUrl(libraryId: string, stashId: string, fileId: string) {
+  if (libraryId === TEMPORARY_SCOPE)
+    return `aiy-media://temporary/${encodeURIComponent(stashId)}/${encodeURIComponent(fileId)}`;
   return `aiy-media://note-file/${encodeURIComponent(stashId)}?library=${encodeURIComponent(libraryId)}&file=${encodeURIComponent(fileId)}`;
 }

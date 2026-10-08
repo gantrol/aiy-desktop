@@ -192,6 +192,7 @@ function DocumentImageNodeView({ node, extension, deleteNode, editor }: NodeView
   return (
     <NodeViewWrapper
       contentEditable={false}
+      data-document-image
       data-outline-image={outline ? (thumbnail ? 'thumbnail' : 'expanded') : undefined}
       className={
         thumbnail

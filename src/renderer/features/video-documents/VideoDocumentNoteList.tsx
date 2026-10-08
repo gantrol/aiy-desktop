@@ -2,6 +2,7 @@ import { PencilIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { VideoDocumentRichNote } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
+import { ItemActions } from '@/renderer/components/ui/item-actions';
 import { Input } from '@/renderer/components/ui/input';
 import { cn } from '@/renderer/lib/utils';
 
@@ -33,7 +34,7 @@ export function VideoDocumentNoteList({ notes, activeNoteId, renameLabel, onSele
   return (
     <div role="list" className="divide-y border-y">
       {notes.map((note) => (
-        <div key={note.id} role="listitem" className="group/note flex min-h-14 items-center gap-2 px-2">
+        <div key={note.id} role="listitem" className="group/item flex min-h-14 items-center gap-2 px-2">
           {renamingId === note.id ? (
             <Input
               value={title}
@@ -72,20 +73,21 @@ export function VideoDocumentNoteList({ notes, activeNoteId, renameLabel, onSele
             </Button>
           )}
           {renamingId !== note.id && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="opacity-0 transition-opacity group-hover/note:opacity-100 focus-visible:opacity-100"
-              title={renameLabel}
-              aria-label={renameLabel}
-              onClick={() => {
-                setTitle(note.title);
-                setRenamingId(note.id);
-              }}
-            >
-              <PencilIcon className="size-3.5" />
-            </Button>
+            <ItemActions>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                title={renameLabel}
+                aria-label={renameLabel}
+                onClick={() => {
+                  setTitle(note.title);
+                  setRenamingId(note.id);
+                }}
+              >
+                <PencilIcon className="size-3.5" />
+              </Button>
+            </ItemActions>
           )}
         </div>
       ))}

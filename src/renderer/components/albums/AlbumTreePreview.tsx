@@ -1,8 +1,12 @@
-import type { MouseEventHandler } from 'react';
-import { FolderIcon } from 'lucide-react';
+import type { MouseEventHandler, ReactNode } from 'react';
 import type { AssetDto } from '@/shared/contracts';
 import { AlbumGlyphIcon } from '@/renderer/icons';
 import { albumCoverAssets, ALBUM_COVER_LAYERS } from '@/renderer/components/albums/albumCoverAssets';
+import {
+  AlbumContentCover,
+  AlbumContentCoverPreview,
+  type AlbumContentPreview,
+} from '@/renderer/components/albums/AlbumContentCover';
 import { cn } from '@/renderer/lib/utils';
 import {
   getMediaStackHorizontalBounds,
@@ -29,6 +33,7 @@ export type AlbumTreeOverlayStyle = 'blurred' | 'solid';
 interface Props {
   size?: 'tree' | 'creation-tree';
   assets: AssetDto[];
+  contentPreviews?: readonly AlbumContentPreview[];
   title: string;
   open: boolean;
   previewExpanded?: boolean;
@@ -123,6 +128,64 @@ export function AlbumCoverBadge({
   );
 }
 
+function AlbumTreePreviewCover({
+  size,
+  compactIcon,
+  contentPreviews,
+  title,
+  animate,
+  overlayStyle,
+  onClick,
+  onDoubleClick,
+  onAssetSelect,
+  children,
+}: Pick<
+  Props,
+  'contentPreviews' | 'title' | 'animate' | 'overlayStyle' | 'onClick' | 'onDoubleClick' | 'onAssetSelect'
+> & {
+  size: NonNullable<Props['size']>;
+  compactIcon: boolean;
+  children: ReactNode;
+}) {
+  if (compactIcon && contentPreviews?.length) {
+    return (
+      <span className={cn('relative z-10', size === 'creation-tree' ? 'ml-7' : 'mx-1')}>
+        <AlbumContentCoverPreview previews={contentPreviews} title={title} animate={animate} />
+      </span>
+    );
+  }
+  if (onAssetSelect && !compactIcon) {
+    return (
+      <span className="relative z-10 grid shrink-0 place-items-center rounded-lg">
+        <button
+          type="button"
+          className="absolute inset-0 z-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+          aria-label={title}
+          onClick={onClick}
+          onDoubleClick={onDoubleClick}
+        />
+        {children}
+        {size !== 'creation-tree' && (
+          <AlbumCoverBadge label={title} overlayStyle={overlayStyle} onClick={onClick} onDoubleClick={onDoubleClick} />
+        )}
+      </span>
+    );
+  }
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      className="relative z-10 grid size-auto shrink-0 place-items-center rounded-sm p-0 outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+      aria-label={title}
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+    >
+      {children}
+      {!compactIcon && size !== 'creation-tree' && <AlbumCoverBadge overlayStyle={overlayStyle} />}
+    </Button>
+  );
+}
+
 /**
  * Shared album cover/disclosure geometry for material and creator trees.
  * The cover is allowed to cross the row's visual inset by a couple of pixels;
@@ -131,6 +194,7 @@ export function AlbumCoverBadge({
 export function AlbumTreePreview({
   size = 'tree',
   assets,
+  contentPreviews,
   title,
   open,
   previewExpanded: controlledPreviewExpanded,
@@ -174,14 +238,14 @@ export function AlbumTreePreview({
     <span
       className={cn('grid size-7 place-items-center text-muted-foreground', size === 'creation-tree' ? 'ml-7' : 'mx-1')}
     >
-      <FolderIcon className={size === 'creation-tree' ? 'size-5' : 'size-4'} aria-hidden="true" />
+      <AlbumContentCover previews={contentPreviews} />
     </span>
   ) : (
     <MediaStackPreview
       className={onAssetSelect ? 'pointer-events-none relative z-10' : undefined}
       size={size}
       items={stackItems}
-      emptyContent={<AlbumGlyphIcon className="size-5" />}
+      emptyContent={<span aria-hidden="true" />}
       spread={spread}
       maxItems={ALBUM_COVER_LAYERS}
       expandedStep={TREE_BRANCH_INTERACTION.previewSpreadStepPx}
@@ -211,6 +275,7 @@ export function AlbumTreePreview({
         'relative -ml-1 flex shrink-0 items-center overflow-visible',
         size === 'creation-tree' ? 'z-20' : 'z-10',
         previewExpanded && 'z-30',
+        'has-[[data-content-expanded=true]]:z-30',
         className,
       )}
       style={{ width: previewWidth, height: rowHeight }}
@@ -244,38 +309,19 @@ export function AlbumTreePreview({
             aria-hidden="true"
           />
         ))}
-      {onAssetSelect && !compactIcon ? (
-        <span className="relative z-10 grid shrink-0 place-items-center rounded-lg">
-          <button
-            type="button"
-            className="absolute inset-0 z-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
-            aria-label={title}
-            onClick={onClick}
-            onDoubleClick={onDoubleClick}
-          />
-          {mediaStack}
-          {size !== 'creation-tree' && (
-            <AlbumCoverBadge
-              label={title}
-              overlayStyle={overlayStyle}
-              onClick={onClick}
-              onDoubleClick={onDoubleClick}
-            />
-          )}
-        </span>
-      ) : (
-        <Button
-          type="button"
-          variant="ghost"
-          className="relative z-10 grid size-auto shrink-0 place-items-center rounded-sm p-0 outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
-          aria-label={title}
-          onClick={onClick}
-          onDoubleClick={onDoubleClick}
-        >
-          {mediaStack}
-          {!compactIcon && size !== 'creation-tree' && <AlbumCoverBadge overlayStyle={overlayStyle} />}
-        </Button>
-      )}
+      <AlbumTreePreviewCover
+        size={size}
+        compactIcon={compactIcon}
+        contentPreviews={contentPreviews}
+        title={title}
+        animate={animate}
+        overlayStyle={overlayStyle}
+        onClick={onClick}
+        onDoubleClick={onDoubleClick}
+        onAssetSelect={onAssetSelect}
+      >
+        {mediaStack}
+      </AlbumTreePreviewCover>
     </span>
   );
 }

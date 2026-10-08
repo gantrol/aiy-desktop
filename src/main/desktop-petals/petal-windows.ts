@@ -421,6 +421,9 @@ export class PetalWindows {
           this.remember(entry);
           if (nativeMove) this.onDragMove?.(entry, screen.getCursorScreenPoint());
         });
+        window.on('hide', () => {
+          if (!entry.instanceId && entry.hubView === 'settings') this.presentation.showView(entry, 'flower');
+        });
         // Programmatic bounds changes also emit move events. Only an OS gesture
         // emits will-move; renderer gestures explicitly snap when released.
         let nativeMove = false;
@@ -591,6 +594,17 @@ export class PetalWindows {
     }
     entry.window.webContents.send('desktop-petals:changed');
   }
+  retarget(entry: PetalWindow, libraryId: string, instanceId: string) {
+    const alwaysOnTop = entry.window.isAlwaysOnTop();
+    if (entry.instanceId) this.unpinned.get(entry.libraryId)?.delete(entry.instanceId);
+    const previous = this.find(libraryId, instanceId);
+    if (previous && previous !== entry) previous.window.destroy();
+    this.collectionHistory.clear(entry);
+    entry.libraryId = libraryId;
+    entry.instanceId = instanceId;
+    entry.editEpoch++;
+    this.setAlwaysOnTop(entry, alwaysOnTop);
+  }
   async setContentScale(entry: PetalWindow | undefined, scale: number) {
     if (!entry?.instanceId || !entry.expanded || entry.window.isDestroyed()) throw petalError('sourceUnavailable');
     this.remember(entry);
@@ -624,7 +638,10 @@ export class PetalWindows {
         : clampPetalBounds(point, bounds, area);
     // Reusing setPosition's rounded getBounds size grows transparent Windows
     // windows on fractional DPI. Keep the gesture's starting size unchanged.
-    if (current.x !== position.x || current.y !== position.y) entry.window.setBounds({ ...bounds, ...position });
+    if (current.x !== position.x || current.y !== position.y) {
+      this.presentation.moveView(entry, position.x - current.x, position.y - current.y);
+      entry.window.setBounds({ ...bounds, ...position });
+    }
   }
   async hide(entry: PetalWindow) {
     if (!(await this.beforeHide(entry)) || entry.window.isDestroyed()) return false;
@@ -687,17 +704,20 @@ export class PetalWindows {
     this.saveTimer = null;
     await this.layouts.flush();
   }
-  destroyAll() {
+  destroyAll(keepLibraryId?: string) {
     this.generation++;
-    this.desktopRecovery.dispose();
-    this.residency.dispose();
+    if (!keepLibraryId) {
+      this.desktopRecovery.dispose();
+      this.residency.dispose();
+    }
     this.pluck.clear();
     this.collectionHistory.clear();
     for (const entry of [...this.entries.values()]) {
+      if (entry.libraryId === keepLibraryId) continue;
       this.entries.delete(entry.window.webContents.id);
       entry.window.destroy();
     }
-    this.factory.dispose();
+    if (!keepLibraryId) this.factory.dispose();
   }
   remove(libraryId: string, instanceId: string) {
     this.unpinned.get(libraryId)?.delete(instanceId);

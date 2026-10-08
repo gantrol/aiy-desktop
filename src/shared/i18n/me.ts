@@ -4,7 +4,7 @@ export const meMessages = {
   username: 'Username',
   changeAvatar: 'Change avatar',
   removeAvatar: 'Remove',
-  avatarFailed: 'Choose a PNG, JPEG or WebP image up to 5 MB.',
+  avatarFailed: 'Could not read this image. Choose a valid PNG, JPEG, WebP or SVG image.',
   saving: 'Saving…',
   saved: 'Saved',
   authorName: 'Author name',

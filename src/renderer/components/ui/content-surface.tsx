@@ -3,7 +3,7 @@ import { cn } from '@/renderer/lib/utils';
 import './content-surface.css';
 
 interface Props {
-  kind: 'paper' | 'media';
+  kind: 'paper' | 'media' | 'editor';
   title: string;
   contextLabel?: string;
   titlesVisible?: boolean;
@@ -52,7 +52,7 @@ export function ContentSurface({
       >
         {leading && <div className="content-surface__tools flex shrink-0 items-center">{leading}</div>}
         <span className="content-surface__drag-title min-w-4 flex-1 truncate text-[13px] font-medium" title={title}>
-          {kind === 'paper' && <span className="block truncate">{title}</span>}
+          {kind !== 'media' && <span className="block truncate">{title}</span>}
           {contextLabel && (
             <span className="block truncate text-[10px] font-normal opacity-65" title={contextLabel}>
               {contextLabel}
@@ -68,7 +68,9 @@ export function ContentSurface({
           'content-surface__body min-h-0 flex-1',
           kind === 'media'
             ? 'relative grid overflow-hidden p-0 [&_img]:block [&_img]:size-full [&_img]:min-h-0 [&_img]:object-contain [&_video]:block [&_video]:size-full [&_video]:min-h-0 [&_video]:object-contain'
-            : 'overflow-auto p-4',
+            : kind === 'editor'
+              ? 'flex overflow-hidden p-0'
+              : 'overflow-auto p-4',
         )}
       >
         {children}

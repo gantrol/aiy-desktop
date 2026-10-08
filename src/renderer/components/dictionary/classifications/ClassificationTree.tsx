@@ -15,6 +15,7 @@ import { itemDragStart, itemDragScopeProps, acceptsItemMove } from '@/renderer/c
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
+import { ItemActions, itemActionButtonClassName } from '@/renderer/components/ui/item-actions';
 import { Button } from '@/renderer/components/ui/button';
 import type { ClassificationTreeIndex } from '@/renderer/components/dictionary/classifications/classification-tree';
 import { classificationParentKey } from '@/renderer/components/dictionary/classifications/classification-tree';
@@ -121,7 +122,7 @@ function ClassificationBranch({ node, props }: { node: DictionaryClassificationN
         onDragEnd={props.onDragEnd}
         data-selected={props.selectedId === node.id ? 'true' : 'false'}
         className={cn(
-          'group relative flex h-10 items-center gap-1 rounded-md pr-1 text-sm transition-colors duration-fast',
+          'group/item relative flex h-10 min-w-0 items-center gap-1 rounded-sm pr-1 text-sm transition-colors duration-fast',
           props.selectedId === node.id
             ? 'bg-selected font-medium text-selected-foreground'
             : 'text-foreground hover:bg-hover',
@@ -155,20 +156,26 @@ function ClassificationBranch({ node, props }: { node: DictionaryClassificationN
         >
           {expanded ? <ChevronDownIcon className="size-3.5" /> : <ChevronRightIcon className="size-3.5" />}
         </Button>
-        <button
+        <Button
           data-action="classification-select"
           type="button"
-          className="flex h-full min-w-0 flex-1 items-center gap-2 text-left outline-none"
+          variant="ghost"
+          className={cn(
+            'h-full min-w-0 flex-1 gap-2 px-0 text-left text-inherit focus-visible:ring-inset focus-visible:ring-offset-0',
+            props.selectedId === node.id ? 'font-medium' : 'font-normal',
+          )}
           onClick={() => props.onSelect(node.id)}
         >
           <span className="min-w-0 flex-1 truncate">{node.name}</span>
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{node.subtreeTermCount}</span>
-        </button>
-        <ActionMenuButton
-          actions={actions}
-          label={copy.moreActionsFor(node.name)}
-          className="size-7 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-        />
+        </Button>
+        <ItemActions>
+          <ActionMenuButton
+            actions={actions}
+            label={copy.moreActionsFor(node.name)}
+            className={itemActionButtonClassName}
+          />
+        </ItemActions>
       </div>
       {children.length > 0 && expanded && (
         <div className="relative ml-[2.15rem] border-l border-border pl-3">

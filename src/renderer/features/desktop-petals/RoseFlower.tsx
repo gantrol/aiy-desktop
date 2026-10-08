@@ -25,7 +25,9 @@ interface RoseFlowerAppearanceProps {
   fold?: number;
   dock?: { x: number; y: number };
   centerLabel?: string;
+  centerRef?: Ref<HTMLButtonElement>;
   onCenterClick?: () => void;
+  pluckDisabled?: boolean;
 }
 
 interface RoseFlowerProps extends RoseFlowerAppearanceProps {
@@ -85,6 +87,7 @@ export function RoseFlowerView({
   center,
   progress,
   centerLabel,
+  centerRef,
   onCenterClick,
   fold = 0,
   dock,
@@ -96,6 +99,7 @@ export function RoseFlowerView({
   drag,
   animate = true,
   showDetachedPetal = true,
+  pluckDisabled = false,
 }: RoseFlowerAppearanceProps & {
   flowerRef?: Ref<HTMLDivElement>;
   pull?: PluckGesture['pull'];
@@ -117,50 +121,56 @@ export function RoseFlowerView({
       <svg viewBox="0 0 200 200" className="block size-full overflow-visible" aria-label={copy.title}>
         <RosePaint id={id} fold={fold} />
         <g transform={transform}>
-          {Array.from({ length: FLOWER_PETAL_COUNT }, (_, index) => (
-            <g
-              key={index}
-              className={`origin-[100px_100px] transition-[translate,rotate,opacity] ease-out motion-reduce:duration-0 ${(pull?.index === index && pull.phase === 'pulling') || growing.includes(index) ? 'duration-0' : 'duration-180'} ${growing.includes(index) ? 'rose-regrow' : ''}`}
-              onAnimationEnd={() => finishGrowing?.(index)}
-              style={
-                pull?.index === index && !growing.includes(index)
-                  ? {
-                      transition: animate ? undefined : 'none',
-                      translate: `${pull.x}px ${pull.y}px`,
-                      rotate: `${Math.max(-5, Math.min(5, pull.x * 0.04))}deg`,
-                      opacity: 1 - pull.detached,
-                    }
-                  : { translate: '0px 0px', rotate: '0deg', opacity: 1, transition: animate ? undefined : 'none' }
-              }
-            >
+          {Array.from({ length: FLOWER_PETAL_COUNT }, (_, index) => {
+            const pluckable = isPluckableFlowerPetal(index);
+            const accessibility = pluckable
+              ? {
+                  role: 'button',
+                  'data-flower-petal-id': index,
+                  tabIndex: fold === 0 && !pluckDisabled ? 0 : -1,
+                  'aria-disabled': pluckDisabled || undefined,
+                  'aria-label': copy.pluck.replace('{number}', String(index + 1)),
+                }
+              : { 'aria-hidden': true as const };
+            return (
               <g
-                {...(fold === 0 && isPluckableFlowerPetal(index) ? events?.(index) : {})}
-                {...(fold === 0 && !pull && index === FLOWER_CENTER_LAYER
-                  ? {
-                      onPointerDown: drag?.onPointerDown,
-                      onPointerEnter: drag?.onPointerEnter,
-                      onDragStart: drag?.onDragStart,
-                    }
-                  : {})}
-                role={isPluckableFlowerPetal(index) ? 'button' : undefined}
-                data-flower-petal-id={isPluckableFlowerPetal(index) ? index : undefined}
-                tabIndex={isPluckableFlowerPetal(index) ? (fold === 0 ? 0 : -1) : undefined}
-                className={
-                  isPluckableFlowerPetal(index)
-                    ? 'cursor-grab outline-none hover:brightness-110 active:cursor-grabbing focus-visible:brightness-125'
-                    : index === FLOWER_CENTER_LAYER
-                      ? 'cursor-move'
-                      : undefined
+                key={index}
+                className={`origin-[100px_100px] transition-[translate,rotate,opacity] ease-out motion-reduce:duration-0 ${(pull?.index === index && pull.phase === 'pulling') || growing.includes(index) ? 'duration-0' : 'duration-180'} ${growing.includes(index) ? 'rose-regrow' : ''}`}
+                onAnimationEnd={() => finishGrowing?.(index)}
+                style={
+                  pull?.index === index && !growing.includes(index)
+                    ? {
+                        transition: animate ? undefined : 'none',
+                        translate: `${pull.x}px ${pull.y}px`,
+                        rotate: `${Math.max(-5, Math.min(5, pull.x * 0.04))}deg`,
+                        opacity: 1 - pull.detached,
+                      }
+                    : { translate: '0px 0px', rotate: '0deg', opacity: 1, transition: animate ? undefined : 'none' }
                 }
-                aria-label={
-                  isPluckableFlowerPetal(index) ? copy.pluck.replace('{number}', String(index + 1)) : undefined
-                }
-                aria-hidden={isPluckableFlowerPetal(index) ? undefined : true}
               >
-                <RosePetal paintId={id} index={index} fold={fold} />
+                <g
+                  {...(fold === 0 && !pluckDisabled && pluckable ? events?.(index) : {})}
+                  {...(fold === 0 && !pull && index === FLOWER_CENTER_LAYER
+                    ? {
+                        onPointerDown: drag?.onPointerDown,
+                        onPointerEnter: drag?.onPointerEnter,
+                        onDragStart: drag?.onDragStart,
+                      }
+                    : {})}
+                  {...accessibility}
+                  className={
+                    pluckable && !pluckDisabled
+                      ? 'cursor-grab outline-none hover:brightness-110 active:cursor-grabbing focus-visible:brightness-125'
+                      : index === FLOWER_CENTER_LAYER
+                        ? 'cursor-move'
+                        : undefined
+                  }
+                >
+                  <RosePetal paintId={id} index={index} fold={fold} />
+                </g>
               </g>
-            </g>
-          ))}
+            );
+          })}
         </g>
         <g opacity={visible} className="pointer-events-none">
           {progress?.outer != null && (
@@ -195,6 +205,7 @@ export function RoseFlowerView({
       </svg>
       {/* SVG paint owns pointer hits; the normal HTML button retains text sizing and keyboard activation. */}
       <Button
+        ref={centerRef}
         variant="ghost"
         type="button"
         className="pointer-events-none absolute left-1/2 size-[25.5%] -translate-x-1/2 -translate-y-1/2 rounded-full p-0 text-media-checker-a hover:bg-transparent active:bg-transparent"

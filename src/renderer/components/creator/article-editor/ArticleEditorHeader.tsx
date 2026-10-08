@@ -25,7 +25,7 @@ import {
 import { Separator } from '@/renderer/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { CreationWorkNavigation } from '@/renderer/components/creator/CreationWorkNavigation';
+import { CreationRelationsButton } from '@/renderer/components/creator/CreationWorksMenu';
 import { ContentViewMenu } from '@/renderer/features/content-editor/ContentViewMenu';
 
 export function ArticleHeaderIconButton({
@@ -147,7 +147,7 @@ export function ArticleHeaderActions({
   return (
     <>
       <Separator orientation="vertical" className="mx-1 h-4" />
-      <CreationWorkNavigation relationsAction={{ count: relationCount, onOpen: onOpenRelations }} />
+      <CreationRelationsButton action={{ count: relationCount, onOpen: onOpenRelations }} />
       <ArticleOutlineStartAction />
       <DropdownMenu>
         <Tooltip>

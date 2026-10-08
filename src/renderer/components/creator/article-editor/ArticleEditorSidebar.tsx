@@ -1,9 +1,11 @@
 import type { ArticleEditorSidebarPanel } from '@/renderer/components/creator/article-editor/articleEditorOutlinePreferences';
 import type { ArticleEditorSidebarController } from '@/renderer/components/creator/article-editor/useArticleEditorSidebar';
 import { ContentWorkspacePanels } from '@/renderer/features/content-editor/ContentWorkspacePanels';
+import { CreationOutputsPanel } from '@/renderer/components/creator/CreationOutputsPanel';
+import { CreationWorkNavigationContext } from '@/renderer/components/creator/CreationWorkNavigation';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { ImagesIcon, ListTreeIcon, MessageSquareIcon, PaperclipIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { FilesIcon, ImagesIcon, ListTreeIcon, MessageSquareIcon, PaperclipIcon } from 'lucide-react';
+import { useContext, type ReactNode } from 'react';
 
 interface Props {
   commentCount: number;
@@ -28,19 +30,35 @@ export function ArticleEditorSidebar({
   outline,
   outlineAvailable,
 }: Props) {
-  const copy = useI18n().messages.contentEditor;
+  const { messages } = useI18n();
+  const copy = messages.contentEditor;
+  const navigation = useContext(CreationWorkNavigationContext);
   return (
     <ContentWorkspacePanels
       preferenceKey={controller.preferenceKey}
-      panelWidth={controller.getPanelWidth(controller.preferences.activePanel)}
+      panelWidth={controller.preferences.width}
       minimumWidth={controller.minimumWidth}
       maximumWidth={controller.maximumWidth}
-      onPanelWidthChange={(width) => controller.setPanelWidth(controller.preferences.activePanel, width)}
-      active={controller.preferences.activePanel}
+      onPanelWidthChange={controller.setPanelWidth}
+      active={
+        !navigation && controller.preferences.activePanel === 'OUTPUTS' ? 'OUTLINE' : controller.preferences.activePanel
+      }
       open={controller.open}
+      maximized={controller.maximized}
+      onMaximizedChange={controller.setMaximized}
       onActiveChange={(id) => controller.showPanel(id as ArticleEditorSidebarPanel)}
       onOpenChange={controller.setExpanded}
       tabs={[
+        ...(navigation
+          ? [
+              {
+                id: 'OUTPUTS',
+                icon: FilesIcon,
+                label: messages.creator.outputs.title,
+                content: <CreationOutputsPanel />,
+              },
+            ]
+          : []),
         {
           id: 'OUTLINE',
           icon: ListTreeIcon,

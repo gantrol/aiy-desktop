@@ -3,10 +3,15 @@ import { useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { FontPicker } from '@/renderer/features/font-settings/FontPicker';
-import { fontRoles, setFontPreference, useFontPreferences } from '@/renderer/features/font-settings/fontPreferences';
+import {
+  fontRoles,
+  setFontPreference,
+  useFontPreferences,
+  type FontRole,
+} from '@/renderer/features/font-settings/fontPreferences';
 import { discoverSystemFonts, recommendedFonts, type SystemFonts } from '@/renderer/features/font-settings/systemFonts';
 
-export function FontSettings() {
+export function FontSettings({ roles = fontRoles }: { roles?: readonly FontRole[] }) {
   const { messages } = useI18n();
   const labels = messages.app.settings.fonts;
   const preferences = useFontPreferences();
@@ -33,7 +38,7 @@ export function FontSettings() {
   return (
     <div className="grid gap-5">
       <div className="grid gap-3">
-        {fontRoles.map((role) => (
+        {roles.map((role) => (
           <div key={role} className="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-3">
             <span className="text-sm">{labels.roles[role]}</span>
             <FontPicker
@@ -49,7 +54,7 @@ export function FontSettings() {
           <Button variant="ghost" size="sm" disabled={loading} onClick={() => void load(true)}>
             {loading ? labels.loading : labels.refresh}
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => fontRoles.forEach((role) => setFontPreference(role, null))}>
+          <Button variant="ghost" size="sm" onClick={() => roles.forEach((role) => setFontPreference(role, null))}>
             <RotateCcwIcon className="size-3.5" />
             {labels.reset}
           </Button>
@@ -61,9 +66,11 @@ export function FontSettings() {
         )}
       </div>
       <div className="grid gap-2 border-y py-4">
-        <span className="text-base font-semibold">{labels.previewTitle}</span>
-        <span className="font-[family-name:var(--font-content)] text-base leading-7">{labels.previewBody}</span>
-        <code className="text-xs">const answer = 42;</code>
+        {roles.includes('ui') && <span className="text-base font-semibold">{labels.previewTitle}</span>}
+        {roles.includes('content') && (
+          <span className="font-[family-name:var(--font-content)] text-base leading-7">{labels.previewBody}</span>
+        )}
+        {roles.includes('mono') && <code className="text-xs">const answer = 42;</code>}
       </div>
       <div className="grid gap-1">
         <span className="mb-1 text-sm font-medium">{labels.downloads}</span>

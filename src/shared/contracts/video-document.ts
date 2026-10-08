@@ -1,4 +1,5 @@
 import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
+import { creationSourceSchema } from '@/shared/contracts/creation-source';
 import { blockDocumentSchema } from '@/shared/contracts/block-document';
 import { videoDocumentNoteSchema, videoDocumentNotesContentSchema } from '@/shared/contracts/video-document-notes';
 import { createVideoDocumentRichNoteSchemas } from '@/shared/contracts/video-document-rich-note';
@@ -738,6 +739,7 @@ export const videoDocumentCreateInputSchema = z
     title: z.string().max(300).default(''),
     titleLocale: z.enum(['zh', 'en']),
     albumId: z.string().min(1).max(200).nullable().default(null),
+    creationSource: creationSourceSchema.optional(),
   })
   .strict();
 

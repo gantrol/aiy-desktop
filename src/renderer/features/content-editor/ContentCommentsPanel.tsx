@@ -9,6 +9,7 @@ import type { ContentCommentDto, ContentCommentStatus } from '@/shared/contracts
 import { ContentCommentModelIdentity } from '@/renderer/features/content-editor/ContentCommentModelIdentity';
 import { CodexThreadLinkText } from '@/renderer/components/content/CodexThreadLinkText';
 import { Button } from '@/renderer/components/ui/button';
+import { ItemActions } from '@/renderer/components/ui/item-actions';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { cn } from '@/renderer/lib/utils';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -107,7 +108,7 @@ function CommentRow({
   return (
     <div
       className={cn(
-        'group/comment-row relative flex min-w-0 border-b border-l-2 border-l-transparent transition-colors duration-fast',
+        'group/item relative flex min-w-0 border-b border-l-2 border-l-transparent transition-colors duration-fast',
         hovered && 'bg-warning-surface/20',
         selected && 'border-l-warning bg-warning-surface/35',
       )}
@@ -165,7 +166,7 @@ function CommentRow({
       )}
       {!selecting &&
         (comment.status === 'OPEN' ? (
-          <div className="mr-1 mt-2 flex shrink-0 opacity-0 transition-opacity group-hover/comment-row:opacity-100 group-focus-within/comment-row:opacity-100">
+          <ItemActions className="mr-1 mt-2 self-start">
             <Button
               type="button"
               variant="ghost"
@@ -189,20 +190,21 @@ function CommentRow({
             >
               <CircleXIcon className="size-3.5" />
             </Button>
-          </div>
+          </ItemActions>
         ) : (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="mr-1 mt-2 shrink-0 opacity-0 transition-opacity group-hover/comment-row:opacity-100 group-focus-within/comment-row:opacity-100"
-            disabled={busy}
-            aria-label={reopenLabel}
-            title={reopenLabel}
-            onClick={() => onStatusChange(comment.id, 'OPEN')}
-          >
-            <RotateCcwIcon className="size-3.5" />
-          </Button>
+          <ItemActions className="mr-1 mt-2 self-start">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={busy}
+              aria-label={reopenLabel}
+              title={reopenLabel}
+              onClick={() => onStatusChange(comment.id, 'OPEN')}
+            >
+              <RotateCcwIcon className="size-3.5" />
+            </Button>
+          </ItemActions>
         ))}
     </div>
   );

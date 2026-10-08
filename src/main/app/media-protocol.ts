@@ -1,4 +1,6 @@
-import type { Protocol } from 'electron';
+import { app, type Protocol } from 'electron';
+import { temporaryFilesStore } from '@/main/temporary-files/temporary-files-store';
+import { temporaryImagePoster } from '@/main/temporary-files/temporary-file-images';
 import type { ActiveLibraryContext } from '@/main/libraries/active-library-context';
 import type { LibraryRegistry } from '@/main/libraries/library-registry';
 import type { TransitionPreviewCache } from '@/main/app/transition-preview-cache';
@@ -25,6 +27,26 @@ export function installMediaProtocol(targetProtocol: Protocol, options: Options)
     const context = CONTEXT_INDEPENDENT_MEDIA_HOSTS.has(url.hostname) ? null : options.activeLibraryContext();
     const release = context?.acquireOperation();
     try {
+      if (url.hostname === 'temporary') {
+        const [owner, id, extra] = identifier.split('/');
+        if (!owner || !id || extra) return new Response(null, { status: 404 });
+        try {
+          const store = temporaryFilesStore(app.getPath('userData'));
+          const media = await store.media(owner, id);
+          const poster = url.searchParams.has('poster');
+          const file = poster ? await temporaryImagePoster(store, owner, id) : media.path;
+          const response = await fetchLocalFile(file, request.headers.get('range'));
+          const headers = new Headers(response.headers);
+          headers.set('content-type', poster ? 'image/png' : media.mimeType);
+          headers.set('access-control-allow-origin', rendererOrigin);
+          headers.set('content-security-policy', "default-src 'none'");
+          headers.set('x-content-type-options', 'nosniff');
+          headers.set('cache-control', 'no-store');
+          return new Response(response.body, { status: response.status, headers });
+        } catch {
+          return new Response(null, { status: 404 });
+        }
+      }
       if (url.hostname === 'note-file') {
         if (
           !context ||

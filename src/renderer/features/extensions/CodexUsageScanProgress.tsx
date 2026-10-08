@@ -8,13 +8,11 @@ function clampPercent(value: number) {
   return Math.max(0, Math.min(100, value));
 }
 
-const SCANNING_SHARE_PERCENT = 75;
-
 function scanProgressPercent(progress: ScanProgress) {
   if (progress.phase === 'DISCOVERING') return null;
   if (progress.phase === 'BACKING_UP') return clampPercent(progress.calculationPercent);
   if (progress.phase === 'FINALIZING') {
-    return clampPercent(SCANNING_SHARE_PERCENT + ((100 - SCANNING_SHARE_PERCENT) * progress.calculationPercent) / 100);
+    return clampPercent(progress.calculationPercent);
   }
   const fileFraction = progress.filesDiscovered ? progress.filesProcessed / progress.filesDiscovered : null;
   const byteFraction = progress.bytesTotal ? progress.bytesRead / progress.bytesTotal : null;
@@ -22,7 +20,7 @@ function scanProgressPercent(progress: ScanProgress) {
     fileFraction !== null && byteFraction !== null
       ? fileFraction * 0.4 + byteFraction * 0.6
       : (fileFraction ?? byteFraction ?? 0);
-  return clampPercent(scanningFraction * SCANNING_SHARE_PERCENT);
+  return clampPercent(scanningFraction * 100);
 }
 
 function formatBytes(value: number, formatter: Intl.NumberFormat) {
@@ -71,7 +69,11 @@ export function CodexUsageScanProgress({
     <div className="grid gap-2 py-2" aria-busy={active}>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
         <span className="flex items-center gap-2 font-medium">
-          {active ? <LoaderCircleIcon className="size-3.5 animate-spin" /> : <PauseIcon className="size-3.5" />}
+          {active ? (
+            <LoaderCircleIcon className="size-3.5 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <PauseIcon className="size-3.5" />
+          )}
           {phaseLabel}
           {active && <Badge variant="outline">{backgroundLabel}</Badge>}
         </span>
@@ -104,7 +106,7 @@ export function CodexUsageScanProgress({
         aria-valuetext={roundedPercent === null ? phaseLabel : `${phaseLabel} ${roundedPercent}%`}
       >
         <div
-          className={`h-full bg-foreground/65 transition-[width] duration-normal ${percent === null ? 'animate-pulse' : ''}`}
+          className={`h-full bg-foreground/65 transition-[width] duration-normal motion-reduce:transition-none motion-reduce:animate-none ${percent === null ? 'animate-pulse' : ''}`}
           style={{ width: percent === null ? '33.333%' : `${percent}%` }}
         />
       </div>

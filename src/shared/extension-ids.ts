@@ -105,3 +105,4 @@ export function externalImageConnectionId(extensionId: ExternalImageApiExtension
 }
 
 export type ExternalImageApiExtensionId = (typeof EXTERNAL_IMAGE_API_EXTENSION_IDS)[number];
+export const SCREEN_MAGNIFIER_EXTENSION_ID = 'com.aiy.screen-magnifier';

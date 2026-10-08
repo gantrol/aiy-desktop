@@ -4,6 +4,7 @@ import type { AssetDto, TermMediaItemDto } from '@/shared/contracts';
 import { PlusIcon } from '@/renderer/icons';
 import type { DictionaryMessages } from '@/renderer/i18n/catalog';
 import { Button } from '@/renderer/components/ui/button';
+import { ItemActions, itemActionButtonClassName } from '@/renderer/components/ui/item-actions';
 import { TermMediaPickerDialog } from '@/renderer/components/dictionary/TermMediaPickerDialog';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 
@@ -48,30 +49,30 @@ export function TermMediaEditor({
       <div className="flex flex-wrap gap-3">
         {items.map((item, index) => {
           return (
-            <div
-              key={item.id}
-              className="group relative isolate h-40 w-28 overflow-hidden rounded-lg border bg-surface-sunken"
-            >
-              <ImageAmbientBackdrop src={item.asset.mediaUrl} loading="lazy" />
-              <img
-                data-asset-id={item.asset.id}
-                className="relative z-10 size-full object-contain"
-                src={item.asset.mediaUrl}
-                alt=""
-                loading="lazy"
-              />
-              {item.role === 'COVER' && (
-                <span className="absolute top-1.5 left-1.5 z-20 rounded bg-overlay px-1.5 py-0.5 text-[10px] font-medium shadow-overlay">
-                  {c.cover}
-                </span>
-              )}
+            <div key={item.id} className="group/item w-28 shrink-0">
+              <div className="relative isolate h-40 overflow-hidden rounded-sm bg-surface-sunken">
+                <ImageAmbientBackdrop src={item.asset.mediaUrl} loading="lazy" />
+                <img
+                  data-asset-id={item.asset.id}
+                  className="relative z-10 size-full object-contain"
+                  src={item.asset.mediaUrl}
+                  alt=""
+                  loading="lazy"
+                />
+                {item.role === 'COVER' && (
+                  <span className="absolute top-1.5 left-1.5 z-20 rounded bg-overlay px-1.5 py-0.5 text-[10px] font-medium">
+                    {c.cover}
+                  </span>
+                )}
+              </div>
               {!disabled && (
-                <div className="absolute inset-x-1.5 bottom-1.5 z-20 flex items-center justify-center gap-1 rounded-md bg-overlay p-1 opacity-0 shadow-overlay transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                <ItemActions className="flex-wrap justify-center py-1">
                   {item.role !== 'COVER' && (
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon-sm"
+                      className={itemActionButtonClassName}
                       title={c.setCover}
                       aria-label={c.setCover}
                       disabled={busy}
@@ -84,6 +85,7 @@ export function TermMediaEditor({
                     type="button"
                     variant="ghost"
                     size="icon-sm"
+                    className={itemActionButtonClassName}
                     title={c.moveLeft}
                     aria-label={c.moveLeft}
                     disabled={busy || index === 0}
@@ -95,6 +97,7 @@ export function TermMediaEditor({
                     type="button"
                     variant="ghost"
                     size="icon-sm"
+                    className={itemActionButtonClassName}
                     title={c.moveRight}
                     aria-label={c.moveRight}
                     disabled={busy || index === items.length - 1}
@@ -106,6 +109,7 @@ export function TermMediaEditor({
                     type="button"
                     variant="ghost"
                     size="icon-sm"
+                    className={itemActionButtonClassName}
                     title={c.removeImage}
                     aria-label={c.removeImage}
                     disabled={busy}
@@ -113,7 +117,7 @@ export function TermMediaEditor({
                   >
                     <Trash2Icon className="size-3.5" />
                   </Button>
-                </div>
+                </ItemActions>
               )}
             </div>
           );

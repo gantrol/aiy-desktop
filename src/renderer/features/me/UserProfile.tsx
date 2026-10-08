@@ -5,7 +5,7 @@ import { Label } from '@/renderer/components/ui/label';
 import { Skeleton } from '@/renderer/components/ui/skeleton';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { ProfileAvatar } from '@/renderer/features/me/ProfileAvatar';
-import { prepareProfileAvatar } from '@/renderer/features/me/profile-avatar';
+import { prepareProfileAvatar, profileAvatarAccept } from '@/renderer/features/me/profile-avatar';
 import { useSpaceProfile } from '@/renderer/features/me/SpaceProfileProvider';
 import type { UserProfile as Profile } from '@/shared/contracts/me';
 
@@ -108,7 +108,7 @@ function ProfileForm({ profile }: { profile: Profile }) {
         <Input
           ref={fileInput}
           type="file"
-          accept="image/png,image/jpeg,image/webp"
+          accept={profileAvatarAccept}
           className="hidden"
           aria-label={copy.changeAvatar}
           disabled={busy}

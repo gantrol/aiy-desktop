@@ -52,15 +52,13 @@ import {
   type IndexedCodexUsageFile,
 } from '@/main/extensions/codex-usage-investigator/thread-index';
 import type { CodexUsageCacheDatabase } from '@/main/extensions/codex-usage-investigator/cache-database';
-import {
-  codexUsagePreviousSourceCacheKey,
-  codexUsageSourceCacheKey,
-} from '@/main/extensions/codex-usage-investigator/source-cache-key';
+import { codexUsageSourceCacheMatches } from '@/main/extensions/codex-usage-investigator/source-cache-key';
+import { summarizeCodexTurnSpeed } from '@/main/extensions/codex-usage-investigator/turn-speed';
 
 const MAX_FILES = 100_000;
 const MAX_EXPORT_ROWS = 100_000;
 const DISCOVERY_STAT_CONCURRENCY = 12;
-const PROCESSED_ANALYSIS_VERSION = 22;
+const PROCESSED_ANALYSIS_VERSION = 23;
 const DETAILED_STATISTICS_VERSION = 4;
 const FILE_YIELD_INTERVAL = 32;
 const safeIntegerSchema = z.number().int().nonnegative().safe();
@@ -581,14 +579,19 @@ async function processStoredEvents(
       left.model.localeCompare(right.model) ||
       left.sessionId.localeCompare(right.sessionId),
   );
+  const modelComparison = await options.cache.modelComparisonAnalysis(
+    options.fromEpoch,
+    options.toEpoch,
+    options.signal,
+  );
   const snapshot = {
     sessionCount: total.sessions.size,
     requestCount: total.requestCount,
     totals: totalsFromAggregate(total),
     models: modelBreakdowns(models),
     days: dailyBreakdowns(days),
-    turnSpeed: options.cache.turnSpeedAnalysis(options.fromEpoch, options.toEpoch),
-    modelComparison: await options.cache.modelComparisonAnalysis(options.fromEpoch, options.toEpoch, options.signal),
+    turnSpeed: summarizeCodexTurnSpeed(modelComparison),
+    modelComparison,
     sessionLength: sessionLength?.result() ?? null,
     quotaYield: quotaYield.result(),
     quotaPurity: quotaPurity.result(),
@@ -633,7 +636,7 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
   let calculationPercent = 0;
   let calculationStartedAt: number | null = null;
   const cacheHits = new Set<string>();
-  const sourceStates = new Map<string, { cacheKey: string; needsModeRecovery: 0 | 1 }>();
+  const sourceStates = new Map<string, { cacheKey: string; needsSourceRecovery: 0 | 1 }>();
   for (const page of options.cache.ingestedSourcePages()) {
     for (const source of page) sourceStates.set(source.sessionId, source);
     await yieldToMainThread(signal);
@@ -641,11 +644,7 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
   for (const [index, file] of files.entries()) {
     throwIfAborted(signal);
     const stored = sourceStates.get(file.sessionId);
-    if (
-      stored &&
-      (stored.cacheKey === codexUsageSourceCacheKey(file, serviceTierFallback) ||
-        (!stored.needsModeRecovery && stored.cacheKey === codexUsagePreviousSourceCacheKey(file, serviceTierFallback)))
-    ) {
+    if (codexUsageSourceCacheMatches(stored, file, serviceTierFallback)) {
       cacheHits.add(file.sessionId);
     }
     if ((index + 1) % FILE_YIELD_INTERVAL === 0) await yieldToMainThread(signal);
@@ -726,8 +725,6 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
         options.cache.replaceIngestedSource(file, result, serviceTierFallback);
         checkpoint = true;
         filesScanned += 1;
-        invalidRecords = addSafe(invalidRecords, result.invalidRecords);
-        oversizedRecords = addSafe(oversizedRecords, result.oversizedRecords);
         bytesTotal = Math.max(bytesRead, bytesTotal - Math.max(0, file.size - result.bytesRead));
       }
     } catch (error) {
@@ -768,18 +765,19 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
     options.cache.saveProcessed(cacheKey, processed, processedSnapshotSchema);
   }
   if (
-    processed.modelComparison.algorithmVersion < 3 ||
+    processed.modelComparison.algorithmVersion < 4 ||
     processed.modelComparison.byReasoningEffort.some((row) => row.samples === null)
   ) {
-    processed = {
-      ...processed,
-      modelComparison: await options.cache.modelComparisonAnalysis(fromEpoch, toEpoch, options.signal),
-    };
+    const modelComparison = await options.cache.modelComparisonAnalysis(fromEpoch, toEpoch, options.signal);
+    processed = { ...processed, modelComparison, turnSpeed: summarizeCodexTurnSpeed(modelComparison) };
     options.cache.saveProcessed(cacheKey, processed, processedSnapshotSchema);
   }
   calculationPercent = 100;
   progress(true, 'FINALIZING');
   const sourceAvailable = discovery.availableRoots > 0 || coverage.sourceEventCount > 0;
+  const sourceIssues = options.cache.sourceIssues(fromEpoch, toEpoch);
+  invalidRecords = sourceIssues.invalidRecords;
+  oversizedRecords = sourceIssues.oversizedRecords;
   const investigation: CodexUsageInvestigation = {
     investigationId: options.investigationId,
     generatedAt: new Date().toISOString(),
@@ -788,7 +786,7 @@ export async function scanCodexUsage(options: ScanOptions): Promise<CodexUsageSc
     timeZone: options.timeZone,
     granularity: options.granularity,
     from: fromEpoch === null ? null : new Date(fromEpoch).toISOString(),
-    to: new Date(queryToEpoch).toISOString(),
+    to: new Date(toEpoch).toISOString(),
     sourceLabel: 'plugin SQLite ← Codex indexed rollouts',
     sourceMode: discovery.sourceMode,
     sessionCount: processed.sessionCount,

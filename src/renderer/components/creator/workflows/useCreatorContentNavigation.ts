@@ -3,14 +3,11 @@ import type {
   CreationFormDto,
   EvaluationSuiteContentInput,
   EvaluationSuiteDto,
-  InspirationStashDto,
   Locale,
 } from '@/shared/contracts';
 import type { CreatorLocation, NavigationMode } from '@/renderer/components/app/app-navigation';
-import { creationItemByFormEntity } from '@/renderer/components/creator/creationFormEntities';
 import type { CreationRelationItem } from '@/renderer/components/creator/CreationRelationsSheet';
 import type { CreationOutputMode } from '@/renderer/components/creator/CreationOutputTabs';
-import { imageSeriesIdForCreationItem } from '@/renderer/components/creator/screen/creatorScreenProjection';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import { recordRendererDiagnostic } from '@/renderer/lib/rendererDiagnostics';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -37,26 +34,22 @@ interface Options {
   openParentEditor(): void;
   preserveBeforeNavigation(): Promise<boolean>;
   refresh(): Promise<void>;
-  restoreInspiration(stash: InspirationStashDto): void;
   resumeDerivedVisual(visualId: string, view?: DerivedVisualWorkspaceViewState): Promise<unknown>;
   selectAlbum(id: string): void;
   selectArticle(id: string): void;
   selectEvaluationSuite(id: string): void;
   selectImageBreakdown(id: string): void;
-  selectInspirationStash(id: string): void;
   selectSocialPost(id: string): void;
   setCompactPanel(panel: 'creator' | 'output'): void;
   setOutputGalleryOpen(open: boolean): void;
   setOutputMode(mode: CreationOutputMode): void;
   setRequestedAssetId(id: string | null): void;
-  startNewCreation(albumId: string | null, mode: NavigationMode | null): Promise<boolean>;
 }
 
 // Keeps record/document navigation independent from draft persistence and generation ownership.
 export function useCreatorContentNavigation(options: Options) {
   const animation = useGifMakerLauncher();
   const labels = useI18n().messages.creator.workNavigation;
-  const unavailableMessage = useI18n().messages.desktopPetals.document.itemUnavailable;
   const resetOutput = useStableCallback(() => {
     options.setOutputMode('results');
     options.setRequestedAssetId(null);
@@ -96,27 +89,6 @@ export function useCreatorContentNavigation(options: Options) {
     options.clearSavedInspiration();
     resetOutput();
     if (mode) options.commit({ surface: 'article', articleId: article.id }, mode);
-    return true;
-  });
-
-  const chooseInspirationStash = useStableCallback(async (id: string, mode: NavigationMode | null = 'push') => {
-    const stash = (options.data.inspirationStashes ?? []).find((item) => item.id === id);
-    if (!stash) return false;
-    const item = creationItemByFormEntity(options.data.creationItems, 'ARTICLE', stash.id);
-    if (!item) {
-      options.notify(unavailableMessage);
-      return false;
-    }
-    const hostSeriesId = imageSeriesIdForCreationItem(item);
-    const opened = hostSeriesId
-      ? await options.chooseSeries(hostSeriesId, undefined, null)
-      : await options.startNewCreation(item.albumId, null);
-    if (!opened) return false;
-    options.onComparisonFullWindowChange(false);
-    options.selectInspirationStash(stash.id);
-    resetOutput();
-    options.restoreInspiration(stash);
-    if (mode) options.commit({ surface: 'inspiration-stash', stashId: stash.id }, mode);
     return true;
   });
 
@@ -176,7 +148,7 @@ export function useCreatorContentNavigation(options: Options) {
       case 'PROMPT_SERIES':
         return options.chooseSeries(id, assetId);
       case 'INSPIRATION_STASH':
-        return chooseInspirationStash(id);
+        return chooseArticle(id);
       case 'IMAGE_BREAKDOWN':
         return chooseImageBreakdown(id);
       case 'EVALUATION_SUITE':
@@ -221,7 +193,6 @@ export function useCreatorContentNavigation(options: Options) {
     chooseArticle,
     chooseEvaluationSuite,
     chooseImageBreakdown,
-    chooseInspirationStash,
     chooseSocialPost,
     openCreationRelation,
     saveEvaluationSuite,

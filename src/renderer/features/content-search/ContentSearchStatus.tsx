@@ -1,4 +1,4 @@
-import { CheckIcon, LoaderCircleIcon, PauseIcon, PlayIcon } from 'lucide-react';
+import { LoaderCircleIcon, PauseIcon, PlayIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type { ContentLookupResult } from '@/shared/contracts/content-search';
@@ -19,6 +19,7 @@ export function ContentSearchStatus({
   const copy = useI18n().messages.referenceOutline.lookup;
   if (!result && !busy) return null;
   const pending = Boolean(result?.coverage.pending);
+  if (result && !pending && !result.coverage.unavailable && !result.coverage.limited && !result.reset) return null;
   return (
     <div className="flex shrink-0 items-center gap-2 border-t px-4 py-2">
       <div
@@ -29,15 +30,14 @@ export function ContentSearchStatus({
         {busy && !result && <span>{copy.searching}</span>}
         {result && (
           <>
-            <span className="inline-flex items-center gap-1.5">
-              {pending && !paused ? (
-                <LoaderCircleIcon aria-hidden="true" className="size-3 animate-spin motion-reduce:animate-none" />
-              ) : result.coverage.ready === result.coverage.total ? (
-                <CheckIcon aria-hidden="true" className="size-3" />
-              ) : null}
-              {copy.progress(result.coverage.ready, result.coverage.total)}
-            </span>
-            {pending && <span>{paused ? copy.paused : copy.preparing}</span>}
+            {pending && (
+              <span className="inline-flex items-center gap-1.5">
+                {!paused && (
+                  <LoaderCircleIcon aria-hidden="true" className="size-3 animate-spin motion-reduce:animate-none" />
+                )}
+                {paused ? copy.paused : copy.preparing}
+              </span>
+            )}
             {result.coverage.unavailable > 0 && (
               <span className="text-warning">{copy.unavailable(result.coverage.unavailable)}</span>
             )}

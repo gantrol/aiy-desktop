@@ -4,6 +4,7 @@ import { GoogleGeminiAssistantAdapter } from '@/main/assistant-models/google-gem
 import { ImageBreakdownModelAdapter } from '@/main/assistant-models/image-breakdown';
 import { DEEPSEEK_DEFAULT_MODEL_ID, DEEPSEEK_PROVIDER_KEY } from '@/main/assistant-models/deepseek-provider';
 import { CodexAdapter } from '@/main/assistant/codex';
+import type { CodexChatJob } from '@/main/assistant/codex-service';
 import { readAgentPermissions, requireAgentPermission } from '@/main/agent-cli/permissions';
 import { WorkTrackingService } from '@/main/extensions/work-tracking/service';
 import type { WorkResult } from '@/shared/contracts/work-tracking';
@@ -361,13 +362,46 @@ async function dispatchStorageAndGeneration(
   }
 }
 
+async function runCreatorChat(options: ModelWorkerRequestDispatcherOptions, job: CodexChatJob, signal: AbortSignal) {
+  const { codex, database } = options;
+  const historyIds = job.history.map((turn) => turn.id);
+  const processId = job.processId ?? database.startAgentChatProcess(job.scope, historyIds);
+  if (job.processId) database.assertAgentChatProcessOwnership(processId, job.scope, historyIds);
+  try {
+    // Only explicit bounded history enters the prompt. Writing uses a separate operation thread.
+    const result = await codex.assist(
+      job.input,
+      job.history,
+      job.imagePaths,
+      {
+        scope: job.scope,
+        title: '创作记录',
+        ...(job.input.documentTask ? { operationId: processId } : {}),
+        observer: {
+          onTransportSelected: (transport) => database.setAgentChatProcessTransport(processId, transport),
+          onTurnStarted: (threadId, turnId) => database.recordAgentChatExternalTurn(processId, threadId, turnId),
+          onEvent: (event) => database.recordAgentChatProcessEvent(processId, event),
+          onCaptureDegraded: (reason, droppedEventCount, droppedEventCountExact) =>
+            database.markAgentChatCaptureDegraded(processId, reason, droppedEventCount, droppedEventCountExact),
+        },
+      },
+      signal,
+    );
+    throwIfRequestCancelled(signal);
+    return database.completeAgentChatProcess(processId, job.scope, job.request, result);
+  } catch (error) {
+    database.failAgentChatProcess(processId, error);
+    throw error;
+  }
+}
+
 async function dispatchAssistantAndCodex(
   options: ModelWorkerRequestDispatcherOptions,
   method: ModelWorkerMethod,
   params: unknown[],
   signal: AbortSignal,
 ) {
-  const { codex, database, extensions } = options;
+  const { codex, extensions } = options;
   switch (method) {
     case 'codex.refresh-health': {
       parseModelWorkerMethodParams(method, params);
@@ -445,45 +479,7 @@ async function dispatchAssistantAndCodex(
     }
     case 'codex.chat': {
       const [job] = parseModelWorkerMethodParams(method, params);
-      const processId =
-        job.processId ??
-        database.startAgentChatProcess(
-          job.scope,
-          job.history.map((turn) => turn.id),
-        );
-      if (job.processId) {
-        database.assertAgentChatProcessOwnership(
-          processId,
-          job.scope,
-          job.history.map((turn) => turn.id),
-        );
-      }
-      try {
-        // processId is an audit correlation key only. The prompt builder receives
-        // the explicit bounded history below and never reads process/event tables.
-        const result = await codex.assist(
-          job.input,
-          job.history,
-          job.imagePaths,
-          {
-            scope: job.scope,
-            title: '创作记录',
-            observer: {
-              onTransportSelected: (transport) => database.setAgentChatProcessTransport(processId, transport),
-              onTurnStarted: (threadId, turnId) => database.recordAgentChatExternalTurn(processId, threadId, turnId),
-              onEvent: (event) => database.recordAgentChatProcessEvent(processId, event),
-              onCaptureDegraded: (reason, droppedEventCount, droppedEventCountExact) =>
-                database.markAgentChatCaptureDegraded(processId, reason, droppedEventCount, droppedEventCountExact),
-            },
-          },
-          signal,
-        );
-        throwIfRequestCancelled(signal);
-        return database.completeAgentChatProcess(processId, job.scope, job.request, result);
-      } catch (error) {
-        database.failAgentChatProcess(processId, error);
-        throw error;
-      }
+      return runCreatorChat(options, job, signal);
     }
     case 'codex.suggest-titles': {
       const [input, execution] = parseModelWorkerMethodParams(method, params);
@@ -692,6 +688,20 @@ async function dispatchExtensionsAndLifecycle(
   }
 }
 
+const agentLibraryMutations = new Set<ModelWorkerMethod>([
+  'agent.asset.import',
+  'agent.intake.import',
+  'agent.content.update',
+  'agent.draft.prepare',
+  'agent.album.ensure',
+  'agent.album.add',
+  'agent.album.remove',
+  'agent.creation.ensure-album',
+  'agent.creation.move',
+  'agent.work.mutate',
+  'agent.pack.apply',
+]);
+
 export function createModelWorkerRequestDispatcher(options: ModelWorkerRequestDispatcherOptions) {
   const work = new WorkTrackingService(options.database, options.extensions);
   function unwrap<T>(result: WorkResult<T>): T {
@@ -700,7 +710,7 @@ export function createModelWorkerRequestDispatcher(options: ModelWorkerRequestDi
       code: `AIY_AGENT_WORK_${result.code.replace(/[A-Z]/g, (letter) => `_${letter}`).toUpperCase()}`,
     });
   }
-  return async (method: ModelWorkerMethod, params: unknown[], signal: AbortSignal) => {
+  const dispatch = async (method: ModelWorkerMethod, params: unknown[], signal: AbortSignal) => {
     const guard = () => {
       if (signal.aborted) throw Object.assign(new Error('CLI operation cancelled'), { code: 'AIY_AGENT_CANCELLED' });
       requireAgentPermission(options.database, method);
@@ -756,5 +766,11 @@ export function createModelWorkerRequestDispatcher(options: ModelWorkerRequestDi
     const lifecycleResult = await dispatchExtensionsAndLifecycle(options, method, params, signal);
     if (lifecycleResult !== unhandled) return lifecycleResult;
     throw new Error(`Unknown background model service method: ${String(method)}`);
+  };
+  return async (method: ModelWorkerMethod, params: unknown[], signal: AbortSignal) => {
+    const result = await dispatch(method, params, signal);
+    // CLI writes use the worker's database connection, outside the desktop's local change signal.
+    if (agentLibraryMutations.has(method)) options.broadcastSnapshot();
+    return result;
   };
 }

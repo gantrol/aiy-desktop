@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-AIY includes third-party software. Those components are not covered by the PolyForm Noncommercial License 1.0.0 and remain subject to their own license terms.
+AIY is licensed under GNU AGPL version 3 only with the AIY Plugin Exception 1.0; see [LICENSE](LICENSE) and [LICENSE-PLUGIN-EXCEPTION](LICENSE-PLUGIN-EXCEPTION). Third-party components retain their own copyright notices and license terms. AIY's plugin exception does not grant additional permissions for those components.
 
 The runtime dependency tree locked for AIY 0.3.0 was audited on 2026-08-07. Excluding AIY itself, it contains 208 packages with the following declared licenses:
 

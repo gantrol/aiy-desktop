@@ -276,11 +276,10 @@ export function MaterialDetailPage({
           collectionWidth={240}
           minimumDetailWidth={540}
           selectionKey={item.key}
-          collection={({ toggle, revealDetail }) => (
+          collection={({ revealDetail }) => (
             <MaterialBrowseList
               items={browseItems}
               selectedKey={item.key}
-              toggle={toggle}
               onSelect={(next) => {
                 if (next.key === item.key) {
                   revealDetail();
@@ -570,7 +569,7 @@ function MaterialDetailBody({
               />
 
               <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0 gap-4">
-                <TabsList className="grid grid-cols-2">
+                <TabsList density="compact" className="grid grid-cols-2">
                   <TabsTrigger value="details" data-action="material-inspector-details">
                     {l.details}
                   </TabsTrigger>

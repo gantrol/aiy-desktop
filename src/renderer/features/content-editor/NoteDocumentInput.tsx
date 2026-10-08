@@ -27,7 +27,7 @@ export function NoteDocumentInput({ session, state, ...props }: Props) {
   return (
     <ContentInput
       {...props}
-      contentSource={{ kind: 'INSPIRATION_STASH', id: state.note.stashId }}
+      contentSource={state.note.temporary ? undefined : { kind: 'INSPIRATION_STASH', id: state.note.stashId }}
       document={state.document}
       onDocumentChange={(document) =>
         session.edit(blockDocumentMarkdown(document), {
@@ -39,8 +39,15 @@ export function NoteDocumentInput({ session, state, ...props }: Props) {
         })
       }
       markdown={state.format === 'markdown' ? state.text : plainTextMarkdown(state.text)}
-      sessionIdentity={`${state.note.stashId}:${state.editorEpoch}`}
-      assets={state.referenceAssetIds.map((id) => ({ id, mediaUrl: `aiy-media://asset/${encodeURIComponent(id)}` }))}
+      sessionIdentity={`${state.note.id}:${state.editorEpoch}`}
+      assets={state.referenceAssetIds.map((id) => ({
+        id,
+        mediaUrl:
+          state.note.references.find((reference) => reference.assetId === id)?.mediaUrl ??
+          (state.note.temporary
+            ? `aiy-media://temporary/${state.note.id}/${encodeURIComponent(id)}`
+            : `aiy-media://asset/${encodeURIComponent(id)}`),
+      }))}
       onChange={(markdown) => session.edit(markdown, { format: 'markdown' })}
       onInputPendingChange={(pending) => session.setComposing(pending)}
       onSave={() => void session.flush()}

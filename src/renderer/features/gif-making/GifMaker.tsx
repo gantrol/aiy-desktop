@@ -11,8 +11,7 @@ import { gifErrorCode, type GifDocumentDetail } from '@/shared/contracts/gif-mak
 import type { AnimationLocation, GifLaunchInput } from '@/renderer/features/gif-making/GifMakerProvider';
 import type { NavigationMode, CreatorOpenTabTarget } from '@/renderer/components/app/app-navigation';
 import type { BootstrapDto } from '@/shared/contracts';
-import { CreationWorksMenu } from '@/renderer/components/creator/CreationWorksMenu';
-import { creationFormTabTarget } from '@/renderer/components/creator/creationFormTabTarget';
+import { GifWorkNavigation } from '@/renderer/features/gif-making/GifWorkNavigation';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import { GifAdoptionAction } from '@/renderer/features/gif-making/GifAdoptionAction';
 import { useGifWorkspaceCopy } from '@/renderer/features/gif-making/useGifWorkspaceCopy';
@@ -214,19 +213,14 @@ export default function GifMaker(
         model={workspaceHeaderModel(editor, draft, saveSession, copying, motion.adopting)}
         workNavigation={
           props.data && (
-            <CreationWorksMenu
+            <GifWorkNavigation
               key={editor.document.id}
               data={props.data}
-              activeEntity={{ kind: 'GIF_DOCUMENT', id: editor.document.id }}
+              documentId={editor.document.id}
               notify={props.notify}
-              onSelect={async (form) => {
-                const item = props.data?.creationItems.find((item) => item.id === form.form.creationItemId);
-                const target = creationFormTabTarget(form, item?.albumId ?? null);
-                if (!target) return;
-                await saveSession();
-                await props.onRefresh();
-                props.onOpenWork(target);
-              }}
+              save={saveSession}
+              refresh={props.onRefresh}
+              onOpenWork={props.onOpenWork}
             />
           )
         }

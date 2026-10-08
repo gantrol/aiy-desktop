@@ -4,7 +4,7 @@ import type { AlbumDto, DerivedVisualDto, PromptSeriesDto, PromptVersionDto } fr
 import { AlbumSelect } from '@/renderer/components/albums/AlbumSelect';
 import { creationAlbumOptions } from '@/renderer/components/albums/albumSelectOptions';
 import type { CreationExperimentContext } from '@/renderer/components/creator/creationExperimentContext';
-import type { CreationStartMode } from '@/renderer/components/creator/creationStartMode';
+import { isDocumentCreationStartMode, type CreationStartMode } from '@/renderer/components/creator/creationStartMode';
 import type { MessageCatalog } from '@/renderer/i18n/types';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { Button } from '@/renderer/components/ui/button';
@@ -31,6 +31,7 @@ interface DerivedHeader {
 }
 
 interface Props {
+  startAction?: ReactNode;
   albums: readonly AlbumDto[];
   allSeries: readonly PromptSeriesDto[];
   busy: boolean;
@@ -173,68 +174,75 @@ function CreatorInputHeaderContent(props: Props) {
   const { messages } = useI18n();
   const labels = messages.creator.derivedVisual;
   const albumOptions = useMemo(() => creationAlbumOptions(props.albums), [props.albums]);
-  const main = props.derived ? (
-    derivedHeader(props, props.derived, labels)
-  ) : props.creationMode === 'new' ? (
-    <div className="flex min-w-0 items-center gap-2">
-      <span className="truncate font-semibold">
-        {props.creationStartMode === 'video-document'
-          ? props.labels.videoStartTitle
-          : props.inspirationSelected
-            ? messages.creator.workNavigation.inspirationStash
-            : props.labels.newPrompt}
-      </span>
-      {props.newCreationSurface && props.creationStartMode === 'video-document' && (
-        <Button type="button" variant="ghost" size="sm" onClick={props.onSelectImageMode}>
-          <FileTextIcon className="size-3.5" />
-          {messages.creator.workNavigation.backToInput}
-        </Button>
-      )}
-      {props.creationStartMode === 'image' && (
-        <AlbumSelect
-          options={albumOptions}
-          value={props.targetAlbumId}
-          className="h-8 w-48 max-w-[35vw] text-xs"
-          disabled={props.busy}
-          ariaLabel={messages.albumPicker.newCreation}
-          nullOption={{ kind: 'unassigned', label: messages.albumPicker.unassigned }}
-          onValueChange={props.onChangeAlbum}
-          onRequestCreate={(parentId) =>
-            props.onCreateAlbum(props.albums.find((album) => album.id === parentId) ?? null)
-          }
-        />
-      )}
-    </div>
-  ) : (
-    <div className="flex min-w-0 items-center gap-1.5">
-      <span className="max-w-36 truncate font-semibold">{props.sessionHostSeries?.title}</span>
-      {props.viewingExperimentBranch && (
-        <>
-          <span className="text-muted-foreground">/</span>
-          <span className="max-w-32 truncate text-sm text-foreground-secondary">{props.series?.title}</span>
-        </>
-      )}
-      {props.series && (
-        <Button
-          data-action="rename-series"
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          title={props.labels.rename}
-          aria-label={props.labels.rename}
-          onClick={props.onRenameSeries}
-        >
-          <PencilIcon className="size-3.5" />
-        </Button>
-      )}
-      <VersionSelector header={props} width="wide" />
-    </div>
+  const albumPicker = (
+    <AlbumSelect
+      options={albumOptions}
+      value={props.targetAlbumId}
+      className="h-8 w-48 max-w-[35vw] text-xs"
+      disabled={props.busy}
+      ariaLabel={messages.albumPicker.newCreation}
+      nullOption={{ kind: 'unassigned', label: messages.albumPicker.unassigned }}
+      onValueChange={props.onChangeAlbum}
+      onRequestCreate={(parentId) => props.onCreateAlbum(props.albums.find((album) => album.id === parentId) ?? null)}
+    />
   );
+  const startAction = props.startAction ? (
+    <div className="flex min-w-0 items-center gap-2">
+      {props.startAction}
+      {props.newCreationSurface && isDocumentCreationStartMode(props.creationStartMode) && albumPicker}
+    </div>
+  ) : undefined;
+  const main =
+    startAction ??
+    (props.derived ? (
+      derivedHeader(props, props.derived, labels)
+    ) : props.creationMode === 'new' ? (
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="truncate font-semibold">
+          {props.creationStartMode === 'video-document'
+            ? props.labels.videoStartTitle
+            : props.inspirationSelected
+              ? messages.creator.workNavigation.inspirationStash
+              : props.labels.newPrompt}
+        </span>
+        {props.newCreationSurface && props.creationStartMode === 'video-document' && (
+          <Button type="button" variant="ghost" size="sm" onClick={props.onSelectImageMode}>
+            <FileTextIcon className="size-3.5" />
+            {messages.creator.workNavigation.backToInput}
+          </Button>
+        )}
+        {props.creationStartMode === 'image' && albumPicker}
+      </div>
+    ) : (
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span className="max-w-36 truncate font-semibold">{props.sessionHostSeries?.title}</span>
+        {props.viewingExperimentBranch && (
+          <>
+            <span className="text-muted-foreground">/</span>
+            <span className="max-w-32 truncate text-sm text-foreground-secondary">{props.series?.title}</span>
+          </>
+        )}
+        {props.series && (
+          <Button
+            data-action="rename-series"
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            title={props.labels.rename}
+            aria-label={props.labels.rename}
+            onClick={props.onRenameSeries}
+          >
+            <PencilIcon className="size-3.5" />
+          </Button>
+        )}
+        <VersionSelector header={props} width="wide" />
+      </div>
+    ));
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b px-4">
       {main}
       <div className="flex shrink-0 items-center gap-1.5">
-        <CreationWorkNavigation />
+        {!props.startAction && <CreationWorkNavigation />}
         {props.desktopNoteAction}
         <Button
           type="button"

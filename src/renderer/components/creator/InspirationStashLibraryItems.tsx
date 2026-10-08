@@ -9,6 +9,7 @@ import {
   type CreationTreeChildBranch,
 } from '@/renderer/components/creator/CreationLibraryTreeItem';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
+import { ItemActions, itemActionButtonClassName } from '@/renderer/components/ui/item-actions';
 import { Button } from '@/renderer/components/ui/button';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/components/ui/context-menu';
@@ -46,10 +47,6 @@ interface ItemProps extends CreationLibraryTreePlacementProps, CreationLibraryTr
   onArchive(stashId: string): void;
   onDelete(stashId: string): void;
 }
-
-const rowControlsClassName =
-  'pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100';
-const rowControlClassName = 'pointer-events-auto shrink-0 rounded-md bg-overlay/95 shadow-overlay';
 
 function stashActions({
   stash,
@@ -138,13 +135,13 @@ export function InspirationStashLibraryRow(props: ItemProps) {
     </span>
   );
   const controls = (
-    <div data-result-library-row-control data-item-drag-ignore className={rowControlsClassName}>
+    <ItemActions data-result-library-row-control>
       <ActionMenuButton
         actions={actions}
         label={`${labels.moreActions}: ${stash.displayTitle || labels.category}`}
-        className={cn(rowControlClassName, 'size-6')}
+        className={itemActionButtonClassName}
       />
-    </div>
+    </ItemActions>
   );
   const row =
     !contained || branchTopology ? (
@@ -180,7 +177,7 @@ export function InspirationStashLibraryRow(props: ItemProps) {
         role="group"
         aria-label={`${labels.category}: ${stash.displayTitle || labels.category}`}
         className={cn(
-          'group relative flex min-w-0 cursor-pointer items-center gap-2 rounded-lg transition-colors hover:bg-hover',
+          'group/item relative flex min-w-0 cursor-pointer items-center gap-2 rounded-sm transition-colors hover:bg-hover',
           contained ? 'h-10 pl-8 pr-1' : 'h-12 px-2',
           selected && 'bg-selected text-selected-foreground hover:bg-selected',
           batchSelection?.checked && !selected && 'bg-hover-strong',

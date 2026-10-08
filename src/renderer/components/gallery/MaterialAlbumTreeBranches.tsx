@@ -32,6 +32,7 @@ import {
   type TreeBranchItemTopology,
 } from '@/renderer/components/albums/treeConnectionGeometry';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
+import { ItemActions, itemActionButtonClassName } from '@/renderer/components/ui/item-actions';
 import { Button } from '@/renderer/components/ui/button';
 import { Collapsible } from '@/renderer/components/ui/collapsible';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/components/ui/context-menu';
@@ -223,9 +224,9 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
       data-material-count={album.materialCount}
       data-active={activeAlbumId === album.id ? 'true' : 'false'}
       className={cn(
-        'group relative flex h-[4.25rem] min-w-0 items-center gap-1 rounded-lg px-1 transition-colors hover:bg-hover',
+        'group/item relative flex h-[4.25rem] min-w-0 items-center gap-1 rounded-sm px-1 transition-colors hover:bg-hover',
         activeAlbumId === album.id &&
-          'text-selected-foreground before:absolute before:inset-y-0.5 before:left-3 before:right-0 before:rounded-xl before:bg-selected hover:bg-transparent',
+          'text-selected-foreground before:pointer-events-none before:absolute before:inset-y-0.5 before:left-3 before:right-0 before:rounded-sm before:bg-selected hover:bg-transparent',
         dropAlbumId === album.id && 'bg-accent ring-1 ring-inset ring-ring',
       )}
       onDragEnter={(event) => {
@@ -313,7 +314,7 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
         className={cn(
           'z-10 h-14 min-w-0 flex-1 justify-start border-transparent px-1 font-normal focus-visible:border-transparent focus-visible:ring-inset focus-visible:ring-offset-0',
           activeAlbumId === album.id &&
-            'bg-transparent text-selected-foreground hover:bg-transparent active:bg-transparent focus-visible:bg-transparent after:pointer-events-none after:absolute after:inset-y-4 after:left-0 after:w-0.5 after:bg-current [&>span]:font-semibold',
+            'bg-transparent text-selected-foreground hover:bg-transparent active:bg-transparent focus-visible:bg-transparent [&>span]:font-semibold',
         )}
         {...clickHandlers}
         onKeyDown={(event) => {
@@ -334,11 +335,13 @@ export function MaterialAlbumBranch(props: MaterialAlbumBranchProps) {
           {album.title}
         </span>
       </Button>
-      <ActionMenuButton
-        actions={actions}
-        label={labels.moreActions(album.title)}
-        className="absolute right-1 top-1/2 z-30 size-6 -translate-y-1/2 bg-overlay/95 opacity-0 shadow-overlay group-hover:opacity-100 group-focus-within:opacity-100"
-      />
+      <ItemActions>
+        <ActionMenuButton
+          actions={actions}
+          label={labels.moreActions(album.title)}
+          className={itemActionButtonClassName}
+        />
+      </ItemActions>
     </div>
   );
 
@@ -439,9 +442,9 @@ export function CreationAlbumBranch(props: CreationAlbumBranchProps) {
       data-material-count={album.materialCount}
       data-active={activeAlbumId === album.id ? 'true' : 'false'}
       className={cn(
-        'group relative flex h-[4.25rem] min-w-0 items-center gap-1 rounded-lg px-1 transition-colors hover:bg-hover',
+        'group/item relative flex h-[4.25rem] min-w-0 items-center gap-1 rounded-sm px-1 transition-colors hover:bg-hover',
         activeAlbumId === album.id &&
-          'text-selected-foreground before:absolute before:inset-y-0.5 before:left-3 before:right-0 before:rounded-xl before:bg-selected hover:bg-transparent',
+          'text-selected-foreground before:pointer-events-none before:absolute before:inset-y-0.5 before:left-3 before:right-0 before:rounded-sm before:bg-selected hover:bg-transparent',
         dropAlbumId === album.id && 'bg-accent ring-1 ring-inset ring-ring',
       )}
       onDragEnter={(event) => {
@@ -497,7 +500,7 @@ export function CreationAlbumBranch(props: CreationAlbumBranchProps) {
         className={cn(
           'z-10 h-14 min-w-0 flex-1 justify-start border-transparent px-1 font-normal focus-visible:border-transparent focus-visible:ring-inset focus-visible:ring-offset-0',
           activeAlbumId === album.id &&
-            'bg-transparent text-selected-foreground hover:bg-transparent active:bg-transparent focus-visible:bg-transparent after:pointer-events-none after:absolute after:inset-y-4 after:left-0 after:w-0.5 after:bg-current [&>span]:font-semibold',
+            'bg-transparent text-selected-foreground hover:bg-transparent active:bg-transparent focus-visible:bg-transparent [&>span]:font-semibold',
         )}
         {...clickHandlers}
         onKeyDown={(event) => {
@@ -518,11 +521,13 @@ export function CreationAlbumBranch(props: CreationAlbumBranchProps) {
           {album.title}
         </span>
       </Button>
-      <ActionMenuButton
-        actions={actions}
-        label={labels.moreActions(album.title)}
-        className="absolute right-1 top-1/2 z-30 size-6 -translate-y-1/2 bg-overlay/95 opacity-0 shadow-overlay group-hover:opacity-100 group-focus-within:opacity-100"
-      />
+      <ItemActions>
+        <ActionMenuButton
+          actions={actions}
+          label={labels.moreActions(album.title)}
+          className={itemActionButtonClassName}
+        />
+      </ItemActions>
     </div>
   );
 

@@ -105,6 +105,9 @@ export class AutoSaveCoordinator {
     return this.#enqueue(async () => {
       try {
         if (this.#options.whenSettled && !(await this.#options.whenSettled())) return false;
+        // A structural commit may be waiting for this queue to drain. Do not
+        // turn its unchanged, pre-commit editor into a new manual-save draft.
+        if (this.#session.getSnapshot().externalArticle) return false;
         if (mode === 'manual') this.noteChange(this.#options.readSnapshot(), cause);
       } catch (reason) {
         this.#session.failPreparation(mode, errorMessage(reason));
@@ -128,6 +131,7 @@ export class AutoSaveCoordinator {
     return this.#enqueue(async () => {
       if (this.#disposed) return null;
       if (this.#options.whenSettled && !(await this.#options.whenSettled())) return null;
+      if (this.#session.getSnapshot().externalArticle) return null;
       this.noteChange(this.#options.readSnapshot());
       if (!(await this.#flush('manual'))) return null;
       return operation();

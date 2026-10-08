@@ -9,6 +9,7 @@ import { PETAL_WINDOW_SIZES } from '@/shared/contracts/petal-hub';
 import { PetalCaption } from '@/renderer/features/desktop-petals/PetalCaption';
 import { PetalPreview } from '@/renderer/features/desktop-petals/PetalPreview';
 import { PETAL_SHAPE_LAYOUT } from '@/renderer/features/desktop-petals/petal-shape-layout';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
 export function CollapsedPetal({
   color,
@@ -34,6 +35,8 @@ export function CollapsedPetal({
   menuPreview: boolean;
 }) {
   const { dragging, handlers } = usePetalDrag(menuPreview ? undefined : onOpen, onError);
+  const temporaryLabel = useI18n().messages.desktopPetals.temporary.title;
+  const accessibleLabel = menuActions.temporary ? `${temporaryLabel} · ${label}` : label;
   return (
     <PetalNoteContextMenu {...menuActions} disabled={menuActions.disabled || dragging}>
       <PetalPreview
@@ -53,14 +56,14 @@ export function CollapsedPetal({
             width: PETAL_WINDOW_SIZES.collapsed.width - 10,
             height: PETAL_WINDOW_SIZES.collapsed.height - 10,
           }}
-          aria-label={signal ? `${label} · ${signal.label}` : label}
+          aria-label={signal ? `${accessibleLabel} · ${signal.label}` : accessibleLabel}
           {...(!menuPreview ? handlers : {})}
         >
           <span
             className="pointer-events-none relative block shrink-0"
             style={{ width: PETAL_SHAPE_LAYOUT.width, height: PETAL_SHAPE_LAYOUT.height }}
           >
-            <PetalShape icon={icon} signal={signal} />
+            <PetalShape icon={icon} signal={signal} temporary={menuActions.temporary} />
           </span>
           <PetalCaption title={title} visible={titlesVisible} />
         </Button>

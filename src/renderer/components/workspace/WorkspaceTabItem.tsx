@@ -1,4 +1,12 @@
-import { ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, LoaderCircleIcon, XIcon } from 'lucide-react';
+import {
+  ArrowDownIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ArrowUpIcon,
+  LoaderCircleIcon,
+  XIcon,
+  type LucideIcon,
+} from 'lucide-react';
 import type { KeyboardEvent, RefCallback } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import {
@@ -11,10 +19,13 @@ import {
 import { commandAriaShortcut, commandShortcutText } from '@/renderer/commands/app-shortcuts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/renderer/components/ui/tooltip';
+import { WorkspaceTabShape } from '@/renderer/components/workspace/WorkspaceTabShape';
 
 interface Props {
   id: string;
   title: string;
+  icon?: LucideIcon;
   index: number;
   count: number;
   selected: boolean;
@@ -33,11 +44,24 @@ interface Props {
   onMove(): void;
 }
 
+function tabContainerClassName({ selected, pending, compact }: Pick<Props, 'selected' | 'pending' | 'compact'>) {
+  return cn(
+    'group/tab relative flex h-8 min-w-30 max-w-55 shrink items-center text-muted-foreground transition-colors duration-fast motion-reduce:transition-none',
+    selected ? 'z-10 text-foreground' : 'rounded-t-sm hover:bg-hover hover:text-foreground-secondary',
+    compact && 'rounded-sm border border-transparent',
+    selected && compact && 'border-border border-b-background bg-background hover:bg-background',
+    pending && 'bg-hover text-foreground-secondary',
+    compact === 'horizontal' && 'h-7 min-w-0 max-w-40 shrink-0 rounded-sm',
+    compact === 'vertical' && 'h-auto w-7 min-w-0 max-w-none shrink-0 rounded-sm',
+  );
+}
+
 export function WorkspaceTabItem(props: Props) {
   const { messages } = useI18n();
   const labels = messages.app.workspace;
   const { id, title, selected, active, pending, compact } = props;
   const vertical = compact === 'vertical';
+  const Icon = props.icon;
   const platform = window.desktopApi.appPlatform;
   const closeShortcut = selected && active ? commandShortcutText('workspace.close-tab', platform) : '';
   return (
@@ -45,15 +69,7 @@ export function WorkspaceTabItem(props: Props) {
       <ContextMenuTrigger asChild>
         <div
           role="presentation"
-          className={cn(
-            'group/tab flex h-7 min-w-28 max-w-56 shrink items-center rounded-sm text-muted-foreground transition-colors duration-fast hover:bg-background',
-            selected && active && 'bg-surface text-foreground ring-1 ring-inset ring-border-strong hover:bg-surface',
-            selected && !active && 'bg-surface/60 text-foreground-secondary hover:bg-surface/60',
-            pending && 'bg-hover text-foreground-secondary',
-            !selected && 'hover:text-foreground-secondary',
-            compact === 'horizontal' && 'min-w-0 max-w-40 shrink-0',
-            vertical && 'h-auto w-7 min-w-0 max-w-none shrink-0',
-          )}
+          className={tabContainerClassName(props)}
           onMouseDown={(event) => {
             if (event.button === 1) event.preventDefault();
           }}
@@ -64,55 +80,65 @@ export function WorkspaceTabItem(props: Props) {
             }
           }}
         >
-          <Button
-            ref={props.register}
-            type="button"
-            variant="ghost"
-            size="sm"
-            role="tab"
-            id={`workspace-tab-${id}`}
-            tabIndex={props.focusable ? 0 : -1}
-            aria-selected={selected}
-            aria-controls={selected ? `workspace-panel-${id}` : undefined}
-            aria-busy={pending}
-            title={title}
-            className={cn(
-              'h-full min-w-0 flex-1 shrink justify-start rounded-sm px-3 py-0 text-left text-xs font-medium text-inherit hover:bg-transparent active:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0',
-              selected && 'font-semibold',
-              compact === 'horizontal' && 'px-2',
-              vertical && 'h-auto min-h-12 w-full flex-none justify-center px-1 py-2',
-            )}
-            onFocus={props.onFocus}
-            onClick={props.onActivate}
-            onKeyDown={props.onKeyDown}
-          >
-            <span className={cn('truncate', vertical && 'max-h-36 [writing-mode:vertical-rl]')}>{title}</span>
-          </Button>
-          {!compact &&
-            (pending ? (
-              <span className="mr-0.5 flex size-6 shrink-0 items-center justify-center text-muted-foreground">
-                <LoaderCircleIcon className="size-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-              </span>
-            ) : (
+          {!compact && <WorkspaceTabShape selected={selected} />}
+          <Tooltip>
+            <TooltipTrigger asChild>
               <Button
+                ref={props.register}
                 type="button"
                 variant="ghost"
-                size="icon-sm"
-                tabIndex={selected ? 0 : -1}
+                size="sm"
+                role="tab"
+                id={`workspace-tab-${id}`}
+                tabIndex={props.focusable ? 0 : -1}
+                aria-selected={selected}
+                aria-controls={selected ? `workspace-panel-${id}` : undefined}
+                aria-busy={pending}
                 className={cn(
-                  'mr-0.5 size-6 shrink-0 rounded-sm text-muted-foreground transition-opacity duration-fast hover:bg-hover-strong hover:text-foreground',
-                  selected ? 'opacity-100' : 'opacity-0 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100',
+                  'relative z-10 h-full min-w-0 flex-1 shrink justify-start gap-2 rounded-sm px-3 py-0 text-left text-sm text-inherit hover:bg-transparent active:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0',
+                  active ? (selected ? 'font-semibold' : 'font-medium') : 'font-normal',
+                  !compact && 'scroll-ms-2 scroll-me-9',
+                  compact === 'horizontal' && 'px-2',
+                  vertical && 'h-auto min-h-12 w-full flex-none justify-center px-1 py-2',
                 )}
-                aria-label={`${labels.closeTab}: ${title}`}
-                aria-keyshortcuts={
-                  selected && active ? commandAriaShortcut('workspace.close-tab', platform) : undefined
-                }
-                title={[labels.closeTab, closeShortcut].filter(Boolean).join(' · ')}
-                onClick={props.onClose}
+                onFocus={props.onFocus}
+                onClick={props.onActivate}
+                onKeyDown={props.onKeyDown}
               >
-                <XIcon className="size-3.5" />
+                {!compact &&
+                  (pending ? (
+                    <LoaderCircleIcon
+                      className="size-3.5 shrink-0 animate-spin motion-reduce:animate-none"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    Icon && <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+                  ))}
+                <span className={cn('truncate', vertical && 'max-h-36 [writing-mode:vertical-rl]')}>{title}</span>
               </Button>
-            ))}
+            </TooltipTrigger>
+            <TooltipContent className="max-w-80 break-words">{title}</TooltipContent>
+          </Tooltip>
+          {!compact && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              tabIndex={selected ? 0 : -1}
+              className={cn(
+                'relative z-10 mr-0.5 size-6 shrink-0 rounded-sm text-muted-foreground transition-opacity duration-fast motion-reduce:transition-none hover:bg-hover-strong hover:text-foreground',
+                selected
+                  ? 'opacity-100'
+                  : 'pointer-events-none opacity-0 group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 group-focus-within/tab:pointer-events-auto group-focus-within/tab:opacity-100 group-data-[state=open]/tab:pointer-events-auto group-data-[state=open]/tab:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100',
+              )}
+              aria-label={`${labels.closeTab}: ${title}`}
+              aria-keyshortcuts={selected && active ? commandAriaShortcut('workspace.close-tab', platform) : undefined}
+              title={[labels.closeTab, closeShortcut].filter(Boolean).join(' · ')}
+              onClick={props.onClose}
+            >
+              <XIcon className="size-3.5" />
+            </Button>
+          )}
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>

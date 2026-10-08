@@ -85,10 +85,11 @@ import * as articleDeliverySchema from '@/main/database/extensions/article-deliv
 import * as assistantRunSchema from '@/main/database/assistant/assistant-run-schema';
 import { backgroundIssueAcknowledgementShape } from '@/main/database/background-issues/background-issue-schema';
 import { ensureWorkTracking, workTrackingShape } from '@/main/database/creations/work-tracking-schema';
+import retireReadingSql from '@/main/database/sql/v03-revision-010-retire-reading.sql?raw';
 
 export const DATABASE_PRODUCT_BASELINE = '0.3.0';
-// AIY 0.5.6 advances released revision 8 with creation author identities and registry.
-export const DATABASE_SCHEMA_REVISION = 9;
+// AIY 0.5.9 retires reader recovery data without rewriting released migrations.
+export const DATABASE_SCHEMA_REVISION = 10;
 
 const canonicalTitleColumns = [
   { table: 'albums', columns: ['title', 'title_locale'] },
@@ -579,7 +580,7 @@ const preVideoDocumentAiActivityRequiredTables = revision2RequiredTables.filter(
 );
 // Released revisions and the current release candidate only. Discarded development
 // revisions are not migration sources.
-const supportedSchemaRevisions = [2, 3, 4, 5, 6, 7, 8, DATABASE_SCHEMA_REVISION] as const;
+const supportedSchemaRevisions = [2, 3, 4, 5, 6, 7, 8, 9, DATABASE_SCHEMA_REVISION] as const;
 type SupportedSchemaRevision = (typeof supportedSchemaRevisions)[number];
 
 function isCurrentSchemaShapeBeforePromptSourceImport(db: Database.Database) {
@@ -758,6 +759,7 @@ function migrateReleasedDatabase(db: Database.Database) {
       ensureFollowingReferenceSchema(db);
       creationOrganization.ensureCreationOrganizationSchema(db);
       ensureCreationAuthorSchema(db);
+      if (storedRevision < 10) db.exec(retireReadingSql);
       if (!isCurrentSchemaShape(db)) unsupportedSchema();
 
       if (storedRevision !== DATABASE_SCHEMA_REVISION) {

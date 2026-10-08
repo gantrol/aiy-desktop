@@ -45,6 +45,7 @@ import { createPortal } from 'react-dom';
 
 interface Props {
   outlineMode?: boolean;
+  createOutlinePage?: ComponentProps<typeof VideoDocumentWysiwygEditor>['createOutlinePage'];
   outlinePreferenceKey?: string;
   attachmentsPanel: ReactNode;
   attachmentCount: number;
@@ -343,16 +344,19 @@ function useArticleElementProjection(initial: readonly ArticleElementPlacementIn
 function articleEditorLayoutAction(
   left: ArticleEditorSidebarController,
   right: ArticleEditorSidebarController,
-  root: HTMLElement | null,
-  splitOpen: boolean,
-  onSplitToggle: () => void,
+  props: Pick<Props, 'layoutToolbarRoot' | 'splitOpen' | 'onSplitToggle'>,
 ) {
+  const { layoutToolbarRoot: root, splitOpen, onSplitToggle } = props;
   if (!root) return null;
   return createPortal(
     <ArticleHeaderViewMenu
       splitOpen={splitOpen}
       wide={left.preferences.documentWidth === 'WIDE'}
-      onSplitToggle={onSplitToggle}
+      onSplitToggle={() => {
+        left.setMaximized(false);
+        right.setMaximized(false);
+        onSplitToggle();
+      }}
       onWidthToggle={() => {
         const width = left.preferences.documentWidth === 'WIDE' ? 'STANDARD' : 'WIDE';
         left.setDocumentWidth(width);
@@ -363,14 +367,32 @@ function articleEditorLayoutAction(
   );
 }
 
+function closeArticlePane(
+  side: 'LEFT' | 'RIGHT',
+  left: ArticleEditorSidebarController,
+  right: ArticleEditorSidebarController,
+  primary: { current: HTMLDivElement | null },
+  secondary: { current: HTMLDivElement | null },
+  onClose: () => void,
+) {
+  if (side === 'RIGHT') return onClose();
+  const scrollTop = secondary.current?.scrollTop ?? 0;
+  left.replacePreferences(right.preferences);
+  left.setMaximized(right.maximized);
+  onClose();
+  window.requestAnimationFrame(() => {
+    if (primary.current) primary.current.scrollTop = scrollTop;
+  });
+}
+
 export function ArticleEditorDocument(props: Props) {
   const commentCopy = useI18n().messages.contentEditor.comment;
   const { attachmentsPanel, attachmentCount, articleId, editorSessionIdentity, comments, commentMutationBusy } = props;
-  const { initialElements, layoutToolbarRoot, onTitleChange } = props;
+  const { initialElements, onTitleChange } = props;
   const { generatingIllustration = false, initialMarkdown, labels, media, mediaBindings, splitOpen } = props;
   const { title, titleMetadata, zh, onEditorHandleChange, onCommentCreate, onCommentDelete } = props;
   const { onCommentReply, onCommentStatusChange, onCommentUpdateBody, onIllustrationRequest } = props;
-  const { onImageImportError, onImageImported, onMarkdownChange, onPersist, onSplitClose, onSplitToggle } = props;
+  const { onImageImportError, onImageImported, onMarkdownChange, onPersist, onSplitClose } = props;
   const editorMediaBindings = useMemo(() => editorBindings(mediaBindings), [mediaBindings]);
   const editorSession = useArticleEditorSession();
   const initialOutlineItems = useMemo(() => videoDocumentArticleHeadings(initialMarkdown), [initialMarkdown]);
@@ -506,19 +528,6 @@ export function ArticleEditorDocument(props: Props) {
     setHoveredCommentRect(commentId ? (editorHandleRef.current?.getArticleCommentAnchorRect(commentId) ?? null) : null);
   }
 
-  function closePane(side: 'LEFT' | 'RIGHT') {
-    if (side === 'RIGHT') {
-      onSplitClose();
-      return;
-    }
-    const survivingScrollTop = secondaryScrollRootRef.current?.scrollTop ?? 0;
-    leftSidebar.replacePreferences(rightSidebar.preferences);
-    onSplitClose();
-    window.requestAnimationFrame(() => {
-      if (scrollRootRef.current) scrollRootRef.current.scrollTop = survivingScrollTop;
-    });
-  }
-
   const commentsOpen = leftSidebar.panelOpen('COMMENTS') || (splitOpen && rightSidebar.panelOpen('COMMENTS'));
 
   const articleElementControls: VideoDocumentArticleElementControls = {
@@ -545,9 +554,10 @@ export function ArticleEditorDocument(props: Props) {
       data-content-source={JSON.stringify({ kind: 'ARTICLE', id: articleId })}
       className="relative flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      {articleEditorLayoutAction(leftSidebar, rightSidebar, layoutToolbarRoot, splitOpen, onSplitToggle)}
+      {articleEditorLayoutAction(leftSidebar, rightSidebar, props)}
       <ArticleEditorDocumentPanes
         outlineMode={props.outlineMode}
+        createOutlinePage={props.createOutlinePage}
         outlinePreferenceKey={props.outlinePreferenceKey}
         attachmentsPanel={attachmentsPanel}
         attachmentCount={attachmentCount}
@@ -585,7 +595,9 @@ export function ArticleEditorDocument(props: Props) {
         onArticleElementsChange={handleElementsChange}
         onArticleLocationChange={(location) => scheduleLocation(location, false)}
         onArticleNavigationLocation={navigateArticleLocation}
-        onClose={closePane}
+        onClose={(side) =>
+          closeArticlePane(side, leftSidebar, rightSidebar, scrollRootRef, secondaryScrollRootRef, onSplitClose)
+        }
         onCommentHover={hoverComment}
         onCommentSelect={revealComment}
         onCommentStatusChange={onCommentStatusChange}

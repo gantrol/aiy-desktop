@@ -1,4 +1,4 @@
-import { FolderIcon } from 'lucide-react';
+import { RectangleVerticalIcon } from 'lucide-react';
 import type { AssetDto } from '@/shared/contracts';
 import { cn } from '@/renderer/lib/utils';
 import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
@@ -27,7 +27,7 @@ export function MaterialAlbumPreview({ asset, className, iconClassName }: Props)
           errorClassName="absolute left-1/2 top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2"
         />
       ) : (
-        <FolderIcon className={cn('size-3.5', iconClassName)} />
+        <RectangleVerticalIcon className={cn('size-3.5', iconClassName)} />
       )}
     </span>
   );

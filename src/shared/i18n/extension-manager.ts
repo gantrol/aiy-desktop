@@ -18,6 +18,7 @@ export const extensionManagerMessages = {
     other: 'Other',
   },
   names: {
+    screenReadDesktopRegion: 'Read the desktop around the pointer for the visible flower magnifier',
     accountReadCodexRateLimits: 'Read Codex quota information',
     accountReadOpenAiCosts: 'Read OpenAI organization cost reports',
     browserHandoffWeibo: 'Hand a selected draft to the Weibo browser workflow',

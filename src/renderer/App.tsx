@@ -10,6 +10,7 @@ import {
 import { AppRuntimeProviders } from '@/renderer/components/app/AppRuntimeProviders';
 import { AppSidebar } from '@/renderer/components/app/AppSidebar';
 import { AppTitleBar } from '@/renderer/components/app/AppTitleBar';
+import { SettingsDialog } from '@/renderer/components/app/SettingsDialog';
 import {
   initialAppLocation,
   type AppLocation,
@@ -37,7 +38,7 @@ import {
   type WorkspaceRuntimeGroup,
 } from '@/renderer/components/workspace/workspace-state';
 import { generationReEditLocation } from '@/renderer/features/ai-center/generationReEditNavigation';
-import { useAppUpdateNotification } from '@/renderer/features/app-update/useAppUpdateNotification';
+import { AppUpdateSidebarButton } from '@/renderer/features/app-update/AppUpdateSidebarButton';
 import { loadCreatorScreen } from '@/renderer/features/creator/lazyCreatorScreen';
 import { useDesktopPetalSources } from '@/renderer/features/desktop-petals/use-desktop-petal-sources';
 import { useCodexImagesNavigation } from '@/renderer/features/extensions/codexImageNavigation';
@@ -61,6 +62,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 export function App() {
   const { locale, messages } = useI18n();
   const [data, setData] = useState<BootstrapDto | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const workspace = useWorkspaceController(data);
   useDesktopPetalSources(data?.spaceId ?? null, setData, workspace.openTab);
   const workspaceState = workspace.state;
@@ -146,7 +148,6 @@ export function App() {
     return () => window.removeEventListener('pagehide', flushBeforePageExit);
   }, [flushWorkspace]);
   const { messages: notifications, notify, dismiss: dismissNotification } = useToastQueue();
-  useAppUpdateNotification({ updateSurfaceVisible: visibleViews.includes('about'), notify });
   const codexImagesNavigation = useCodexImagesNavigation(data?.extensions, view, replaceLocation);
   const transitionShowcaseNavigation = useTransitionShowcaseNavigation(data?.extensions, view, replaceLocation);
 
@@ -160,6 +161,7 @@ export function App() {
       publishLanguagePluginState(next.extensions ?? [], { reloadLanguagePacks: false });
       setData(next);
       setDataRevision((current) => current + 1);
+      setDocumentNavigationRevision((current) => current + 1);
       return true;
     } catch (reason) {
       if (refreshRevision.current !== revision || localeRef.current !== requestedLocale) return false;
@@ -495,10 +497,9 @@ export function App() {
   });
 
   const startNewCreationFromContext = useCallback(() => {
-    const albumId =
-      view === 'creator' ? workspaceAlbums.creatorAlbumId : view === 'gallery' ? workspaceAlbums.galleryAlbumId : null;
+    const albumId = view === 'gallery' ? workspaceAlbums.galleryAlbumId : null;
     startCreation(albumId);
-  }, [startCreation, view, workspaceAlbums.creatorAlbumId, workspaceAlbums.galleryAlbumId]);
+  }, [startCreation, view, workspaceAlbums.galleryAlbumId]);
 
   const {
     requestTabExit,
@@ -547,7 +548,11 @@ export function App() {
   }
 
   function changeView(nextView: AppView) {
-    if (['me', 'settings', 'about'].includes(nextView) && activeTabId) {
+    if (nextView === 'settings') {
+      setSettingsOpen(true);
+      return;
+    }
+    if (['me', 'about'].includes(nextView) && activeTabId) {
       const existing = workspaceState?.groups
         .flatMap((group) => group.tabs.map((tab) => ({ group, tab })))
         .find(({ tab }) => workspaceTabLocation(tab).view === nextView);
@@ -632,7 +637,6 @@ export function App() {
         dataRevision={dataRevision}
         locale={locale}
         defaultPromptLocale={defaultPromptLocale}
-        onPromptLocaleChange={setDefaultPromptLocale}
         comparisonFullWindow={comparisonFullWindow}
         creationPromptFullWindow={creationPromptFullWindow}
         loadingPreviews={loadingPreviews}
@@ -700,6 +704,36 @@ export function App() {
           onAuthorChange={updateCreationAuthor}
         >
           <main className={`grid h-full min-h-0 overflow-hidden bg-background ${gridRows}`}>
+            {data && workspaceReady && !spaceTransition && (settingsOpen || view === 'settings') && (
+              <SettingsDialog
+                key={data.spaceId}
+                promptLocale={defaultPromptLocale}
+                onPromptLocaleChange={setDefaultPromptLocale}
+                onClose={() => {
+                  setSettingsOpen(false);
+                  // Previously saved settings tabs still need a dismissible destination.
+                  if (view === 'settings') {
+                    if (canGoBack) goBack();
+                    else replaceLocation({ ...initialAppLocation, view: 'creator' });
+                  }
+                }}
+                onAiFeatureModelsOpen={() => {
+                  if (activeTabId)
+                    openWorkspaceLocation(
+                      activeTabId,
+                      {
+                        ...location,
+                        view: 'aiCenter',
+                        aiCenter: { tab: 'capabilities', recordId: null },
+                      },
+                      'tab',
+                    );
+                }}
+                onContentManagementOpen={() => {
+                  if (activeTabId) openWorkspaceLocation(activeTabId, 'contentManagement', 'tab');
+                }}
+              />
+            )}
             {!appFullWindow && (
               <AppTitleBar
                 workerStatus={data?.modelWorker ?? null}
@@ -743,6 +777,7 @@ export function App() {
                   codexImagesVisible={codexImagesNavigation.visible}
                   transitionShowcaseVisible={transitionShowcaseNavigation.visible}
                   view={view}
+                  updateControl={<AppUpdateSidebarButton />}
                   onViewChange={changeView}
                   notify={notify}
                 />

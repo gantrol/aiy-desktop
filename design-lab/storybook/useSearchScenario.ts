@@ -41,16 +41,14 @@ export function useSearchScenario(scenario: SearchScenario) {
     key: JSON.stringify([query, type, recovered]),
     result: loading || failed ? null : searchResult(matching),
     busy: loading,
+    loadingMore: false,
     error: failed ? 'DEMO_LOOKUP_FAILED' : '',
     paused,
-    page: 1,
-    hasPrevious: false,
-    canPage: false,
+    hasMore: false,
     refresh: () => setRecovered(true),
     pause: () => setPaused((value) => !value),
-    // The fixed three-item sample has no further pages; pagination is not rendered.
+    // The fixed three-item sample has no further results to append.
     more: () => {},
-    previous: () => {},
   };
   const selection: ContentSearchViewProps['selection'] = {
     selected,

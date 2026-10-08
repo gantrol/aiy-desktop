@@ -8,7 +8,7 @@ type SelectionKind =
 export type CreatorActiveSelection = { kind: SelectionKind; id: string } | { kind: 'WORKBENCH' };
 
 function selectionFromLocation(location: CreatorLocation): CreatorActiveSelection {
-  if (location.surface === 'inspiration-stash') return { kind: 'INSPIRATION_STASH', id: location.stashId };
+  if (location.surface === 'inspiration-stash') return { kind: 'ARTICLE', id: location.stashId };
   if (location.surface === 'image-breakdown') return { kind: 'IMAGE_BREAKDOWN', id: location.breakdownId };
   if (location.surface === 'evaluation-suite') return { kind: 'EVALUATION_SUITE', id: location.suiteId };
   if (location.surface === 'social-post') return { kind: 'SOCIAL_POST', id: location.postId };

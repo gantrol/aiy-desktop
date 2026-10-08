@@ -1,5 +1,13 @@
 import type { IpcRenderer } from 'electron';
 import type { DesktopApi } from '@/shared/contracts';
+import { creationDraftDtoSchema } from '@/shared/contracts/creation-draft';
+import {
+  articleInputHistoryQuerySchema,
+  articleInputHistoryPageSchema,
+  articleInputRecordQuerySchema,
+  articleInputRecordSchema,
+  articleInputContinueQuerySchema,
+} from '@/shared/contracts/article-input-history';
 import {
   articleCheckInvocationResultSchema,
   articleCheckInputSchema,
@@ -33,6 +41,9 @@ type ArticlePreloadApi = Pick<
   DesktopApi,
   | 'articleSave'
   | 'articleRevisionHistory'
+  | 'articleInputHistory'
+  | 'articleInputRecord'
+  | 'articleInputContinue'
   | 'articleRevisionGet'
   | 'articleOpen'
   | 'articleRevisionSave'
@@ -51,6 +62,18 @@ type ArticlePreloadApi = Pick<
 
 export function createArticlePreloadApi(ipcRenderer: IpcRenderer): ArticlePreloadApi {
   return {
+    articleInputHistory: async (input) =>
+      articleInputHistoryPageSchema.parse(
+        await ipcRenderer.invoke('article:input-history', articleInputHistoryQuerySchema.parse(input)),
+      ),
+    articleInputRecord: async (input) =>
+      articleInputRecordSchema.parse(
+        await ipcRenderer.invoke('article:input-record', articleInputRecordQuerySchema.parse(input)),
+      ),
+    articleInputContinue: async (input) =>
+      creationDraftDtoSchema.parse(
+        await ipcRenderer.invoke('article:input-continue', articleInputContinueQuerySchema.parse(input)),
+      ),
     articleSave: (input) => ipcRenderer.invoke('article:save', articleSaveInputSchema.parse(input)),
     articleOpen: async (input) =>
       articleOpenResultSchema.parse(await ipcRenderer.invoke('article:open', articleOpenInputSchema.parse(input))),

@@ -8,7 +8,11 @@ import {
 import { contentLibraryApi } from '@/renderer/features/content-editor/contentLibraryClient';
 import type { useWorkspaceController } from '@/renderer/components/workspace/useWorkspaceController';
 import { workspaceLocationKey } from '@/renderer/components/workspace/workspace-location';
-import { activeLocation, activeNavigationEntry } from '@/renderer/components/workspace/workspace-state';
+import {
+  activeLocation,
+  activeNavigationEntry,
+  type WorkspaceRuntimeTab,
+} from '@/renderer/components/workspace/workspace-state';
 import { useArticleEditorSessions } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 import { liveReferenceLocation } from '@/renderer/features/content-editor/liveReferenceLocation';
 import {
@@ -16,6 +20,27 @@ import {
   mergeCreatedArticle,
   type ArticleCreated,
 } from '@/renderer/features/content-editor/articleCreated';
+
+function validateReferenceOrigin(
+  request: ReferenceNavigationRequest,
+  source: WorkspaceRuntimeTab,
+  spaceId: string,
+  activeTabId: string | undefined,
+) {
+  if (!request.isCurrent()) throw new Error('REFERENCE_TARGET_CHANGED');
+  const origin = request.committedOrigin;
+  if (!origin) return;
+  const location = activeLocation(source);
+  if (
+    origin.spaceId !== spaceId ||
+    origin.navigationEntryId !== activeNavigationEntry(source).id ||
+    source.id !== activeTabId ||
+    location.view !== 'creator' ||
+    location.creator.surface !== 'article' ||
+    location.creator.articleId !== request.originArticleId
+  )
+    throw new Error('REFERENCE_TARGET_CHANGED');
+}
 
 export function useReferenceLocationNavigation(
   data: Pick<BootstrapDto, 'spaceId'> | null,
@@ -45,6 +70,7 @@ export function useReferenceLocationNavigation(
       if (!spaceId || !source || !tabId) throw new Error('REFERENCE_NAVIGATION_UNSUPPORTED');
       const sourceKey = workspaceLocationKey(activeLocation(source.tab));
       const sourceEntryId = activeNavigationEntry(source.tab).id;
+      validateReferenceOrigin(request, source.tab, spaceId, activeTabId);
       context.flushers.current.get(tabId)?.();
       const session = ['ARTICLE', 'INSPIRATION_STASH'].includes(request.target.source.kind)
         ? context.sessions?.find(spaceId, request.target.source.id)

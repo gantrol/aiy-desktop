@@ -1,3 +1,4 @@
+import { codexTurnBelongsToThread } from '@/main/extensions/codex-usage-investigator/turn-identity';
 import type { SessionReadResult } from '@/main/extensions/codex-usage-investigator/session-reader';
 import { addCodexOutputTurn, codexTurnDuration, emptyCodexOutputThroughput } from '@/shared/codex-output-throughput';
 
@@ -23,15 +24,20 @@ export function summarizeThreadThroughput(result: SessionReadResult, createdAtMs
       unassignedUsage = true;
       continue;
     }
-    if (timestamp < Date.parse(turn.startedAt) || (turn.terminalAt && timestamp > Date.parse(turn.terminalAt))) {
+    if (
+      !turn.startedAt ||
+      timestamp < Date.parse(turn.startedAt) ||
+      (turn.terminalAt && timestamp > Date.parse(turn.terminalAt))
+    ) {
       invalidTurns.add(turn.turnId);
     }
     outputs.set(turn.turnId, (outputs.get(turn.turnId) ?? 0) + event.usage.outputTokens);
   }
   const seen = new Set<string>();
   for (const turn of result.chatTurns) {
-    const startedMs = Date.parse(turn.startedAt);
-    if ((createdAtMs !== null && startedMs < createdAtMs) || seen.has(turn.turnId)) continue;
+    const startedMs = turn.startedAt === null ? null : Date.parse(turn.startedAt);
+    const terminalMs = turn.terminalAt === null ? null : Date.parse(turn.terminalAt);
+    if (seen.has(turn.turnId) || !codexTurnBelongsToThread(turn.turnId, startedMs, terminalMs, createdAtMs)) continue;
     seen.add(turn.turnId);
     addCodexOutputTurn(summary, {
       terminalState: turn.terminalState,

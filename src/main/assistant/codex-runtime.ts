@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { documentWritingCandidate } from '@/shared/document-writing';
 import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { lstat as lstatAsync } from 'node:fs/promises';
 import path from 'node:path';
@@ -521,7 +522,15 @@ export function assertCodexOutputSchemaNode(value: unknown, path: string): void 
   }
 }
 
-export function assistSchemaForMode(mode: CodexAssistInput['mode']) {
+export function assistSchemaForMode(mode: CodexAssistInput['mode'], documentWriting = false) {
+  if (documentWriting) {
+    return {
+      type: 'object',
+      additionalProperties: false,
+      properties: { assistantMessage: { type: 'string' } },
+      required: ['assistantMessage'],
+    };
+  }
   const schema =
     mode === 'optimize'
       ? {
@@ -627,6 +636,12 @@ export function normalizeValidatedAssistResult(
   input: CodexAssistInput,
   result: ReturnType<typeof decodeCodexAssistOutputFile>,
 ) {
+  if (input.documentTask) {
+    const markdown = result.assistantMessage?.trim();
+    if (!markdown) throw new Error('DOCUMENT_WRITING_EMPTY_RESULT');
+    documentWritingCandidate(markdown);
+    return { assistantMessage: markdown, sharedConstraints: [], assumptions: [], directions: [] };
+  }
   const rawPromptDraft = 'promptDraft' in result ? result.promptDraft : undefined;
   const validatedFields =
     'promptDraft' in result

@@ -1,4 +1,5 @@
 export const EXTENSION_PERMISSION = {
+  screenReadDesktopRegion: 'screen.read:desktop-region',
   accountReadCodexRateLimits: 'account.read:codex-rate-limits',
   accountReadOpenAiCosts: 'account.read:openai-costs',
   browserHandoffWeibo: 'browser.handoff:weibo',

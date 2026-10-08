@@ -2,6 +2,7 @@ import type { Locale, VideoDocumentDto, VideoDocumentGenerationRunDto } from '@/
 import type { VideoDocumentStartConfiguration } from '@/renderer/features/video-documents/VideoDocumentStartDialog';
 
 interface Options {
+  creationSource?: import('@/shared/contracts/creation-source').CreationSource;
   configuration: VideoDocumentStartConfiguration;
   locale: Locale;
   importFailedLabel: string;
@@ -12,6 +13,7 @@ interface Options {
 
 export async function createVideoDocument({
   configuration,
+  creationSource,
   locale,
   importFailedLabel,
   transcriptRequiredLabel,
@@ -44,6 +46,7 @@ export async function createVideoDocument({
     title: configuration.title,
     titleLocale: locale,
     albumId: configuration.albumId,
+    creationSource,
   });
   if (!configuration.generateArticle) return document;
 

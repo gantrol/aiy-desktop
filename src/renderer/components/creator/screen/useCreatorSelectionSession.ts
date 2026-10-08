@@ -3,7 +3,7 @@ import type { BootstrapDto, Locale } from '@/shared/contracts';
 import { buildAlbumTreeIndex } from '@/renderer/components/albums/albumTree';
 import type { CreatorLocation } from '@/renderer/components/app/app-navigation';
 import { useCreationLibraryFilter } from '@/renderer/components/creator/creationLibraryFilter';
-import { readCreationStartMode } from '@/renderer/components/creator/creationStartMode';
+import { creationStartModeForDraft } from '@/renderer/components/creator/creationStartMode';
 import { buildCreationSessionProjection } from '@/renderer/components/creator/creationSessionProjection';
 import { creatorInitialSession } from '@/renderer/components/creator/screen/creatorInitialSession';
 import { useCreatorContentSelection } from '@/renderer/components/creator/screen/useCreatorContentSelection';
@@ -29,17 +29,13 @@ export function useCreatorSelectionSession({ data, locale, location }: Options) 
   const contentSelection = useCreatorContentSelection(data, location);
   const initial = creatorInitialSession(data, location, creationSessions);
   const [creationMode, setCreationMode] = useState(initial.initialCreationMode);
-  const [creationStartMode, setCreationStartMode] = useState(readCreationStartMode);
+  const [creationStartMode, setCreationStartMode] = useState(() => creationStartModeForDraft(initial.initialDraft));
+  const [writingInstruction, setWritingInstruction] = useState(() => initial.initialDraft?.writingInstruction ?? '');
   const [videoCreationRequest, setVideoCreationRequest] = useState<VideoDocumentCreationRequest | null>(null);
   const [creationLibraryFilter, setCreationLibraryFilter] = useCreationLibraryFilter();
   const [seriesId, setSeriesId] = useState<string | null>(initial.initialSeriesId);
   const [targetAlbumId, setTargetAlbumId] = useState<string | null>(
-    location.surface === 'new-creation'
-      ? location.albumId
-      : (initial.initialInspirationItemAlbumId ??
-          initial.initialInspirationStashAlbumId ??
-          initial.initialDraft?.targetAlbumId ??
-          null),
+    location.surface === 'new-creation' ? location.albumId : (initial.initialDraft?.targetAlbumId ?? null),
   );
   const targetAlbum = data.albums.find((album) => album.id === targetAlbumId) ?? null;
   const albumTree = useMemo(() => buildAlbumTreeIndex(data.albums), [data.albums]);
@@ -99,6 +95,7 @@ export function useCreatorSelectionSession({ data, locale, location }: Options) 
     setCreationLibraryFilter,
     setCreationMode,
     setCreationStartMode,
+    setWritingInstruction,
     setInputSessionRevision,
     setSeriesId,
     setTargetAlbumId,
@@ -108,6 +105,7 @@ export function useCreatorSelectionSession({ data, locale, location }: Options) 
     targetAlbumId,
     targetAlbumUnavailable,
     videoCreationRequest,
+    writingInstruction,
     workbenchProjection,
   };
 }

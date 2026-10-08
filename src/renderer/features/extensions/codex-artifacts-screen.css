@@ -1,0 +1,42 @@
+/* Share the real sidebar column with the tab bar without moving either DOM subtree. */
+[data-codex-artifacts-screen] > [data-slot='tabs-content'] > [data-codex-history-search-configuration],
+[data-codex-artifacts-screen] > [data-slot='tabs-content'] > [data-codex-history-search-configuration] > div,
+[data-codex-artifacts-screen] > [data-slot='tabs-content'] > [data-codex-usage-investigator-configuration],
+[data-codex-artifacts-screen]
+  > [data-slot='tabs-content']
+  > [data-codex-usage-investigator-configuration]
+  > [data-workbench-layout='codex-usage'] {
+  display: grid;
+  grid-area: 1 / 1 / 3 / 3;
+  grid-template-columns: subgrid;
+  grid-template-rows: subgrid;
+}
+
+[data-codex-artifacts-screen] [data-codex-history-search-configuration] > div > [data-workbench-navigation-pane],
+[data-codex-artifacts-screen] [data-workbench-layout='codex-usage'] > [data-workbench-collection] {
+  grid-area: 1 / 1 / 3 / 2;
+}
+
+[data-codex-artifacts-screen] [data-codex-history-search-configuration] > div > div:last-child,
+[data-codex-artifacts-screen] [data-workbench-layout='codex-usage'] > [data-workbench-collection] + div,
+[data-codex-artifacts-screen] > [data-slot='tabs-content'] > [data-extension-feature-error] {
+  grid-area: 2 / 2 / 3 / 3;
+}
+
+/* Compact navigation occupies the content row; the shared tabs and restore control stay reachable. */
+[data-codex-artifacts-screen]:has(
+  > [data-state='active'] [data-workbench-navigation-pane][data-mode='compact'],
+  > [data-state='active'] [data-workbench-layout='codex-usage'][data-layout='compact']
+) {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+[data-codex-artifacts-screen]
+  [data-codex-history-search-configuration]
+  > div
+  > [data-workbench-navigation-pane][data-mode='compact'],
+[data-codex-artifacts-screen]
+  [data-workbench-layout='codex-usage'][data-layout='compact']
+  > [data-workbench-collection] {
+  grid-area: 2 / 2 / 3 / 3;
+}

@@ -9,6 +9,7 @@ export interface ReferenceNavigationRequest {
   target: ReferenceTarget;
   referenceId?: string;
   sourceTabId: string;
+  committedOrigin?: { spaceId: string; navigationEntryId: string };
   originArticleId?: string;
   originBlockId?: string;
   placement: WorkspaceReferencePlacement;

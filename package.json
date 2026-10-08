@@ -1,10 +1,10 @@
 {
   "name": "@aiy/desktop",
-  "version": "0.5.7",
+  "version": "0.5.9",
   "private": true,
   "description": "AI × DIY: a local-first creative workspace where you create and AI helps",
   "author": "AIY",
-  "license": "PolyForm-Noncommercial-1.0.0",
+  "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
     "url": "https://github.com/gantrol/aiy-desktop.git"
@@ -116,6 +116,7 @@
     "remark-parse": "^11.0.0",
     "saxes": "6.0.0",
     "tailwind-merge": "3.6.0",
+    "twitter-text": "3.1.0",
     "ulid": "3.0.2",
     "unified": "^11.0.5",
     "use-sync-external-store": "1.6.0",
@@ -137,6 +138,7 @@
     "@types/node": "24.10.0",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
+    "@types/twitter-text": "3.1.10",
     "@vitejs/plugin-react": "5.2.0",
     "@vitest/coverage-v8": "4.1.10",
     "electron": "43.7.4",

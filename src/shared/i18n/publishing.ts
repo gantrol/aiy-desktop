@@ -2,6 +2,7 @@ export const publishingMessages = {
   mask: {
     edit: 'Edit channel draft',
     title: 'Title',
+    titleInBody: 'Include title in body',
     cover: 'Cover',
     inherit: 'Follow manuscript',
     custom: 'Customize',

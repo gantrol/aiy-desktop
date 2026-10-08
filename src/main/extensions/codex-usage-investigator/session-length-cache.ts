@@ -97,9 +97,9 @@ export function* chatTurnPages(database: Database.Database): Iterable<ReadonlyAr
       source.thread_created_ms AS threadCreatedMs
      FROM usage_chat_turns AS chat_turn
      INNER JOIN usage_source_files AS source ON source.session_id = chat_turn.source_session_id
-     WHERE (chat_turn.turn_id, chat_turn.started_ms, source.thread_created_ms, chat_turn.source_session_id)
+     WHERE (chat_turn.turn_id, COALESCE(chat_turn.started_ms, chat_turn.terminal_ms, 0), source.thread_created_ms, chat_turn.source_session_id)
        > (?, ?, ?, ?)
-     ORDER BY chat_turn.turn_id ASC, chat_turn.started_ms ASC, source.thread_created_ms ASC,
+     ORDER BY chat_turn.turn_id ASC, COALESCE(chat_turn.started_ms, chat_turn.terminal_ms, 0) ASC, source.thread_created_ms ASC,
        chat_turn.source_session_id ASC
      LIMIT ?`,
   );
@@ -121,7 +121,7 @@ export function* chatTurnPages(database: Database.Database): Iterable<ReadonlyAr
     yield rows;
     const last = rows.at(-1);
     if (!last || rows.length < CODEX_USAGE_EVENT_PAGE_SIZE) return;
-    cursor = last;
+    cursor = { ...last, startedMs: last.startedMs ?? last.terminalMs ?? 0 };
   }
 }
 

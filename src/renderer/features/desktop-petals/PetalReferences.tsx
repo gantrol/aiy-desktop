@@ -106,10 +106,12 @@ export function PetalReferenceAdd({
             <Upload />
             {copy.references.upload}
           </DropdownMenuItem>
-          <DropdownMenuItem disabled={note.references.length >= 100} onSelect={() => setOpen(true)}>
-            <Images />
-            {copy.references.library}
-          </DropdownMenuItem>
+          {!note.temporary && (
+            <DropdownMenuItem disabled={note.references.length >= 100} onSelect={() => setOpen(true)}>
+              <Images />
+              {copy.references.library}
+            </DropdownMenuItem>
+          )}
           {onAddFiles && (
             <DropdownMenuItem disabled={(note.files?.length ?? 0) >= 100} onSelect={onAddFiles}>
               <Paperclip />

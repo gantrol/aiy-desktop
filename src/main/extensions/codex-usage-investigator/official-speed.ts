@@ -2,11 +2,7 @@ import { lstat, open, realpath } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import type {
-  CodexUsageInvestigation,
-  CodexUsageOfficialSpeed,
-  CodexUsageTurnSpeedAnalysis,
-} from '@/shared/contracts/codex-usage';
+import type { CodexUsageOfficialSpeed, CodexUsageTurnSpeedAnalysis } from '@/shared/contracts/codex-usage';
 import { normalizeCodexUsageModel } from '@/main/extensions/codex-usage-investigator/pricing';
 
 const MAX_CATALOG_BYTES = 8 * 1024 * 1024;
@@ -125,15 +121,5 @@ export function applyCodexOfficialSpeeds(
       ...comparison,
       officialSpeed: resolveOfficialSpeed(comparison.model, catalog, comparison.officialSpeed),
     })),
-  };
-}
-
-export async function refreshCodexOfficialSpeeds(
-  investigation: CodexUsageInvestigation,
-): Promise<CodexUsageInvestigation> {
-  if (!investigation.turnSpeed?.comparisons.length) return investigation;
-  return {
-    ...investigation,
-    turnSpeed: applyCodexOfficialSpeeds(investigation.turnSpeed, await readCodexOfficialSpeedCatalog()),
   };
 }

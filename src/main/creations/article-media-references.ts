@@ -114,10 +114,9 @@ export function rewriteArticleImageReferences(
   const replacements: Array<{ start: number; end: number; value: string }> = [];
   for (const node of articleImageNodes(markdown)) {
     if (!node.url) continue;
-    const assetId = internalAssetId(node.url);
-    const destination = assetId
-      ? destinationsByAssetId.get(assetId)
-      : destinationsByPath.get(normalizedArticleMediaPath(node.url));
+    const bound = destinationsByPath.get(normalizedArticleMediaPath(node.url));
+    const assetId = bound ? null : internalAssetId(node.url);
+    const destination = bound ?? (assetId ? destinationsByAssetId.get(assetId) : undefined);
     if (!destination) {
       if (assetId || node.url.startsWith('aiy-media:')) throw new Error('An article image reference is unavailable');
       continue;

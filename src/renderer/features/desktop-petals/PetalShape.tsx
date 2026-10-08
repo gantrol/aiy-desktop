@@ -15,10 +15,12 @@ export function PetalShape({
   icon,
   signal,
   compact = false,
+  temporary = false,
 }: {
   icon?: PetalIcon;
   signal?: PetalSignal;
   compact?: boolean;
+  temporary?: boolean;
 }) {
   const id = useId();
   return (
@@ -44,7 +46,13 @@ export function PetalShape({
             <path d={outline} stroke={signal.color} strokeWidth="9" opacity=".36" filter={`url(#${id}-halo)`} />
           </g>
         )}
-        <path d={outline} fill="var(--petal-surface)" stroke="var(--petal-edge)" />
+        <path
+          d={outline}
+          fill="var(--petal-surface)"
+          stroke="var(--petal-edge)"
+          strokeDasharray={temporary ? '5 4' : undefined}
+          strokeWidth={temporary ? 2 : 1}
+        />
         <path d={outline} fill={`url(#${id})`} />
         <path
           d="M23 63C24 40 34 27 46 30C54 32 57 37 64 32C80 20 97 30 100 52"

@@ -22,6 +22,10 @@ export function useCreationAlbumDraft({ request, tree, busy, reveal, onConfirm, 
   const labels = useI18n().messages.creator.album;
   const revealed = useRef<string | null>(null);
   const revealDraft = useStableCallback(reveal);
+  const onMenuCloseAutoFocus = useStableCallback((event: Event) => {
+    // The new name field owns focus; restoring the menu trigger would submit it on blur.
+    if (request) event.preventDefault();
+  });
   const cancelUnavailableParent = useStableCallback(() => {
     onCancel();
     notify(labels.albumParentUnavailable);
@@ -68,5 +72,5 @@ export function useCreationAlbumDraft({ request, tree, busy, reveal, onConfirm, 
     );
   }
 
-  return { path, belongsTo, renderAt };
+  return { path, belongsTo, renderAt, onMenuCloseAutoFocus };
 }

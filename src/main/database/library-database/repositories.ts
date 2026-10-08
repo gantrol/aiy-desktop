@@ -53,6 +53,7 @@ import { RecycleBinRepository } from '@/main/database/recovery/recycle-bin-repos
 import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
 import { EvaluationSuiteRepository } from '@/main/database/creations/evaluation-suite-repository';
 import { BackgroundIssueRepository } from '@/main/database/background-issues/background-issue-repository';
+import { ArticleInputHistoryRepository } from '@/main/database/creations/article-input-history';
 
 export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
   const dictionary = new DictionaryRepository(storage);
@@ -78,6 +79,7 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
   const aiProcesses = new AiProcessRepository(storage);
   const creations = new CreationRepository(storage);
   const assistantRuns = new AssistantRunRepository(storage, creations);
+  const articleInputs = new ArticleInputHistoryRepository(storage, intake);
   const backgroundIssues = new BackgroundIssueRepository(storage);
   const directionExperimentTasks = new DirectionExperimentTaskRepository(storage, backgroundIssues);
   const styleExplorations = new StyleExplorationRepository(storage, directionExperimentTasks);
@@ -125,6 +127,7 @@ export function createLibraryDatabaseRepositories(storage: LibraryStorage) {
     articleChecks,
     articleDeliveryJobs,
     articles,
+    articleInputs,
     codexImageDiscoveries,
     contentPacks,
     contentLifecycle,

@@ -53,7 +53,7 @@ export const codexModelComparisonMessages = {
   scope:
     'Own turns in user chats, grouped by the model used in that turn and its service mode. Inherited history and subagents are excluded. Ended turns do not establish task acceptance or equal task difficulty.',
   pricing:
-    'API equivalents use each response’s date and Standard rate, including long-context pricing. Credits use the recorded service mode. Only fully priced turns enter each cost distribution; missing prices remain unavailable.',
+    'Costs retain the report’s pricing basis. New reports price API equivalents and Credits separately by each request’s model, date and service mode, including known long-context API rates. Only fully priced turns enter each cost distribution; missing prices remain unavailable.',
   coverage: 'Usable samples',
   overall: {
     title: 'Normalized overall comparison',

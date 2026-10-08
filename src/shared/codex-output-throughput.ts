@@ -13,9 +13,9 @@ export function emptyCodexOutputThroughput(partial = false): CodexOutputThroughp
   };
 }
 
-export function codexTurnDuration(startedMs: number, terminalMs: number | null, durationMs: number | null) {
-  if (terminalMs !== null && terminalMs < startedMs) return null;
-  const duration = durationMs ?? (terminalMs === null ? null : terminalMs - startedMs);
+export function codexTurnDuration(startedMs: number | null, terminalMs: number | null, durationMs: number | null) {
+  if (terminalMs === null || (startedMs !== null && terminalMs < startedMs)) return null;
+  const duration = durationMs ?? (startedMs === null ? null : terminalMs - startedMs);
   return duration !== null && Number.isSafeInteger(duration) && duration >= 0 ? duration : null;
 }
 

@@ -30,8 +30,10 @@ interface Options {
   clearSavedInspiration(): void;
   clearSelection(): void;
   commit(location: CreatorLocation, mode?: NavigationMode): void;
+  creationDraftId: string | null;
   data: Pick<BootstrapDto, 'articles' | 'derivedVisualPrompts' | 'series' | 'socialPosts'>;
   editorDerivedVisual: DerivedVisualDto | null;
+  hydratedVersionId: string | null;
   locale: Locale;
   notify(message: string): void;
   onComparisonFullWindowChange(open: boolean): void;
@@ -78,6 +80,7 @@ export function useDerivedVisualWorkspaceNavigation(options: Options) {
           : options.data.socialPosts?.some((post) => post.id === visual.socialPostId))
       )
         throw new Error(labels.parentUnavailable);
+      const sameInput = visual?.id === options.editorDerivedVisual?.id && options.creationDraftId === draft.id;
       options.onComparisonFullWindowChange(false);
       if (!options.preserveParentSelection) options.clearSelection();
       if (visual?.articleId) options.selectArticle(visual.articleId);
@@ -91,9 +94,11 @@ export function useDerivedVisualWorkspaceNavigation(options: Options) {
       options.setVersionId('');
       options.setRequestedAssetId(null);
       options.setOutputGalleryOpen(false);
-      options.resetInputs();
-      options.restoreDraft(draft);
-      options.restoreAssistant({ kind: 'DRAFT', id: draft.id });
+      if (!sameInput) {
+        options.resetInputs();
+        options.restoreDraft(draft);
+        options.restoreAssistant({ kind: 'DRAFT', id: draft.id });
+      }
       options.setDismissedDerivedVisualId(null);
       options.setOutputCollapsed(false);
       options.setCompactPanel('output');
@@ -138,7 +143,8 @@ export function useDerivedVisualWorkspaceNavigation(options: Options) {
       if (!targetArticle && !targetPost) {
         throw new Error(labels.parentUnavailable);
       }
-      options.replaceDraftSession(null);
+      const sameInput = options.editorDerivedVisual?.id === visual.id && options.hydratedVersionId === targetVersion.id;
+      if (!sameInput) options.replaceDraftSession(null);
       options.onComparisonFullWindowChange(false);
       if (targetArticle) options.selectArticle(targetArticle.id);
       else if (targetPost) options.selectSocialPost(targetPost.id);
@@ -152,9 +158,13 @@ export function useDerivedVisualWorkspaceNavigation(options: Options) {
       options.setVersionId(targetVersion.id);
       options.setRequestedAssetId(workspace.assetId ?? null);
       options.setOutputGalleryOpen(false);
-      options.setDictionaryScope(emptyCreationDictionaryScope());
-      options.resetInputs();
-      options.restoreVersion(targetVersion);
+      // Candidate navigation and a late resume of this same workspace must not
+      // restore references that the user has already removed from its input.
+      if (!sameInput) {
+        options.setDictionaryScope(emptyCreationDictionaryScope());
+        options.resetInputs();
+        options.restoreVersion(targetVersion);
+      }
       if (workspace.canvasPreset) options.setCanvasPresetKey(workspace.canvasPreset.stableKey);
       if (workspace.prompt) changePrompt(workspace.prompt);
       options.setDismissedDerivedVisualId(null);

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { CheckIcon, Link2Icon } from 'lucide-react';
+import { ArrowLeftIcon, CheckIcon, Link2Icon, PlusIcon } from 'lucide-react';
 import { creationFormIcons } from '@/renderer/components/creator/creationFormIcons';
 import type { BootstrapDto, CreationFormEntityRef } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
@@ -11,15 +11,11 @@ import {
   DropdownMenuTrigger,
 } from '@/renderer/components/ui/dropdown-menu';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { creationFormByEntity } from '@/renderer/components/creator/creationFormEntities';
 import {
-  compareCreationForms,
   creationFormTitle,
-  projectCreationForm,
   type CreationFormProjection,
 } from '@/renderer/components/creator/creationLibraryProjection';
-import { useCreationWorkIndex } from '@/renderer/components/creator/useCreationWorkIndex';
-import { creationWorkTitleSuffixes } from '@/renderer/components/creator/creationWorkTitles';
+import { useCreationWorks } from '@/renderer/components/creator/useCreationWorks';
 
 function WorkLabel({ form, suffix }: { form: CreationFormProjection; suffix?: string }) {
   const labels = useI18n().messages.creator.album;
@@ -48,33 +44,31 @@ export function CreationWorksMenu({
   onSelect,
   notify,
   relationsAction,
+  activeCreationItemId,
+  sourceFormId,
+  onCreateAnother,
 }: {
   data: BootstrapDto;
   activeEntity: CreationFormEntityRef | null;
   onSelect(form: CreationFormProjection): Promise<unknown> | void;
   notify(message: string): void;
   relationsAction?: CreationRelationsAction;
+  activeCreationItemId?: string;
+  sourceFormId?: string;
+  onCreateAnother?(): Promise<unknown>;
 }) {
   const { messages } = useI18n();
   const labels = messages.creator.workNavigation;
   const [pending, setPending] = useState(false);
   const lock = useRef(false);
-  const context = activeEntity ? creationFormByEntity(data.creationItems, activeEntity.kind, activeEntity.id) : null;
-  const index = useCreationWorkIndex(data);
-  const forms = (context?.item.forms ?? [])
-    .filter((form) => form.entity.kind !== 'DERIVED_VISUAL')
-    .sort(compareCreationForms)
-    .map((form) => projectCreationForm(form, index))
-    .filter((form) => form.entity || form.entityRef.kind === 'VIDEO_DOCUMENT');
-  const selectedId = context?.form.entity.kind === 'DERIVED_VISUAL' ? context.form.sourceFormId : context?.form.id;
-  const suffixes = creationWorkTitleSuffixes(
-    forms.map((form) => ({
-      id: form.entityRef.id,
-      title: `${form.role}:${creationFormTitle(form, messages.creator.album)}`,
-    })),
-  );
+  const { context, forms, selectedId, suffixes, source } = useCreationWorks({
+    data,
+    activeEntity,
+    activeCreationItemId,
+    sourceFormId,
+  });
   const hasOtherWorks = forms.some((form) => form.key !== context?.form.id);
-  if (!hasOtherWorks) return <CreationRelationsButton action={relationsAction} />;
+  if (!hasOtherWorks && !onCreateAnother && !source) return <CreationRelationsButton action={relationsAction} />;
   const select = async (form: CreationFormProjection) => {
     if (lock.current || form.key === context?.form.id) return;
     lock.current = true;
@@ -110,6 +104,32 @@ export function CreationWorksMenu({
           aria-label={labels.relatedContent}
           className="max-h-80 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto"
         >
+          {source && (
+            <DropdownMenuItem disabled={pending} onSelect={() => void select(source)}>
+              <ArrowLeftIcon className="size-3.5" />
+              {labels.returnToSource}
+            </DropdownMenuItem>
+          )}
+          {onCreateAnother && (
+            <DropdownMenuItem
+              disabled={pending}
+              onSelect={() => {
+                if (lock.current) return;
+                lock.current = true;
+                setPending(true);
+                void onCreateAnother()
+                  .catch(() => notify(labels.openFailed))
+                  .finally(() => {
+                    lock.current = false;
+                    setPending(false);
+                  });
+              }}
+            >
+              <PlusIcon className="size-3.5" />
+              {labels.createAnother}
+            </DropdownMenuItem>
+          )}
+          {(source || onCreateAnother) && forms.length > 0 && <DropdownMenuSeparator />}
           {forms.map((form) => {
             const title = creationFormTitle(form, messages.creator.album);
             const selected = form.key === selectedId;

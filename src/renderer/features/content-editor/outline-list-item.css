@@ -29,6 +29,19 @@
   box-shadow: inset 2px 0 0 var(--color-ring);
 }
 
+/* A nested item owns its menu; hovering a child must not reveal every ancestor. */
+@media (hover: hover) {
+  .aiy-outline-item:hover:not(:has(.aiy-outline-item:hover)) > [data-outline-control] > [data-outline-item-menu] {
+    pointer-events: auto;
+    opacity: 1;
+  }
+}
+
+.aiy-outline-item[data-outline-editing='true'] > [data-outline-control] > [data-outline-item-menu] {
+  pointer-events: auto;
+  opacity: 1;
+}
+
 .aiy-outline-item[data-outline-drop='before']::before,
 .aiy-outline-item[data-outline-drop='after']::after {
   position: absolute;

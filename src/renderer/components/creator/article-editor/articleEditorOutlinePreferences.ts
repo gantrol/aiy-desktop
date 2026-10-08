@@ -12,12 +12,9 @@ export interface ArticleEditorOutlinePreferences {
   documentWidth: ArticleDocumentWidth;
   outlineExpanded: boolean;
   commentsExpanded: boolean;
-  outlineWidth: number;
-  commentsWidth: number;
-  mediaWidth: number;
 }
 
-export type ArticleEditorSidebarPanel = 'OUTLINE' | 'COMMENTS' | 'MEDIA' | 'FILES';
+export type ArticleEditorSidebarPanel = 'OUTPUTS' | 'OUTLINE' | 'COMMENTS' | 'MEDIA' | 'FILES';
 export type ArticleEditorSidebarSide = 'LEFT' | 'RIGHT';
 export type ArticleEditorPanePreferenceScope = 'PRIMARY' | 'SECONDARY';
 
@@ -34,7 +31,7 @@ const storedPreferencesSchema = z
       .optional()
       .catch(undefined),
     followCursor: z.boolean().optional().catch(undefined),
-    activePanel: z.enum(['OUTLINE', 'COMMENTS', 'MEDIA', 'FILES']).optional().catch(undefined),
+    activePanel: z.enum(['OUTPUTS', 'OUTLINE', 'COMMENTS', 'MEDIA', 'FILES']).optional().catch(undefined),
     side: z.enum(['LEFT', 'RIGHT']).optional().catch(undefined),
     documentWidth: z.enum(['STANDARD', 'WIDE']).optional().catch(undefined),
     outlineExpanded: z.boolean().optional().catch(undefined),
@@ -42,12 +39,12 @@ const storedPreferencesSchema = z
     outlineWidth: z.number().finite().optional().catch(undefined),
     commentsWidth: z.number().finite().optional().catch(undefined),
     mediaWidth: z.number().finite().optional().catch(undefined),
+    outputsWidth: z.number().finite().optional().catch(undefined),
   })
   .passthrough();
 
 export const minimumArticleEditorOutlineWidth = 208;
-export const maximumArticleEditorOutlineWidth = 360;
-export const maximumArticleEditorMediaWidth = 720;
+export const maximumArticleEditorOutlineWidth = 720;
 
 export const defaultArticleEditorOutlinePreferences: ArticleEditorOutlinePreferences = {
   expanded: true,
@@ -59,9 +56,6 @@ export const defaultArticleEditorOutlinePreferences: ArticleEditorOutlinePrefere
   documentWidth: 'STANDARD',
   outlineExpanded: true,
   commentsExpanded: false,
-  outlineWidth: 248,
-  commentsWidth: 296,
-  mediaWidth: 320,
 };
 
 export function clampArticleEditorOutlineWidth(value: number) {
@@ -72,11 +66,19 @@ function normalize(value: unknown): ArticleEditorOutlinePreferences {
   const parsed = storedPreferencesSchema.safeParse(value);
   const stored = parsed.success ? parsed.data : {};
   const expanded = stored.expanded ?? defaultArticleEditorOutlinePreferences.expanded;
-  const width =
-    stored.width === undefined
-      ? defaultArticleEditorOutlinePreferences.width
-      : clampArticleEditorOutlineWidth(stored.width);
   const activePanel = stored.activePanel ?? defaultArticleEditorOutlinePreferences.activePanel;
+  // Read the last active tab's old size once; subsequent saves only store the shared width.
+  const legacyWidth =
+    activePanel === 'OUTPUTS'
+      ? stored.outputsWidth
+      : activePanel === 'OUTLINE'
+        ? stored.outlineWidth
+        : activePanel === 'COMMENTS'
+          ? stored.commentsWidth
+          : stored.mediaWidth;
+  const width = clampArticleEditorOutlineWidth(
+    legacyWidth ?? stored.width ?? defaultArticleEditorOutlinePreferences.width,
+  );
   return {
     expanded,
     width,
@@ -87,23 +89,19 @@ function normalize(value: unknown): ArticleEditorOutlinePreferences {
     documentWidth: stored.documentWidth ?? defaultArticleEditorOutlinePreferences.documentWidth,
     outlineExpanded: stored.outlineExpanded ?? (activePanel === 'OUTLINE' ? expanded : true),
     commentsExpanded: stored.commentsExpanded ?? (activePanel === 'COMMENTS' && expanded),
-    outlineWidth: clampArticleEditorOutlineWidth(stored.outlineWidth ?? (activePanel === 'OUTLINE' ? width : 248)),
-    commentsWidth: clampArticleEditorOutlineWidth(stored.commentsWidth ?? (activePanel === 'COMMENTS' ? width : 296)),
-    mediaWidth: Math.min(
-      maximumArticleEditorMediaWidth,
-      Math.max(minimumArticleEditorOutlineWidth, Math.round(stored.mediaWidth ?? 320)),
-    ),
   };
 }
 
 export function loadArticleEditorOutlinePreferences(
   scope: ArticleEditorPanePreferenceScope = 'PRIMARY',
+  initialPanel: ArticleEditorSidebarPanel = 'OUTLINE',
 ): ArticleEditorOutlinePreferences {
+  const initial = { ...defaultArticleEditorOutlinePreferences, activePanel: initialPanel };
   try {
     const stored = window.localStorage.getItem(storageKeys[scope]);
-    return stored ? normalize(JSON.parse(stored) as unknown) : defaultArticleEditorOutlinePreferences;
+    return stored ? normalize(JSON.parse(stored) as unknown) : initial;
   } catch {
-    return defaultArticleEditorOutlinePreferences;
+    return initial;
   }
 }
 

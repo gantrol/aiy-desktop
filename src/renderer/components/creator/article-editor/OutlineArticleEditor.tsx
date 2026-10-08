@@ -3,7 +3,6 @@ import { Download, ListTree } from 'lucide-react';
 import type { ArticleDto } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
 import { TooltipProvider } from '@/renderer/components/ui/tooltip';
-import { CreationWorkNavigation } from '@/renderer/components/creator/CreationWorkNavigation';
 import { outlineViewPreferenceKey } from '@/renderer/features/content-editor/outlineViewPreferences';
 import { CopyAgentLinkButton } from '@/renderer/features/content-editor/CopyAgentLinkButton';
 import { ContentBacklinksButton } from '@/renderer/features/content-editor/ContentBacklinksButton';
@@ -16,6 +15,7 @@ import {
 import { ArticleSaveStatus } from '@/renderer/components/creator/article-editor/ArticleEditorHeader';
 import { ArticleRevisionHistoryAction } from '@/renderer/components/creator/article-editor/ArticleRevisionHistoryDialog';
 import { ArticleEditorDocument } from '@/renderer/components/creator/article-editor/ArticleEditorDocument';
+import { useArticleOutlinePageCreation } from '@/renderer/components/creator/article-editor/useArticleOutlinePageCreation';
 import type { useArticleComments } from '@/renderer/components/creator/article-editor/useArticleComments';
 import {
   articleEditorSessionConflicted,
@@ -48,6 +48,7 @@ function OutlineArticleWorkspace({
   spaceId,
   articleComments,
   titleMetadata,
+  inputHistoryAction,
   onExport,
   notify,
   zh,
@@ -56,6 +57,7 @@ function OutlineArticleWorkspace({
   spaceId: string;
   articleComments: ReturnType<typeof useArticleComments>;
   titleMetadata?: ReactNode;
+  inputHistoryAction?: ReactNode;
   onExport(): Promise<void>;
   notify(message: string): void;
   zh: boolean;
@@ -64,6 +66,7 @@ function OutlineArticleWorkspace({
   const copy = messages.referenceOutline,
     labels = messages.creator.manuscriptEditor;
   const session = useArticleEditorSession();
+  const createOutlinePage = useArticleOutlinePageCreation();
   const title = useArticleEditorSessionSelector(selectArticleEditorTitle);
   const media = useArticleEditorSessionSelector(selectArticleEditorMedia);
   const bindings = useArticleEditorSessionSelector(selectArticleEditorMediaBindings);
@@ -86,7 +89,7 @@ function OutlineArticleWorkspace({
             saving={saving}
             onRetry={() => void session.retry()}
           />
-          <CreationWorkNavigation />
+          {inputHistoryAction}
           <ContentBacklinksButton spaceId={spaceId} articleId={article.id} beforeOpen={() => session.flush('manual')} />
           <ArticleRevisionHistoryAction spaceId={spaceId} article={article} notify={notify} zh={zh} />
           <Button
@@ -114,6 +117,7 @@ function OutlineArticleWorkspace({
         )}
         <ArticleEditorDocument
           outlineMode
+          createOutlinePage={createOutlinePage}
           outlinePreferenceKey={outlineViewPreferenceKey(spaceId, article.id)}
           articleId={article.id}
           editorSessionIdentity={session.getEditorSessionIdentity()}

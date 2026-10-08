@@ -1,38 +1,31 @@
-import { ChevronDownIcon, type LucideIcon } from 'lucide-react';
 import {
   createContext,
   useCallback,
   useContext,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentProps,
   type ReactNode,
   type RefObject,
 } from 'react';
-import { Button } from '@/renderer/components/ui/button';
 import { Collapsible } from '@/renderer/components/ui/collapsible';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
-import { cn } from '@/renderer/lib/utils';
+import {
+  CreationLibraryBreadcrumb,
+  CREATION_LIBRARY_PATH_HEIGHT,
+  type CreationLibraryPathEntry,
+} from '@/renderer/components/creator/CreationLibraryBreadcrumb';
+import {
+  creationLibraryRailConnection,
+  measureCreationLibraryRails,
+  type CreationLibraryPathConnection,
+} from '@/renderer/components/creator/creationLibraryStickyConnection';
 
-const rowHeight = 28;
-const maximumRows = 4;
-
-interface Branch {
-  id: string;
+interface Branch extends CreationLibraryPathEntry {
   element: HTMLDivElement;
   open: boolean;
-  title: string;
-  icon: LucideIcon;
-  openLabel: string;
-  collapseLabel: string;
-  selected?: boolean;
-  dropTarget?: {
-    active: boolean;
-    handlers: Pick<ComponentProps<'div'>, 'onDragEnter' | 'onDragOver' | 'onDragLeave' | 'onDrop'>;
-  };
-  onOpen(): void;
-  onCollapse(): void;
 }
 
 interface MeasuredBranch {
@@ -40,23 +33,21 @@ interface MeasuredBranch {
   top: number;
   rowBottom: number;
   bottom: number;
-  left: number;
 }
 
-interface PinnedBranch {
-  branch: Branch;
-  left: number;
+interface StickyPath {
+  branches: readonly Branch[];
+  connection: CreationLibraryPathConnection | null;
 }
 
 const BranchContext = createContext<((branch: Branch | null, id: string) => void) | null>(null);
 
-function rowLimit(viewport: HTMLDivElement) {
-  return Math.max(0, Math.min(maximumRows, Math.floor(viewport.clientHeight / (rowHeight * 3))));
+function pathHeight(viewport: HTMLDivElement) {
+  return viewport.clientHeight >= CREATION_LIBRARY_PATH_HEIGHT * 3 ? CREATION_LIBRARY_PATH_HEIGHT : 0;
 }
 
 /** Reserve room for the target's ancestors before revealing a newly selected row. */
 export function creationLibraryStickyInset(viewport: HTMLDivElement, target: HTMLElement) {
-  let count = 0;
   let ancestor = target.parentElement;
   while (ancestor && ancestor !== viewport) {
     if (
@@ -64,10 +55,10 @@ export function creationLibraryStickyInset(viewport: HTMLDivElement, target: HTM
       ancestor.dataset.treeBranchId !== target.dataset.treeNodeId &&
       ancestor.dataset.state === 'open'
     )
-      count++;
+      return pathHeight(viewport);
     ancestor = ancestor.parentElement;
   }
-  return Math.min(count, rowLimit(viewport)) * rowHeight;
+  return 0;
 }
 
 function measureBranches(viewport: HTMLDivElement, branches: Iterable<Branch>): MeasuredBranch[] {
@@ -84,33 +75,31 @@ function measureBranches(viewport: HTMLDivElement, branches: Iterable<Branch>): 
       top: rect.top - bounds.top + viewport.scrollTop,
       rowBottom: row.getBoundingClientRect().bottom - bounds.top + viewport.scrollTop,
       bottom: rect.bottom - bounds.top + viewport.scrollTop,
-      left: Math.max(8, Math.min(rect.left - bounds.left, viewport.clientWidth - 120)),
     });
   }
   return measured.sort((first, second) => first.top - second.top);
 }
 
-function pinnedBranches(viewport: HTMLDivElement, measured: readonly MeasuredBranch[]): PinnedBranch[] {
-  const limit = rowLimit(viewport);
-  if (!limit) return [];
+function pinnedBranches(viewport: HTMLDivElement, measured: readonly MeasuredBranch[]): Branch[] {
+  const height = pathHeight(viewport);
+  if (!height) return [];
+  const cut = viewport.scrollTop + height;
   const path: MeasuredBranch[] = [];
   for (const entry of measured) {
     const last = path.at(-1);
     if (last && !last.branch.element.contains(entry.branch.element)) continue;
-    const top = viewport.scrollTop + Math.min(path.length, limit - 1) * rowHeight;
-    // Wait until the compact replacement covers the source row's remaining area.
-    if (entry.top >= top || entry.rowBottom > top + rowHeight || entry.bottom <= top + rowHeight) continue;
+    // Every ancestor shares one header; retain the full path for the overflow menu.
+    if (entry.top >= viewport.scrollTop || entry.rowBottom > cut || entry.bottom <= cut) continue;
     path.push(entry);
   }
-  // Keep the nearest ancestors when a deep tree would crowd out the content.
-  return path.slice(-limit).map(({ branch, left }) => ({ branch, left }));
+  return path.map(({ branch }) => branch);
 }
 
 function restoreCollapsedBranch(viewport: HTMLDivElement, branch: Branch) {
   const row = branch.element.querySelector<HTMLElement>('[data-tree-node-id]');
   if (!row) return;
   // A shortened path may reveal another ancestor when this entry disappears.
-  // Reserve the new ancestor stack, rather than reusing this entry's old slot.
+  // Reserve one breadcrumb row only when another ancestor remains.
   const inset = creationLibraryStickyInset(viewport, row);
   viewport.scrollTop += row.getBoundingClientRect().top - viewport.getBoundingClientRect().top - inset;
   const focused = document.activeElement?.closest<HTMLElement>('[data-creation-sticky-path-id]');
@@ -121,13 +110,13 @@ function restoreCollapsedBranch(viewport: HTMLDivElement, branch: Branch) {
 
 function useStickyBranches(viewportRef: RefObject<HTMLDivElement | null>) {
   const registry = useRef(new Map<string, Branch>());
-  const pinnedRef = useRef<PinnedBranch[]>([]);
+  const pinnedRef = useRef<StickyPath>({ branches: [], connection: null });
   const refresh = useRef<() => void>(() => {});
-  const [pinned, setPinned] = useState<PinnedBranch[]>([]);
+  const [pinned, setPinned] = useState<StickyPath>(pinnedRef.current);
   const register = useCallback(
     (branch: Branch | null, id: string) => {
       const previous = registry.current.get(id);
-      const index = pinnedRef.current.findIndex((entry) => entry.branch.id === id);
+      const index = pinnedRef.current.branches.findIndex((entry) => entry.id === id);
       if (previous?.open && branch && !branch.open && index >= 0 && viewportRef.current) {
         restoreCollapsedBranch(viewportRef.current, branch);
       }
@@ -144,18 +133,27 @@ function useStickyBranches(viewportRef: RefObject<HTMLDivElement | null>) {
     let frame = 0;
     let dirty = true;
     let measured: MeasuredBranch[] = [];
+    let railOwner: Branch | undefined;
+    let rails: ReturnType<typeof measureCreationLibraryRails> = [];
     const update = () => {
       frame = 0;
       if (dirty) measured = measureBranches(viewport, registry.current.values());
+      const branches = pinnedBranches(viewport, measured);
+      const owner = branches.at(-1);
+      if (dirty || owner !== railOwner) {
+        rails = owner ? measureCreationLibraryRails(owner.element, viewport) : [];
+        railOwner = owner;
+      }
       dirty = false;
-      const next = pinnedBranches(viewport, measured);
-      viewport.style.scrollPaddingTop = `${next.length * rowHeight}px`;
+      const connection = creationLibraryRailConnection(rails, viewport.scrollTop + pathHeight(viewport));
+      viewport.style.scrollPaddingTop = `${branches.length ? pathHeight(viewport) : 0}px`;
       const previous = pinnedRef.current;
-      if (
-        next.length === previous.length &&
-        next.every((entry, index) => entry.branch === previous[index].branch && entry.left === previous[index].left)
-      )
-        return;
+      const sameBranches =
+        branches.length === previous.branches.length &&
+        branches.every((entry, index) => entry === previous.branches[index]);
+      const sameConnection = JSON.stringify(connection) === JSON.stringify(previous.connection);
+      if (sameBranches && sameConnection) return;
+      const next = { branches: sameBranches ? previous.branches : branches, connection };
       pinnedRef.current = next;
       setPinned(next);
     };
@@ -166,16 +164,26 @@ function useStickyBranches(viewportRef: RefObject<HTMLDivElement | null>) {
       dirty = true;
       schedule();
     };
+    const finishRailTransition = (event: TransitionEvent) => {
+      if (
+        (event.propertyName === 'color' || event.propertyName === 'stroke-width') &&
+        event.target instanceof Element &&
+        event.target.closest('.tree-branch-line')
+      )
+        remeasure();
+    };
     refresh.current = remeasure;
     const resize = new ResizeObserver(remeasure);
     resize.observe(viewport);
     if (viewport.firstElementChild) resize.observe(viewport.firstElementChild);
     viewport.addEventListener('scroll', schedule, { passive: true });
+    viewport.addEventListener('transitionend', finishRailTransition);
     remeasure();
     return () => {
       cancelAnimationFrame(frame);
       resize.disconnect();
       viewport.removeEventListener('scroll', schedule);
+      viewport.removeEventListener('transitionend', finishRailTransition);
       viewport.style.removeProperty('scroll-padding-top');
       refresh.current = () => {};
     };
@@ -194,6 +202,18 @@ export function CreationLibraryTreeViewport({
   children: ReactNode;
 }) {
   const { pinned, register } = useStickyBranches(viewportRef);
+  const entries = useMemo(
+    () =>
+      pinned.branches.map((branch) => ({
+        ...branch,
+        onCollapse() {
+          // Focus the surviving source before a menu or an ancestor unmounts.
+          branch.element.querySelector<HTMLButtonElement>('[data-tree-node-id] button')?.focus({ preventScroll: true });
+          branch.onCollapse();
+        },
+      })),
+    [pinned.branches],
+  );
   return (
     <BranchContext.Provider value={register}>
       <div className="relative min-h-0 flex-1">
@@ -204,53 +224,8 @@ export function CreationLibraryTreeViewport({
         >
           {children}
         </ScrollArea>
-        {pinned.length > 0 && (
-          <nav
-            aria-label={label}
-            data-creation-sticky-path
-            className="absolute inset-x-0 top-0 z-40 overflow-hidden border-b border-border/60 bg-surface-sunken pr-2.5"
-          >
-            {pinned.map(({ branch, left }) => {
-              const Icon = branch.icon;
-              return (
-                <div
-                  key={branch.id}
-                  data-creation-sticky-path-id={branch.id}
-                  {...branch.dropTarget?.handlers}
-                  className={cn(
-                    'flex min-w-0 items-center',
-                    branch.selected && 'bg-selected text-selected-foreground',
-                    branch.dropTarget?.active && 'bg-accent ring-1 ring-inset ring-ring',
-                  )}
-                  style={{ height: rowHeight, paddingLeft: left }}
-                >
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="size-7 shrink-0 rounded-sm"
-                    aria-label={`${branch.collapseLabel}: ${branch.title}`}
-                    aria-expanded
-                    onClick={branch.onCollapse}
-                  >
-                    <ChevronDownIcon className="size-3.5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="h-7 min-w-0 flex-1 justify-start gap-1.5 rounded-sm px-1 text-sm font-normal"
-                    aria-label={branch.openLabel}
-                    aria-current={branch.selected ? 'page' : undefined}
-                    title={branch.title}
-                    onClick={branch.onOpen}
-                  >
-                    <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{branch.title}</span>
-                  </Button>
-                </div>
-              );
-            })}
-          </nav>
+        {pinned.branches.length > 0 && (
+          <CreationLibraryBreadcrumb entries={entries} connection={pinned.connection} label={label} />
         )}
       </div>
     </BranchContext.Provider>

@@ -1,8 +1,9 @@
 import { contentSearchSourceKey } from '@/renderer/features/content-search/contentSearchSelection';
-import { ArrowLeftIcon, ArrowRightIcon, RefreshCwIcon, SearchIcon } from 'lucide-react';
+import { LoaderCircleIcon, RefreshCwIcon, SearchIcon } from 'lucide-react';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { Button } from '@/renderer/components/ui/button';
 import { Skeleton } from '@/renderer/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 import { contentLibraryApi } from '@/renderer/features/content-editor/contentLibraryClient';
 import { useContentLookup } from '@/renderer/features/content-search/useContentLookup';
 import { ContentSearchResultRow } from '@/renderer/features/content-search/ContentSearchResultRow';
@@ -40,24 +41,42 @@ export function ContentSearchResultList({
 }: ResultsProps & { search: ReturnType<typeof useContentLookup> }) {
   const copy = useI18n().messages.referenceOutline.lookup;
   const terms = useMemo(() => contentSearchTerms(query), [query]);
-  const { result, busy, error } = search;
+  const { result, busy, error, hasMore, more, loadingMore } = search;
   const inactive = Boolean(disabled || !enabled);
-  const canPage = search.canPage && !error;
   const empty = !busy && !error && result && !result.coverage.pending && !result.items.length;
   const waiting = !error && (!result || (result.coverage.pending > 0 && !result.items.length));
   const scrollRoot = useRef<HTMLDivElement>(null);
-  const pageFocus = useRef(false);
+  const loadMoreSentinel = useRef<HTMLDivElement>(null);
+  const continuationFocus = useRef<number | null>(null);
   useEffect(() => {
     if (scrollRoot.current) scrollRoot.current.scrollTop = 0;
+    continuationFocus.current = null;
   }, [search.key]);
   useEffect(() => {
-    if (!busy && result && pageFocus.current) {
-      pageFocus.current = false;
-      if (document.activeElement === document.body || document.activeElement?.closest('[data-search-pagination]'))
-        scrollRoot.current
-          ?.querySelector<HTMLButtonElement>('[data-search-result]:not(:disabled)')
-          ?.focus({ preventScroll: true });
-    }
+    const root = scrollRoot.current;
+    const sentinel = loadMoreSentinel.current;
+    if (!root || !sentinel || inactive || busy || error || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) more();
+      },
+      { root, rootMargin: '0px 0px 120px 0px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [inactive, busy, error, hasMore, more]);
+  useEffect(() => {
+    const index = continuationFocus.current;
+    if (index === null || busy || !result || result.items.length <= index) return;
+    continuationFocus.current = null;
+    if (
+      document.activeElement !== document.body &&
+      document.activeElement !== loadMoreSentinel.current?.querySelector('button')
+    )
+      return;
+    const target = scrollRoot.current?.querySelectorAll<HTMLButtonElement>('[data-search-result]')[index];
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: 'nearest' });
   }, [busy, result]);
 
   return (
@@ -67,17 +86,26 @@ export function ContentSearchResultList({
         {result && (
           <span className="text-2xs tabular-nums text-muted-foreground">{copy.shown(result.items.length)}</span>
         )}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="-my-1 -mr-2 ml-auto text-muted-foreground"
-          disabled={inactive || busy}
-          aria-label={copy.retry}
-          title={copy.retry}
-          onClick={search.refresh}
-        >
-          <RefreshCwIcon aria-hidden="true" className="size-3.5" />
-        </Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="-my-1 -mr-2 ml-auto text-muted-foreground"
+                disabled={inactive || busy}
+                aria-label={copy.retry}
+                onClick={search.refresh}
+              >
+                <RefreshCwIcon aria-hidden="true" className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{copy.retry}</p>
+              {result && <p>{copy.progress(result.coverage.ready, result.coverage.total)}</p>}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
       {error && (
         <p role="alert" className="px-4 py-3 text-sm text-destructive">
@@ -152,39 +180,32 @@ export function ContentSearchResultList({
             </span>
           </div>
         )}
+        {(hasMore || loadingMore) && (
+          <div ref={loadMoreSentinel} className="flex min-h-1 shrink-0 justify-center" role="listitem">
+            {loadingMore && (
+              <span role="status" className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                <LoaderCircleIcon aria-hidden="true" className="size-3 animate-spin motion-reduce:animate-none" />
+                {copy.loadingMore}
+              </span>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={inactive}
+              aria-disabled={busy}
+              className={error ? undefined : 'sr-only focus:not-sr-only'}
+              onClick={(event) => {
+                if (busy) return;
+                if (document.activeElement === event.currentTarget)
+                  continuationFocus.current = result?.items.length ?? 0;
+                more();
+              }}
+            >
+              {error ? copy.retryMore : copy.loadMore}
+            </Button>
+          </div>
+        )}
       </div>
-      {canPage && (
-        <div
-          data-search-pagination
-          className="flex shrink-0 items-center justify-between gap-2 border-t px-3 py-2 text-xs"
-        >
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={inactive || busy || !search.hasPrevious}
-            onClick={() => {
-              pageFocus.current = true;
-              search.previous();
-            }}
-          >
-            <ArrowLeftIcon aria-hidden="true" className="size-3.5" />
-            {copy.previous}
-          </Button>
-          <span className="text-muted-foreground tabular-nums">{copy.page(search.page)}</span>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={inactive || busy || !result || result.nextOffset === null}
-            onClick={() => {
-              pageFocus.current = true;
-              search.more();
-            }}
-          >
-            {copy.more}
-            <ArrowRightIcon aria-hidden="true" className="size-3.5" />
-          </Button>
-        </div>
-      )}
       <ContentSearchStatus
         result={result}
         busy={busy}

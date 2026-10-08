@@ -15,6 +15,7 @@ import {
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
   LEGACY_CODEX_EXTENSION_IDS,
   NATURAL_WATERMARK_EXTENSION_ID,
+  SCREEN_MAGNIFIER_EXTENSION_ID,
   OPENAI_IMAGE_API_EXTENSION_ID,
   type ExternalImageApiExtensionId,
 } from '@/shared/extension-ids';
@@ -55,6 +56,7 @@ interface ExtensionRegistryOptions {
 const externalImageApiExtensionIds = new Set<string>(EXTERNAL_IMAGE_API_EXTENSION_IDS);
 const legacyCodexExtensionIds = new Set<string>(LEGACY_CODEX_EXTENSION_IDS);
 const disabledByDefaultExtensionIds = new Set<string>([
+  SCREEN_MAGNIFIER_EXTENSION_ID,
   ...EXTERNAL_IMAGE_API_EXTENSION_IDS,
   CPA_IMAGE_API_EXTENSION_ID,
   NATURAL_WATERMARK_EXTENSION_ID,

@@ -16,14 +16,14 @@ export function createWorkspaceLoadingBoundaries(
   // boundaries keep editor loading from replacing its visible directory.
   const screen = (screenView: AppView) => (children: ReactNode) => (
     <WorkspaceLoadingProvider previews={previews} variant={loadingVariants[screenView]}>
-      <WorkspaceDetailLoadingBoundary>{children}</WorkspaceDetailLoadingBoundary>
+      <WorkspaceDetailLoadingBoundary preserveWorkspaceLayout>{children}</WorkspaceDetailLoadingBoundary>
     </WorkspaceLoadingProvider>
   );
   return {
     creator: screen('creator'),
     documents: (children) => (
       <WorkspaceLoadingProvider previews={previews} variant={loadingVariants.documents}>
-        <WorkspaceDetailLoadingBoundary>{children}</WorkspaceDetailLoadingBoundary>
+        <WorkspaceDetailLoadingBoundary preserveWorkspaceLayout>{children}</WorkspaceDetailLoadingBoundary>
       </WorkspaceLoadingProvider>
     ),
     dictionary: screen('dictionary'),

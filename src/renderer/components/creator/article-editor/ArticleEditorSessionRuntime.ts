@@ -58,6 +58,7 @@ export interface ArticleEditorSessionRuntime {
   readonly documentViews: ContentDocumentViews;
   readonly recovery: RecoveryStatus;
   readonly recoveryUpdatedAt: number | null;
+  readonly recoveryDraft: ArticleEditorRecoveredDraft | null;
   capturePersistedArticle(): ArticleDto;
   captureSnapshot(): ArticleContentInput;
   getEditorSessionIdentity(): string;
@@ -73,6 +74,7 @@ export interface ArticleEditorSessionRuntime {
   subscribeAcknowledged(listener: (article: ArticleDto, request: ArticleRevisionSaveInput) => void): () => void;
   receiveArticle(article: ArticleDto): void;
   receiveTransferredArticle(article: ArticleDto): void;
+  mutateStructure<T extends { source: ArticleDto }>(operation: (article: ArticleDto) => Promise<T>): Promise<T | null>;
   acceptExternalArticle(): Promise<boolean>;
   mutateComments<T extends { comments: ArticleCommentDto[] }>(
     operation: (article: ArticleDto) => Promise<T>,
@@ -274,8 +276,8 @@ class ArticleSession implements ArticleEditorSessionRuntime {
     if (this.#disposed) return;
     this.#recoveryStatus = result.kind;
     this.#recoveryUpdatedAt = result.kind === 'none' ? null : result.updatedAt;
-    this.#recoveredDraft = result.kind === 'restored' || result.kind === 'resumed' ? result.draft : null;
-    if (this.#recoveredDraft) this.#loadArticle(article, this.#recoveredDraft);
+    this.#recoveredDraft = result.kind === 'none' ? null : result.draft;
+    if (result.kind === 'restored' || result.kind === 'resumed') this.#loadArticle(article, result.draft);
     this.#recoveryAdopted = result.kind === 'resumed';
     this.#recoveryPending = result.kind === 'restored' || result.kind === 'conflict';
     this.#trace('article-recovery-ready', undefined, {
@@ -387,6 +389,9 @@ class ArticleSession implements ArticleEditorSessionRuntime {
   get recoveryUpdatedAt() {
     return this.#recoveryUpdatedAt;
   }
+  get recoveryDraft() {
+    return this.#recoveredDraft;
+  }
   capturePersistedArticle = () => this.model.getSnapshot().persisted.article;
   captureSnapshot = () => {
     this.documentViews.flush();
@@ -428,6 +433,27 @@ class ArticleSession implements ArticleEditorSessionRuntime {
   receiveTransferredArticle = (next: ArticleDto) => {
     this.receiveArticle(next);
     this.#options.onSaved(next);
+  };
+
+  mutateStructure = async <T extends { source: ArticleDto }>(
+    operation: (article: ArticleDto) => Promise<T>,
+  ): Promise<T | null> => {
+    await this.#initialization;
+    if (this.#recoveryPending || this.#disposed) return null;
+    return this.#coordinator.mutate(async () => {
+      const source = this.capturePersistedArticle();
+      const result = await operation(source);
+      if (result.source.id !== source.id) throw new Error('REFERENCE_TARGET_CHANGED');
+      if (this.#disposed) return result;
+      this.documentViews.flush();
+      this.#recordChange();
+      // Block queued saves against the old head until the coordinator is idle.
+      // Input arriving during the mutation remains a local draft, not an acknowledgement.
+      if (result.source.revisionId !== this.capturePersistedArticle().revisionId)
+        this.model.receiveExternalArticle(result.source);
+      this.receiveTransferredArticle(result.source);
+      return result;
+    });
   };
 
   acceptExternalArticle = async () => {
@@ -486,7 +512,7 @@ class ArticleSession implements ArticleEditorSessionRuntime {
   };
 
   adoptRecovery = () => {
-    if (!this.#recoveryPending || !this.#recoveredDraft) return;
+    if (!this.#recoveryPending || this.#recoveryStatus !== 'restored' || !this.#recoveredDraft) return;
     this.#recoveryAdopted = true;
     this.#recoveryPending = false;
     this.#recoveryListeners.forEach((listener) => listener());

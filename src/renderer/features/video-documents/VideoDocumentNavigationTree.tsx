@@ -35,6 +35,7 @@ import {
 } from '@/renderer/components/albums/treeConnectionGeometry';
 import { CreationTreeNodeFrame } from '@/renderer/components/creator/CreationLibraryTreeItem';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
+import { ItemActions, itemActionButtonClassName } from '@/renderer/components/ui/item-actions';
 import { Button } from '@/renderer/components/ui/button';
 import { Collapsible } from '@/renderer/components/ui/collapsible';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/components/ui/context-menu';
@@ -159,9 +160,9 @@ function NavigationEntryRow({
             )}
             <div
               className={cn(
-                'group relative flex h-[4.25rem] min-w-0 items-center gap-1 rounded-lg px-1 transition-colors hover:bg-hover',
+                'group/item relative flex h-[4.25rem] min-w-0 items-center gap-1 rounded-sm px-1 transition-colors hover:bg-hover',
                 selected &&
-                  'text-selected-foreground before:pointer-events-none before:absolute before:inset-y-0.5 before:inset-x-0 before:rounded-lg before:bg-selected hover:bg-transparent',
+                  'text-selected-foreground before:pointer-events-none before:absolute before:inset-y-0.5 before:inset-x-0 before:rounded-sm before:bg-selected hover:bg-transparent',
               )}
               data-album-id={entry.kind === 'ALBUM' ? entry.albumId : undefined}
               data-tree-node-id={entry.kind === 'ALBUM' ? entry.albumId : undefined}
@@ -239,16 +240,13 @@ function NavigationEntryRow({
                   </span>
                 </button>
               )}
-              <div
-                data-item-drag-ignore
-                className="pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-              >
+              <ItemActions>
                 <ActionMenuButton
                   actions={actions}
                   label={labels.sidebar.moreActions(title)}
-                  className="pointer-events-auto size-6 rounded-md bg-overlay/95 shadow-overlay"
+                  className={itemActionButtonClassName}
                 />
-              </div>
+              </ItemActions>
             </div>
             {entry.kind === 'ALBUM' && expanded && childPage?.nextCursor && (
               <div className="px-3 py-1" style={{ paddingLeft: 64 + TREE_CONNECTION_GEOMETRY.contentIndentX }}>

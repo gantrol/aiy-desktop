@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import type { CodexUsageServiceTier } from '@/shared/contracts/codex-usage';
+import { normalizeCodexUsageModel } from '@/main/extensions/codex-usage-investigator/pricing';
 import { codexUuidV7Timestamp } from '@/main/extensions/codex-usage-investigator/turn-identity';
 
 const lineageSchema = z.object({
@@ -21,6 +23,21 @@ export interface MutableChatTurn {
   durationMs: number | null;
   models: Set<string>;
   reasoningEfforts: Set<string>;
+}
+
+/** Shared by usage records until reverse reading reaches their turn's context or start. */
+export class CodexUsageTurnScope {
+  private conflicting = false;
+
+  constructor(public turnId: string | null = null) {}
+
+  bind(turnId: string) {
+    if (this.conflicting) return;
+    if (this.turnId !== null && this.turnId !== turnId) {
+      this.turnId = null;
+      this.conflicting = true;
+    } else this.turnId = turnId;
+  }
 }
 
 export type ChatTurnTimingEvent =
@@ -81,4 +98,45 @@ export function applyChatTurnTiming(turn: MutableChatTurn, record: ChatTurnTimin
     turn.terminalState = record.terminalState;
     turn.durationMs = record.durationMs;
   }
+}
+
+export function normalizeChatTurns(
+  sessionId: string,
+  turns: ReadonlyMap<string, MutableChatTurn>,
+  observedServiceTiers: ReadonlyMap<string, CodexUsageServiceTier>,
+) {
+  return [...turns.values()]
+    .filter((turn) => turn.startedAt !== null || turn.terminalAt !== null)
+    .sort(
+      (left, right) =>
+        (left.startedAt ?? left.terminalAt ?? '').localeCompare(right.startedAt ?? right.terminalAt ?? '') ||
+        left.turnId.localeCompare(right.turnId),
+    )
+    .map((turn, turnOrder) => ({
+      sessionId,
+      turnOrder,
+      turnId: turn.turnId,
+      startedAt: turn.startedAt,
+      terminalAt: turn.terminalAt,
+      terminalState: turn.terminalState,
+      durationMs: turn.durationMs,
+      model: turn.models.size === 1 ? normalizeCodexUsageModel([...turn.models][0]!) : null,
+      reasoningEffort: turn.reasoningEfforts.size === 1 ? [...turn.reasoningEfforts][0]!.trim().toLowerCase() : null,
+      serviceTier: observedServiceTiers.get(turn.turnId) ?? 'UNKNOWN',
+    }));
+}
+
+export function observedTurnServiceTiers(
+  events: readonly { turnId: string | null; serviceTier: CodexUsageServiceTier }[],
+) {
+  const observed = new Map<string, Set<Exclude<CodexUsageServiceTier, 'UNKNOWN'>>>();
+  for (const event of events) {
+    if (!event.turnId || event.serviceTier === 'UNKNOWN') continue;
+    const tiers = observed.get(event.turnId) ?? new Set<Exclude<CodexUsageServiceTier, 'UNKNOWN'>>();
+    tiers.add(event.serviceTier);
+    observed.set(event.turnId, tiers);
+  }
+  return new Map(
+    [...observed].map(([turnId, tiers]) => [turnId, tiers.size === 1 ? [...tiers][0]! : ('UNKNOWN' as const)]),
+  );
 }

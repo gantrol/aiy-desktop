@@ -3,6 +3,7 @@ import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import { ArrowDownIcon, ArrowUpIcon, LoaderCircleIcon, RotateCcwIcon, XIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
+import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -10,6 +11,7 @@ import {
   inheritedPublishingMask,
   publishingMaskOverridesForTarget,
   publishingMaskSupportsTitle,
+  publishingMaskSupportsBodyTitle,
   type PublishingMaskOverrides,
   type PublishingMaskReadResult,
   type PublishingMaskSource,
@@ -202,6 +204,15 @@ function PublishingMaskFields({
         <p role="status" className="text-xs text-muted-foreground">
           {copy.sourceChanged}
         </p>
+      )}
+      {publishingMaskSupportsBodyTitle(target) && (
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
+            checked={overrides.titleInBody ?? true}
+            onCheckedChange={(checked) => setOverrides((current) => ({ ...current, titleInBody: checked === true }))}
+          />
+          {copy.titleInBody}
+        </label>
       )}
       {publishingMaskSupportsTitle(target) && (
         <div className="grid gap-2">

@@ -18,11 +18,28 @@ import type {
 } from '@/shared/contracts/article';
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
 import { localArticleWriteContext, type ArticleWriteContext } from '@/main/database/creations/article-write-context';
+import type {
+  ArticleInputHistoryQuery,
+  ArticleInputRecordQuery,
+  ArticleInputContinueQuery,
+} from '@/shared/contracts/article-input-history';
 
 export function createArticleApi(
-  repositories: Pick<LibraryDatabaseRepositories, 'articleChecks' | 'articles' | 'storage'>,
+  repositories: Pick<LibraryDatabaseRepositories, 'articleChecks' | 'articles' | 'articleInputs' | 'storage'>,
 ) {
   return {
+    getArticleInputHistory(input: ArticleInputHistoryQuery) {
+      return repositories.articleInputs.list(input);
+    },
+
+    getArticleInputRecord(input: ArticleInputRecordQuery) {
+      return repositories.articleInputs.get(input);
+    },
+
+    continueArticleInput(input: ArticleInputContinueQuery) {
+      return repositories.articleInputs.continue(input);
+    },
+
     listArticles() {
       return repositories.articles.list();
     },

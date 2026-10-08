@@ -112,9 +112,11 @@ export function CodexUsageEvidenceDetails({
   const id = useId();
   const { numbers, tokens } = formatters;
   const analysis = investigation.modelComparison;
+  const recordedApiMode = investigation.pricing.apiRateMode === 'RECORDED_SERVICE_TIER';
+  const apiNote = recordedApiMode ? labels.apiEquivalentNote : labels.legacyApiEquivalentNote;
   const detailNote =
     topic === 'money'
-      ? `${text.moneyNote} ${text.cacheSavingsNote} ${text.cacheNote}`
+      ? `${text.moneyNote} ${apiNote} ${text.cacheSavingsNote} ${text.cacheNote}`
       : topic === 'quota'
         ? labels.purity.method
         : topic === 'records'
@@ -198,7 +200,12 @@ export function CodexUsageEvidenceDetails({
         (investigation.sessionLength ? (
           <CodexUsageSessionLengthResults
             analysis={investigation.sessionLength}
-            labels={labels.detailedStatistics}
+            labels={{
+              ...labels.detailedStatistics,
+              apiNormalizationNote: recordedApiMode
+                ? labels.detailedStatistics.apiNormalizationNote
+                : labels.legacyApiEquivalentNote,
+            }}
             tokens={tokens}
             numbers={numbers}
             numberLocale={numberLocale}

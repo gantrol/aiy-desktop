@@ -30,7 +30,6 @@ export interface CodexUsageDetailedStatisticsLabels {
   overallLowestTokenRange: string;
   overallLowestApiRange: string;
   overallSustainedIncrease: string;
-  newSessionRecommendation: string;
   comparisonGroups: string;
   insufficientEvidence: string;
   apiNormalizationNote: string;
@@ -391,7 +390,7 @@ function OverallSessionLengthSignals({
   numbers: Intl.NumberFormat;
 }) {
   return (
-    <dl className="grid grid-cols-2 gap-px bg-border @4xl/codex-usage:grid-cols-4 [&>*]:bg-background">
+    <dl className="grid grid-cols-2 gap-px bg-border @4xl/codex-usage:grid-cols-3 [&>*]:bg-background">
       <div className="grid gap-1 !bg-accent/30 px-4 py-3">
         <dt className="text-xs text-muted-foreground">{labels.overallLowestTokenRange}</dt>
         <dd className="text-xl font-semibold tabular-nums @xl/codex-usage:text-2xl">
@@ -422,14 +421,6 @@ function OverallSessionLengthSignals({
         <dd className="hidden text-[11px] text-muted-foreground @xl/codex-usage:block">
           {numbers.format(sustainedConsensus.supportingComparisons)}/
           {numbers.format(sustainedConsensus.eligibleComparisons)} {labels.comparisonGroups}
-        </dd>
-      </div>
-      <div className="grid gap-1 px-4 py-3">
-        <dt className="text-xs text-muted-foreground">{labels.newSessionRecommendation}</dt>
-        <dd className="text-lg font-semibold tabular-nums">
-          {sustainedConsensus.range && sustainedConsensus.supportingComparisons >= 2
-            ? rangeLabel(sustainedConsensus.range)
-            : labels.insufficientEvidence}
         </dd>
       </div>
     </dl>
@@ -482,9 +473,9 @@ export function CodexUsageSessionLengthResults({
     (sum, comparison) => sum + comparison.apiPricedSessionCount,
     0,
   );
-  const tokenConsensus = consensusRange(analysis.comparisons, 'TOKEN');
-  const apiConsensus = consensusRange(analysis.comparisons, 'API');
-  const sustainedConsensus = sustainedIncreaseConsensus(analysis.comparisons);
+  const tokenConsensus = consensusRange(sourceComparisons, 'TOKEN');
+  const apiConsensus = consensusRange(sourceComparisons, 'API');
+  const sustainedConsensus = sustainedIncreaseConsensus(sourceComparisons);
   const tokenCoverage = analysis.rangeSessionCount
     ? (analysis.comparisonSessionCount / analysis.rangeSessionCount) * 100
     : 0;

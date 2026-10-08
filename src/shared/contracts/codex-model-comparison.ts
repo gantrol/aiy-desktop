@@ -63,7 +63,7 @@ export const codexModelComparisonRowSchema = z
 export const codexModelComparisonAnalysisSchema = z
   .object({
     definition: z.literal('OWNED_USER_COMPLETED_TURNS'),
-    algorithmVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    algorithmVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
     outputThroughput: codexOutputThroughputAnalysisSchema.nullable().default(null),
     rangeAssignment: z.literal('COMPLETION_TIMESTAMP'),
     completedTurnCount: count,

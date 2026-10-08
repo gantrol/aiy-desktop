@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { CodexUsageFileFingerprint } from '@/main/extensions/codex-usage-investigator/cache-records';
 import type { CodexUsageServiceTierFallback } from '@/main/extensions/codex-usage-investigator/service-tier-fallback';
 
-const SOURCE_ANALYSIS_VERSION = 12;
+const SOURCE_ANALYSIS_VERSION = 14;
 
 export function codexUsageSourceCacheKey(
   file: CodexUsageFileFingerprint,
@@ -11,13 +11,24 @@ export function codexUsageSourceCacheKey(
   return sourceCacheKey(file, serviceTierFallback, SOURCE_ANALYSIS_VERSION);
 }
 
-// Revision 12 only changes context-free UNKNOWN history. Unaffected revision 11
-// sources can be reused without rereading every rollout after an application update.
+// Revision 14 retains terminals without starts. Complete revision 13 sources can be reused.
 export function codexUsagePreviousSourceCacheKey(
   file: CodexUsageFileFingerprint,
   serviceTierFallback?: CodexUsageServiceTierFallback | null,
 ) {
-  return sourceCacheKey(file, serviceTierFallback, 11);
+  return sourceCacheKey(file, serviceTierFallback, 13);
+}
+
+export function codexUsageSourceCacheMatches(
+  stored: { cacheKey: string; needsSourceRecovery: 0 | 1 } | undefined,
+  file: CodexUsageFileFingerprint,
+  serviceTierFallback?: CodexUsageServiceTierFallback | null,
+) {
+  return (
+    stored !== undefined &&
+    (stored.cacheKey === codexUsageSourceCacheKey(file, serviceTierFallback) ||
+      (!stored.needsSourceRecovery && stored.cacheKey === codexUsagePreviousSourceCacheKey(file, serviceTierFallback)))
+  );
 }
 
 function sourceCacheKey(

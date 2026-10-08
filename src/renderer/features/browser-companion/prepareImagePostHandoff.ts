@@ -4,6 +4,8 @@ import type { BrowserCompanionSource, BrowserCompanionStageInput, BrowserCompani
 import type { DesktopPetalMessages } from '@/shared/i18n/desktop-petals';
 import { xiaohongshuHandoffError } from '@/shared/xiaohongshu-publishing';
 import { publishingMaskMediaOrder } from '@/shared/contracts/publishing-mask';
+import { publishingBodyStartsWithTitle } from '@/shared/publishing-body-title';
+import { xPostThread, xPostTitleFits } from '@/shared/x-post-text';
 
 export function prepareImagePostHandoff({
   body,
@@ -17,6 +19,7 @@ export function prepareImagePostHandoff({
   copy,
   notify,
   preferredMediaAssetIds,
+  titleInBody = true,
 }: {
   body: string;
   format: 'markdown' | 'plain';
@@ -29,6 +32,7 @@ export function prepareImagePostHandoff({
   copy: DesktopPetalMessages['document'];
   notify(message: string): void;
   preferredMediaAssetIds?: readonly string[] | null;
+  titleInBody?: boolean;
 }): Omit<BrowserCompanionStageInput, 'target' | 'watermark'> | null {
   const projected =
     format === 'markdown'
@@ -49,7 +53,8 @@ export function prepareImagePostHandoff({
           ),
           missingImages: [],
         };
-  const { text, mediaAssetIds: orderedIds } = projected;
+  const { mediaAssetIds: orderedIds } = projected;
+  let { text } = projected;
   if (projected.missingImages.length) {
     notify(copy.missingImage);
     return null;
@@ -58,6 +63,14 @@ export function prepareImagePostHandoff({
     notify(copy.bodyRequired);
     return null;
   }
+  const bodyTitle = titleInBody && (target === 'x' || target === 'weibo') ? title.trim() : '';
+  if (bodyTitle) {
+    if (target === 'x' && !xPostTitleFits(bodyTitle)) {
+      notify(copy.xTitleLimit);
+      return null;
+    }
+    if (!publishingBodyStartsWithTitle(body, format, bodyTitle)) text = `${bodyTitle}\n\n${text}`;
+  }
   if (target === 'xiaohongshu') {
     const error = xiaohongshuHandoffError({ title, text, mediaCount: orderedIds.length });
     if (error) throw new Error(error);
@@ -65,6 +78,17 @@ export function prepareImagePostHandoff({
   if (text.length > 10_000) {
     notify(copy.bodyLimit);
     return null;
+  }
+  if (target === 'x') {
+    const posts = xPostThread(text);
+    if (!posts) {
+      notify(copy.xThreadInvalid);
+      return null;
+    }
+    if (bodyTitle && !posts[0]?.replace(/\r\n?/gu, '\n').startsWith(bodyTitle.replace(/\r\n?/gu, '\n'))) {
+      notify(copy.xTitleLimit);
+      return null;
+    }
   }
   const mediaLimit = { wechat: 20, weibo: 18, chatgpt: 18, x: 4, xiaohongshu: 18 }[target];
   if (orderedIds.length > mediaLimit) {

@@ -104,6 +104,7 @@ export async function prepareSocialPostHandoffs({
             copy,
             notify,
             preferredMediaAssetIds: overrides?.mediaOrder,
+            titleInBody: overrides?.titleInBody,
           });
         }
         return { target, prepared, error: prepared ? null : (error ?? copy.failure), sourceKey };

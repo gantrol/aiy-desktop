@@ -2,10 +2,13 @@ import { createHash } from 'node:crypto';
 import { open } from 'node:fs/promises';
 import { z } from 'zod';
 import type { CodexUsageQuotaKind, CodexUsageServiceTier } from '@/shared/contracts/codex-usage';
-import { normalizeCodexUsageModel, type CodexUsageBreakdown } from '@/main/extensions/codex-usage-investigator/pricing';
+import type { CodexUsageBreakdown } from '@/main/extensions/codex-usage-investigator/pricing';
 import {
   applyChatTurnTiming,
   CodexSessionLineage,
+  CodexUsageTurnScope,
+  normalizeChatTurns,
+  observedTurnServiceTiers,
   parseSessionLineage,
   type ChatTurnTimingEvent,
   type MutableChatTurn,
@@ -217,7 +220,7 @@ export const codexUsageInternalChatTurnSchema = z
     sessionId: z.string().min(1).max(512),
     turnOrder: safeTokenSchema,
     turnId: z.string().min(1).max(512),
-    startedAt: z.string().datetime(),
+    startedAt: z.string().datetime().nullable(),
     terminalAt: z.string().datetime().nullable(),
     terminalState: z.enum(['COMPLETED', 'ABORTED']).nullable(),
     durationMs: safeTokenSchema.nullable(),
@@ -250,6 +253,7 @@ interface ReverseReadStats {
 }
 
 interface PendingUsage {
+  turnScope: CodexUsageTurnScope;
   timestamp: string;
   usage: CodexUsageBreakdown;
   cumulativeUsage: CodexUsageBreakdown | null;
@@ -272,6 +276,7 @@ interface PendingUsageGroup {
 }
 
 interface SessionUsageCandidate {
+  turnScope: CodexUsageTurnScope;
   event: Omit<CodexUsageInternalEvent, 'eventFingerprint'>;
   cumulativeUsage: CodexUsageBreakdown | null;
   reverseOrder: number;
@@ -431,6 +436,9 @@ function normalizeSessionUsage(
   candidates: readonly SessionUsageCandidate[],
   inheritedBeforeReverseOrder: number | null,
 ): CodexUsageInternalEvent[] {
+  // Settings delimit model/tier attribution, not the surrounding chat turn.
+  // Resolve shared scopes only after the earlier context/start has been read.
+  for (const candidate of candidates) candidate.event.turnId ??= candidate.turnScope.turnId;
   const turnServiceTiers = observedTurnServiceTiers(candidates.map(({ event }) => event));
   const chronological = [...candidates].sort(
     (left, right) =>
@@ -468,43 +476,6 @@ function normalizeSessionUsage(
   });
 }
 
-function observedTurnServiceTiers(
-  events: readonly Pick<CodexUsageInternalEvent, 'turnId' | 'serviceTier' | 'serviceTierInferred'>[],
-) {
-  const observed = new Map<string, Set<Exclude<CodexUsageServiceTier, 'UNKNOWN'>>>();
-  for (const event of events) {
-    if (!event.turnId || event.serviceTier === 'UNKNOWN') continue;
-    const tiers = observed.get(event.turnId) ?? new Set<Exclude<CodexUsageServiceTier, 'UNKNOWN'>>();
-    tiers.add(event.serviceTier);
-    observed.set(event.turnId, tiers);
-  }
-  return new Map(
-    [...observed].map(([turnId, tiers]) => [turnId, tiers.size === 1 ? [...tiers][0]! : ('UNKNOWN' as const)]),
-  );
-}
-
-function normalizeChatTurns(
-  sessionId: string,
-  turns: ReadonlyMap<string, MutableChatTurn>,
-  observedServiceTiers: ReadonlyMap<string, CodexUsageServiceTier>,
-) {
-  return [...turns.values()]
-    .filter((turn): turn is MutableChatTurn & { startedAt: string } => turn.startedAt !== null)
-    .sort((left, right) => left.startedAt.localeCompare(right.startedAt) || left.turnId.localeCompare(right.turnId))
-    .map((turn, turnOrder): CodexUsageInternalChatTurn => ({
-      sessionId,
-      turnOrder,
-      turnId: turn.turnId,
-      startedAt: turn.startedAt,
-      terminalAt: turn.terminalAt,
-      terminalState: turn.terminalState,
-      durationMs: turn.durationMs,
-      model: turn.models.size === 1 ? normalizeCodexUsageModel([...turn.models][0]!) : null,
-      reasoningEffort: turn.reasoningEfforts.size === 1 ? [...turn.reasoningEfforts][0]!.trim().toLowerCase() : null,
-      serviceTier: observedServiceTiers.get(turn.turnId) ?? 'UNKNOWN',
-    }));
-}
-
 function appendPendingEvents(
   events: SessionUsageCandidate[],
   sessionId: string,
@@ -516,6 +487,7 @@ function appendPendingEvents(
 ) {
   for (const pendingEvent of pending) {
     events.push({
+      turnScope: pendingEvent.turnScope,
       event: {
         sessionId,
         turnId,
@@ -669,12 +641,17 @@ function parseSessionLine(line: Buffer): ParsedSessionLine {
   return parsedSettings(value);
 }
 
-function pendingUsageFromToken(parsed: ParsedTokenLine, reverseOrder: number): PendingUsage | null {
+function pendingUsageFromToken(
+  parsed: ParsedTokenLine,
+  reverseOrder: number,
+  turnScope: CodexUsageTurnScope,
+): PendingUsage | null {
   const usage = parsed.row.payload.info?.last_token_usage;
   const cumulativeUsage = parsed.row.payload.info?.total_token_usage;
   const rateLimits = parsed.row.payload.rate_limits;
   if (![usage, cumulativeUsage, rateLimits].some(Boolean)) return null;
   return {
+    turnScope,
     timestamp: parsed.timestamp.iso,
     usage: usage ? toUsage(usage) : emptyUsage(),
     cumulativeUsage: cumulativeUsage ? toUsage(cumulativeUsage) : null,
@@ -698,10 +675,11 @@ function collectTokenUsage(
   pending: PendingUsage[],
   groupedEventCount: number,
   reverseOrder: number,
+  turnScope: CodexUsageTurnScope,
 ): TokenCollectionStatus {
   if (isBelowRange(parsed.timestamp.epoch, fromEpoch)) return 'BELOW_RANGE';
   if (parsed.timestamp.epoch > toEpoch) return 'IGNORED';
-  const usage = pendingUsageFromToken(parsed, reverseOrder);
+  const usage = pendingUsageFromToken(parsed, reverseOrder, turnScope);
   if (!usage) return 'IGNORED';
   pending.push(usage);
   return pending.length + groupedEventCount >= MAX_PENDING_USAGE_EVENTS ? 'OVERFLOW' : 'ADDED';
@@ -729,6 +707,7 @@ export async function readCodexUsageSession(
   let turnMetadataComplete = true;
   let crossedLowerBound = false;
   let reverseOrder = 0;
+  let usageTurnScope = new CodexUsageTurnScope();
   const lineage = new CodexSessionLineage(sessionId, threadCreatedMs);
 
   const mutableChatTurn = (turnId: string) => {
@@ -806,7 +785,15 @@ export async function readCodexUsageSession(
         contextCompactionCount = Math.min(Number.MAX_SAFE_INTEGER, contextCompactionCount + 1);
       }
     } else if (parsed.kind === 'TOKEN') {
-      const status = collectTokenUsage(parsed, fromEpoch, toEpoch, pending, groupedEventCount, reverseOrder);
+      const status = collectTokenUsage(
+        parsed,
+        fromEpoch,
+        toEpoch,
+        pending,
+        groupedEventCount,
+        reverseOrder,
+        usageTurnScope,
+      );
       reverseOrder += 1;
       if (status === 'BELOW_RANGE') crossedLowerBound = true;
       else if (status === 'OVERFLOW') {
@@ -816,6 +803,7 @@ export async function readCodexUsageSession(
         turnMetadataComplete = false;
       }
     } else if (parsed.kind === 'CONTEXT') {
+      usageTurnScope.bind(parsed.turnId);
       groupPending(parsed.model, parsed.turnId);
       const turn = mutableChatTurn(parsed.turnId);
       turn?.models.add(parsed.model);
@@ -824,6 +812,11 @@ export async function readCodexUsageSession(
       groupPending(parsed.model || fallbackModel || 'unknown', null);
       flushPendingTierGroups(parsed.serviceTier, false, parsed.serviceTierInferred);
     } else {
+      if (parsed.kind === 'TURN_TERMINAL') usageTurnScope = new CodexUsageTurnScope(parsed.turnId);
+      else {
+        usageTurnScope.bind(parsed.turnId);
+        usageTurnScope = new CodexUsageTurnScope();
+      }
       lineage.addTurn(parsed, reverseOrder);
       const turn = mutableChatTurn(parsed.turnId);
       if (!turn) continue;
@@ -840,6 +833,7 @@ export async function readCodexUsageSession(
   const knownTurnIds = new Set(normalizedTurns.map(({ turnId }) => turnId));
   if (
     normalizedTurns.length !== chatTurns.size ||
+    normalizedTurns.some((turn) => turn.startedAt === null) ||
     normalizedEvents.some(({ turnId, usage }) => usage.totalTokens > 0 && (!turnId || !knownTurnIds.has(turnId)))
   ) {
     turnMetadataComplete = false;

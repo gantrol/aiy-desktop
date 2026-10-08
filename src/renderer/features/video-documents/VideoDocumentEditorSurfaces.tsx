@@ -17,14 +17,17 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { ContentReferenceHost, type ReferenceHost } from '@/renderer/features/content-editor/ContentReferenceHost';
 import { OutlineGlobalCollapseRail } from '@/renderer/features/content-editor/OutlineGlobalCollapseRail';
 import { useContentReferenceDrop } from '@/renderer/features/content-editor/useContentReferenceDrop';
+import { ContentSearchPosition } from '@/renderer/features/content-search/ContentSearchPosition';
 
 export function VideoDocumentEditorSurfaces({
   missingNavigationTarget,
+  searching = false,
   embedded,
   contentSource,
   outlineMode,
   beforeReferenceCapture,
   onTransferSaved,
+  createOutlinePage,
   onAddComment,
   onFigureReferenceClick,
   chrome,
@@ -34,11 +37,13 @@ export function VideoDocumentEditorSurfaces({
   secondaryChromeRoot,
 }: {
   missingNavigationTarget?: boolean;
+  searching?: boolean;
   embedded?: boolean;
   contentSource?: import('@/shared/contracts/content-library').ContentSource;
   outlineMode?: boolean;
   beforeReferenceCapture?: ReferenceHost['beforeCapture'];
   onTransferSaved?: ReferenceHost['onTransferSaved'];
+  createOutlinePage?: ReferenceHost['createOutlinePage'];
   onAddComment?: ReferenceHost['onAddComment'];
   onFigureReferenceClick?(assetId: string): void;
   chrome: ReactNode;
@@ -67,6 +72,7 @@ export function VideoDocumentEditorSurfaces({
           outline: outlineMode,
           beforeCapture: beforeReferenceCapture,
           onTransferSaved,
+          createOutlinePage,
           onAddComment,
         }}
       >
@@ -94,6 +100,7 @@ export function VideoDocumentEditorSurfaces({
               </p>
             )}
             {toolbarRoot ? createPortal(chrome, toolbarRoot) : chrome}
+            <ContentSearchPosition editor={editor} source={contentSource} searching={searching} />
             {referenceDrop.error && (
               <span role="alert" className="text-xs text-destructive">
                 {referenceDrop.error}

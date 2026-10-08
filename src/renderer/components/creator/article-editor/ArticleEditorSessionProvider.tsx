@@ -8,7 +8,6 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import { LoaderCircleIcon } from 'lucide-react';
 import { useSyncExternalStoreWithSelector } from 'use-sync-external-store/shim/with-selector';
 import type { ArticleDto, ArticleRevisionSaveInput, ArticleRevisionSaveResult } from '@/shared/contracts';
 import {
@@ -19,7 +18,8 @@ import type {
   ArticleEditorSessionState,
   ArticleSaveMode,
 } from '@/renderer/components/creator/article-editor/articleEditorSession';
-import { Button } from '@/renderer/components/ui/button';
+import { ArticleEditorRecoveryDecision } from '@/renderer/components/creator/article-editor/ArticleEditorRecoveryDecision';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import { flushWorkspaceNavigation } from '@/renderer/components/workspace/workspace-drain';
 import { flushCreatorInputRecoverySessions } from '@/renderer/components/creator/workflows/CreatorInputRecoverySession';
@@ -33,7 +33,6 @@ interface Props {
   onSave(input: ArticleRevisionSaveInput): Promise<ArticleRevisionSaveResult>;
   onSaved(article: ArticleDto): void;
   spaceId: string;
-  zh: boolean;
 }
 
 const ArticleEditorSessionContext = createContext<ArticleEditorSessionRuntime | null>(null);
@@ -141,92 +140,16 @@ export function ArticleEditorSessionRegistryProvider({ children }: { children: R
   );
 }
 
-function ArticleEditorRecoveryDecision({
-  runtime,
-  zh,
-  onAdopt,
-}: {
-  runtime: ArticleEditorSessionRuntime;
-  zh: boolean;
-  onAdopt(): void;
-}) {
-  if (runtime.recovery === 'loading') {
-    return (
-      <div
-        data-article-editor-recovery-loading
-        role="status"
-        aria-label={zh ? '正在检查本地草稿' : 'Checking local drafts'}
-        className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-background"
-      >
-        <LoaderCircleIcon className="size-4 animate-spin text-muted-foreground" aria-hidden="true" />
-      </div>
-    );
-  }
-  const conflicted = runtime.recovery === 'conflict';
-  const recoveredAt = runtime.recoveryUpdatedAt
-    ? new Intl.DateTimeFormat(zh ? 'zh-CN' : 'en', { dateStyle: 'medium', timeStyle: 'short' }).format(
-        runtime.recoveryUpdatedAt,
-      )
-    : null;
-  return (
-    <div
-      data-article-editor-recovery
-      className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-background p-6"
-    >
-      <div className="flex max-w-lg flex-col items-center gap-5 text-center">
-        <strong className="text-lg font-semibold">
-          {conflicted
-            ? zh
-              ? `发现${recoveredAt ? ` ${recoveredAt}` : ''}的旧版本本地草稿`
-              : `Local draft from an older revision${recoveredAt ? ` · ${recoveredAt}` : ''}`
-            : zh
-              ? `发现${recoveredAt ? ` ${recoveredAt}` : ''}的未保存草稿`
-              : `Unsaved draft found${recoveredAt ? ` · ${recoveredAt}` : ''}`}
-        </strong>
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" onClick={() => void runtime.discardRecovery()}>
-            {zh ? '丢弃草稿' : 'Discard draft'}
-          </Button>
-          {conflicted ? (
-            <Button type="button" onClick={() => runtime.keepRecovery()}>
-              {zh ? '保留副本并继续' : 'Keep copy and continue'}
-            </Button>
-          ) : (
-            <Button type="button" data-action="restore-article-draft" onClick={onAdopt}>
-              {zh ? '恢复草稿' : 'Restore draft'}
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function ArticleEditorSessionProvider({ article, children, notify, onSave, onSaved, spaceId, zh }: Props) {
+export function ArticleEditorSessionProvider({ article, children, notify, onSave, onSaved, spaceId }: Props) {
+  const copy = useI18n().messages.creator.articleRecovery;
   const stableNotify = useStableCallback(notify);
   const stableSave = useStableCallback(onSave);
   const stableSaved = useStableCallback(onSaved);
-  const stableConflict = useStableCallback(() =>
-    stableNotify(zh ? '文章已在其他位置更新，当前草稿未被覆盖' : 'The article changed elsewhere; your draft was kept'),
-  );
+  const stableConflict = useStableCallback(() => stableNotify(copy.changedElsewhere));
   const stableError = useStableCallback((mode: ArticleSaveMode, detail: string) =>
-    stableNotify(
-      mode === 'auto'
-        ? zh
-          ? `文章自动保存失败：${detail}`
-          : `Could not autosave the article: ${detail}`
-        : zh
-          ? `文章保存失败：${detail}`
-          : `Could not save the article: ${detail}`,
-    ),
+    stableNotify((mode === 'auto' ? copy.autosaveFailed : copy.saveFailed)(detail)),
   );
-  const stableRecoveryError = useStableCallback(() =>
-    stableNotify(
-      zh
-        ? '文章本地恢复副本写入失败；本次会话仍会继续自动保存'
-        : 'The local article recovery copy could not be written; autosave will continue for this session',
-    ),
-  );
+  const stableRecoveryError = useStableCallback(() => stableNotify(copy.recoveryFailed));
   const registry = useContext(ArticleEditorSessionRegistryContext);
   const registryKey = `${spaceId}:${article.id}`;
   const runtimeRef = useRef<ArticleEditorSessionRuntime | null>(null);
@@ -291,10 +214,9 @@ export function ArticleEditorSessionProvider({ article, children, notify, onSave
       {recoveryPending ? (
         <ArticleEditorRecoveryDecision
           runtime={runtime}
-          zh={zh}
           onAdopt={() => {
             runtime.adoptRecovery();
-            stableNotify(zh ? '已恢复上次未完成的文章修改' : 'Recovered unfinished article edits');
+            stableNotify(copy.restored);
           }}
         />
       ) : (

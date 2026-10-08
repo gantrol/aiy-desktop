@@ -8,6 +8,7 @@ import { BackgroundIssueProvider } from '@/renderer/features/background-issues/B
 import { ArticleDeliveryProvider } from '@/renderer/features/article-delivery/ArticleDeliveryProvider';
 import { DesktopPetalLanguageBridge } from '@/renderer/features/desktop-petals/DesktopPetalLanguageBridge';
 import { SpaceProfileProvider, type CreationAuthorChangeHandler } from '@/renderer/features/me/SpaceProfileProvider';
+import { CreationDraftChangesProvider } from '@/renderer/components/creator/CreationDraftChanges';
 
 interface Props {
   assetMenuActions: AssetMenuActions;
@@ -42,7 +43,9 @@ export function AppRuntimeProviders({
             notify={assetMenuActions.notify}
           >
             <SpaceProfileProvider key={spaceId} spaceId={spaceId} onAuthorChange={onAuthorChange}>
-              <ExtensionContentLinks extensions={extensions}>{children}</ExtensionContentLinks>
+              <CreationDraftChangesProvider spaceId={spaceId}>
+                <ExtensionContentLinks extensions={extensions}>{children}</ExtensionContentLinks>
+              </CreationDraftChangesProvider>
             </SpaceProfileProvider>
           </GifMakerProvider>
         </ArticleDeliveryProvider>

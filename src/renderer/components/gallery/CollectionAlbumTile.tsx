@@ -1,4 +1,4 @@
-import { FolderIcon, SquarePenIcon } from 'lucide-react';
+import { RectangleVerticalIcon, SquarePenIcon } from 'lucide-react';
 import type { MaterialAlbumDto } from '@/shared/contracts';
 import { AlbumCoverStack } from '@/renderer/components/albums/AlbumCoverStack';
 import { AlbumPreviewPopover } from '@/renderer/components/albums/AlbumPreviewPopover';
@@ -7,6 +7,7 @@ import {
   endCollectionCardDrag,
 } from '@/renderer/components/gallery/collectionAlbumDragHandlers';
 import { Button } from '@/renderer/components/ui/button';
+import { ItemActions } from '@/renderer/components/ui/item-actions';
 import { itemDragStart, itemDragScopeProps } from '@/renderer/components/albums/itemDrag';
 import { cn } from '@/renderer/lib/utils';
 import { CollectionTextItem, collectionTextItemClassName } from '@/renderer/components/gallery/CollectionTextItem';
@@ -57,7 +58,7 @@ export function CollectionAlbumTile({
             title={album.title}
             detail={detailLabel}
             updatedAt={album.updatedAt ?? undefined}
-            icon={album.systemKey === 'CREATION_SERIES' ? SquarePenIcon : FolderIcon}
+            icon={album.systemKey === 'CREATION_SERIES' ? SquarePenIcon : RectangleVerticalIcon}
           />
         </Button>
       ) : (
@@ -79,11 +80,11 @@ export function CollectionAlbumTile({
                 assets={album.previewAssets}
                 title={album.title}
                 caption={caption}
-                icon={album.systemKey === 'CREATION_SERIES' ? SquarePenIcon : FolderIcon}
+                icon={album.systemKey === 'CREATION_SERIES' ? SquarePenIcon : RectangleVerticalIcon}
               />
             )}
           </Button>
-          <div data-item-drag-ignore className="absolute right-9 top-1 z-20">
+          <ItemActions className="absolute right-9 top-1 z-20">
             <AlbumPreviewPopover
               key={album.id}
               assets={album.previewAssets}
@@ -92,7 +93,7 @@ export function CollectionAlbumTile({
               openLabel={openLabel}
               onOpen={() => onOpen(album.id)}
             />
-          </div>
+          </ItemActions>
         </>
       )}
     </div>

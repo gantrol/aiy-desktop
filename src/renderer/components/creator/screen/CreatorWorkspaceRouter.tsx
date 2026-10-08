@@ -70,7 +70,7 @@ interface Props {
     openCoverGeneration: ArticleProps['onOpenCoverGeneration'];
     generateIllustration: ArticleProps['onGenerateIllustration'];
     onSaved: ArticleProps['onSaved'];
-    editCreationInput: ArticleProps['onEditCreationInput'];
+    continueInput: ArticleProps['onContinueInput'];
     save: ArticleProps['onSave'];
   };
   articleRelations: ArticleProps['relations'];
@@ -201,7 +201,7 @@ export function CreatorWorkspaceRouter(props: Props) {
               relations={props.articleRelations}
               onSave={props.articleActions.save}
               onSaved={props.articleActions.onSaved}
-              onEditCreationInput={props.articleActions.editCreationInput}
+              onContinueInput={props.articleActions.continueInput}
               onCopyForWechat={(...args) => props.articleActions.copy(props.article!.id, ...args)}
               onExport={() => props.articleActions.export(props.article!.id)}
               onCreateArticle={(...args) => props.articleActions.createArticle(props.article!, ...args)}

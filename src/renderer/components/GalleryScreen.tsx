@@ -492,9 +492,6 @@ export function GalleryScreen({
       ? activeChildAlbumSummaries
       : [];
   const overviewCreationCollections = overviewBrowseActive ? creationRootCollections : [];
-  const creationSeriesCount = overviewBrowseActive
-    ? albums.filter((album) => album.systemKey === 'CREATION_SERIES').length
-    : 0;
   const creationSectionTitle = overviewBrowseActive ? messages.gallery.library.relationshipCreation : null;
   const albumSectionTitle = overviewBrowseActive
     ? messages.gallery.albums.myAlbums
@@ -1529,15 +1526,6 @@ export function GalleryScreen({
   }
 
   const albumLabels = materialLibraryNavigationLabels(messages);
-  const resultCountLabel = overviewBrowseActive
-    ? [
-        messages.gallery.albums.creations(creationSeriesCount),
-        messages.gallery.albums.albumCount(rootAlbumSummaries.length),
-        messages.gallery.albums.materials(resultTotal),
-      ].join(' · ')
-    : albumBrowseActive
-      ? `${messages.gallery.albums.albumCount(activeChildAlbumSummaries.length)} · ${messages.gallery.albums.materials(resultTotal)}`
-      : `${displayedResultTotal} ${l.unit}`;
   const activeHeaderAlbum =
     activeAlbum && activeAlbumSummary
       ? {
@@ -1580,28 +1568,7 @@ export function GalleryScreen({
         className="flex size-full min-h-0 flex-col bg-background"
       >
         <div className={active && selectedItem ? 'hidden' : 'contents'}>
-          <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 sm:px-6">
-            <div ref={setNavigationToggleHost} className="flex shrink-0" />
-            <h1 className="text-lg font-semibold tracking-tight">{l.title}</h1>
-            <span data-slot="material-result-count" className="text-xs text-muted-foreground" aria-live="polite">
-              {searchPending ? l.searching : resultCountLabel}
-            </span>
-            {loading && materials.length > 0 && (
-              <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground" aria-label={l.loadingMore} />
-            )}
-            {albumsLoading && <span className="text-xs text-muted-foreground">{messages.gallery.albums.loading}</span>}
-            {!albumsLoading && albumError && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs text-destructive"
-                onClick={() => setAlbumRetryKey((value) => value + 1)}
-              >
-                {messages.gallery.albums.loadFailed} · {l.retry}
-              </Button>
-            )}
-          </header>
+          <div ref={setNavigationToggleHost} className="flex shrink-0 border-b px-4 py-2 empty:hidden sm:px-6" />
 
           <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
             <MaterialLibraryNavigation
@@ -1723,6 +1690,27 @@ export function GalleryScreen({
                   );
                 }}
               />
+
+              {(searchPending || (loading && materials.length > 0) || albumsLoading || albumError) && (
+                <div className="flex shrink-0 items-center gap-2 px-4 py-2 text-xs text-muted-foreground sm:px-6">
+                  {searchPending && <span role="status">{l.searching}</span>}
+                  {loading && materials.length > 0 && (
+                    <LoaderCircleIcon className="size-3.5 animate-spin" aria-label={l.loadingMore} />
+                  )}
+                  {albumsLoading && <span role="status">{messages.gallery.albums.loading}</span>}
+                  {!albumsLoading && albumError && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-destructive"
+                      onClick={() => setAlbumRetryKey((value) => value + 1)}
+                    >
+                      {messages.gallery.albums.loadFailed} · {l.retry}
+                    </Button>
+                  )}
+                </div>
+              )}
 
               {selectionMode && !creationBrowseActive && activeAlbum?.kind !== 'USER' && (
                 <MaterialBatchToolbar

@@ -85,13 +85,9 @@ export function ExtensionCenterScreen({
       <header className="flex h-14 shrink-0 items-center gap-3 border-b px-5">
         <h1 className="text-base font-semibold">{l.title}</h1>
         <Badge variant="secondary">{extensions.length}</Badge>
-        <TabsList className="ml-4 h-14 border-0">
-          <TabsTrigger value="plugins" className="h-14">
-            {l.tabs.plugins}
-          </TabsTrigger>
-          <TabsTrigger value="contentPacks" className="h-14">
-            {l.tabs.contentPacks}
-          </TabsTrigger>
+        <TabsList className="ml-4 self-end border-0">
+          <TabsTrigger value="plugins">{l.tabs.plugins}</TabsTrigger>
+          <TabsTrigger value="contentPacks">{l.tabs.contentPacks}</TabsTrigger>
         </TabsList>
       </header>
       <TabsContent value="plugins" className="min-h-0 flex-1">

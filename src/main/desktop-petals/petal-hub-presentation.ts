@@ -30,6 +30,8 @@ type DockState = { edge: DockEdge; collapsed: boolean; bounds: Rectangle };
 type HubViewOrigin = { bounds: Rectangle; dock?: DockState };
 /** Temporary gesture and panel geometry never replaces the user's flower placement. */
 export class PetalHubPresentation {
+  keepExpanded?: (entry: PetalWindow) => boolean;
+  onConceal?: (entry: PetalWindow) => void;
   private previews = new WeakMap<PetalWindow, Set<'pluck' | 'menu'>>();
   private docks = new WeakMap<PetalWindow, DockState>();
   private views = new WeakMap<PetalWindow, HubViewOrigin>();
@@ -52,8 +54,10 @@ export class PetalHubPresentation {
     return this.docks.get(entry)?.edge ?? this.views.get(entry)?.dock?.edge;
   }
   clearDock(entry: PetalWindow) {
-    if (!this.docks.has(entry)) return;
+    const origin = this.views.get(entry);
+    if (!this.docks.has(entry) && !origin?.dock) return;
     this.docks.delete(entry);
+    if (origin) delete origin.dock;
     this.remember(entry);
     entry.window.webContents.send('desktop-petals:changed');
   }
@@ -129,6 +133,7 @@ export class PetalHubPresentation {
     const dock = this.docks.get(entry);
     if (!dock || entry.hubView !== 'flower' || this.previews.has(entry)) return;
     if (dock.collapsed === !expanded) return;
+    if (!expanded && !force && this.keepExpanded?.(entry)) return;
     const bounds = dock.bounds;
     const cursor = screen.getCursorScreenPoint();
     if (
@@ -141,6 +146,7 @@ export class PetalHubPresentation {
     )
       return;
     const area = screen.getDisplayMatching(bounds).workArea;
+    if (!expanded) this.onConceal?.(entry);
     dock.collapsed = !expanded;
     const next = expanded
       ? { ...bounds, ...clampFlowerBounds(bounds, this.flowerSize(), area) }
@@ -153,9 +159,17 @@ export class PetalHubPresentation {
   endPreview(entry: PetalWindow) {
     this.previews.delete(entry);
   }
+  moveView(entry: PetalWindow, x: number, y: number) {
+    const origin = this.views.get(entry);
+    if (!origin || entry.hubView !== 'settings') return;
+    origin.bounds = { ...origin.bounds, x: origin.bounds.x + x, y: origin.bounds.y + y };
+    if (origin.dock) origin.dock.bounds = { ...origin.bounds };
+  }
   showView(entry: PetalWindow, view: PetalHubView) {
     if (entry.hubView === view) return;
     const leavingFlower = entry.hubView === 'flower';
+    if ((leavingFlower || entry.hubView === 'settings') && view !== 'flower' && view !== 'settings')
+      this.onConceal?.(entry);
     if (leavingFlower) {
       const dock = this.docks.get(entry);
       this.views.set(entry, {
@@ -176,6 +190,16 @@ export class PetalHubPresentation {
       width: Math.min(size.width, area.width),
       height: Math.min(size.height, area.height),
     };
+    if (view === 'settings' && origin) {
+      const anchorX = origin.bounds.x + origin.bounds.width / 2;
+      const right = area.x + area.width - anchorX;
+      const left = anchorX - area.x;
+      target.x =
+        right >= target.width - origin.bounds.width / 2 || right >= left
+          ? origin.bounds.x
+          : origin.bounds.x + origin.bounds.width - target.width;
+      target.y = origin.bounds.y;
+    }
     const bounds = {
       ...target,
       ...(returning ? clampFlowerBounds(target, this.flowerSize(), area) : clampPetalBounds(target, target, area)),

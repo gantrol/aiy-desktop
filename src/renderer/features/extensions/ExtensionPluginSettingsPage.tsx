@@ -7,6 +7,7 @@ import {
   DEEPSEEK_API_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
   NATURAL_WATERMARK_EXTENSION_ID,
+  SCREEN_MAGNIFIER_EXTENSION_ID,
   OPENAI_IMAGE_API_EXTENSION_ID,
   TRANSITION_SHOWCASE_EXTENSION_ID,
 } from '@/shared/extension-ids';
@@ -23,6 +24,7 @@ import { OpenAiImageApiConfiguration } from '@/renderer/features/extensions/Open
 import { OpenAiCostsConfiguration } from '@/renderer/features/extensions/OpenAiCostsConfiguration';
 import { CpaImageApiConfiguration } from '@/renderer/features/extensions/CpaImageApiConfiguration';
 import { NaturalWatermarkConfigurationPanel } from '@/renderer/features/extensions/NaturalWatermarkConfiguration';
+import { ScreenMagnifierConfiguration } from '@/renderer/features/extensions/ScreenMagnifierConfiguration';
 import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
@@ -96,6 +98,10 @@ export function ExtensionPluginSettingsPage({
 }: Props) {
   const messages = useI18n().messages;
   const l = messages.extensions;
+  if (extension.manifest.id === SCREEN_MAGNIFIER_EXTENSION_ID)
+    return (
+      <ScreenMagnifierConfiguration extension={extension} disabled={!active || Boolean(busyKey)} notify={notify} />
+    );
   const naturalWatermark = extension.manifest.id === NATURAL_WATERMARK_EXTENSION_ID;
   return (
     <section data-extension-plugin-settings className="grid gap-6">

@@ -196,12 +196,12 @@ export function MaterialLibraryNavigation({
       toggleHost={toggleHost}
       label={labels.albums}
       selectionKey={JSON.stringify([navigationRevision, category, activeAlbumId, dictionarySelection])}
-    >
-      <div className="border-b p-2">
+      header={
         <Segmented
           type="single"
+          appearance="line"
           value={category}
-          className="grid h-auto grid-cols-2"
+          className="grid h-8 flex-1 grid-cols-2 border-b-0"
           aria-label={`${labels.material} / ${labels.dictionary}`}
           onValueChange={(value) => value && onSelectCategory(value as MaterialLibraryCategory)}
         >
@@ -212,7 +212,8 @@ export function MaterialLibraryNavigation({
             {labels.dictionary}
           </SegmentedItem>
         </Segmented>
-      </div>
+      }
+    >
       <ScrollArea type="always" className="min-h-0 flex-1" viewportRef={viewportRef}>
         <div className="space-y-0.5 p-2">
           {category === 'MATERIAL' && (

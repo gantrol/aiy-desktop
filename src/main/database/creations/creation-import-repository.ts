@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { draftCreationSource, registerCreationOutput } from '@/main/database/creations/creation-continuation';
 import { createHash } from 'node:crypto';
 import { ulid } from 'ulid';
 import type {
@@ -643,14 +644,18 @@ export class CreationImportRepository {
         .get(creationDraftId);
       if (derivedVisual) return;
     }
-    new CreationItemRepository(this.storage).createWithForm({
-      albumId,
-      form: {
-        role: 'IMAGE_CREATION',
-        entity: { kind: 'PROMPT_SERIES', id: seriesId },
-        anchorKey: null,
+    registerCreationOutput(
+      this.storage,
+      {
+        albumId,
+        form: {
+          role: 'IMAGE_CREATION',
+          entity: { kind: 'PROMPT_SERIES', id: seriesId },
+          anchorKey: null,
+        },
       },
-    });
+      creationDraftId ? draftCreationSource(this.storage, creationDraftId) : undefined,
+    );
   }
 
   private availableSeriesTitle(base: string) {

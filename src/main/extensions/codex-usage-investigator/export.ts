@@ -105,6 +105,12 @@ function quotaCycleRows(investigation: CodexUsageInvestigation): CsvRecord[] {
   }));
 }
 
+function sessionLengthValuationKind(investigation: CodexUsageInvestigation) {
+  return investigation.pricing.apiRateMode === 'RECORDED_SERVICE_TIER'
+    ? 'complete_session_event_date_service_tier_api_equivalent_per_owned_chat_turn'
+    : 'complete_session_event_date_standard_api_equivalent_per_owned_chat_turn';
+}
+
 function sessionLengthRows(investigation: CodexUsageInvestigation): CsvRecord[] {
   const analysis = investigation.sessionLength;
   if (!analysis) return [];
@@ -135,7 +141,7 @@ function sessionLengthRows(investigation: CodexUsageInvestigation): CsvRecord[] 
     excluded_mixed_model_sessions: analysis.excludedMixedModelSessionCount,
     mixed_service_tier_sessions: analysis.mixedServiceTierSessionCount,
     unknown_service_tier_sessions: analysis.unknownServiceTierSessionCount,
-    valuation_kind: 'complete_session_event_date_standard_api_equivalent_per_owned_chat_turn',
+    valuation_kind: sessionLengthValuationKind(investigation),
   };
   return [
     coverage,
@@ -190,7 +196,7 @@ function sessionLengthRows(investigation: CodexUsageInvestigation): CsvRecord[] 
           excluded_mixed_model_sessions: analysis.excludedMixedModelSessionCount,
           mixed_service_tier_sessions: analysis.mixedServiceTierSessionCount,
           unknown_service_tier_sessions: analysis.unknownServiceTierSessionCount,
-          valuation_kind: 'complete_session_event_date_standard_api_equivalent_per_owned_chat_turn',
+          valuation_kind: sessionLengthValuationKind(investigation),
         },
         ...comparison.buckets.map((bucket) => ({
           record_kind: 'SESSION_LENGTH_BUCKET',
@@ -222,7 +228,7 @@ function sessionLengthRows(investigation: CodexUsageInvestigation): CsvRecord[] 
           p75_peak_context_tokens: bucket.percentile75PeakContextTokens,
           is_lowest_token_range: lowestTokenRanges.has(`${bucket.minimumTurns}:${bucket.maximumTurns}`) ? 1 : 0,
           is_lowest_api_cost_range: lowestApiRanges.has(`${bucket.minimumTurns}:${bucket.maximumTurns}`) ? 1 : 0,
-          valuation_kind: 'complete_session_event_date_standard_api_equivalent_per_owned_chat_turn',
+          valuation_kind: sessionLengthValuationKind(investigation),
         })),
       ];
     }),
@@ -230,6 +236,23 @@ function sessionLengthRows(investigation: CodexUsageInvestigation): CsvRecord[] 
 }
 
 const CSV_HEADERS = [
+  'quota_calculated_at',
+  'investigation_id',
+  'report_from',
+  'report_to',
+  'report_warnings',
+  'api_rate_mode',
+  'output_tokens_per_second',
+  'paired_output_tokens',
+  'paired_duration_ms',
+  'paired_turn_count',
+  'aborted_turn_count',
+  'missing_usage_turn_count',
+  'invalid_duration_turn_count',
+  'includes_tools_and_waits',
+  'generation_tokens_per_second',
+  'generation_measurement',
+  'partial',
   'record_kind',
   'generated_at',
   'range',
@@ -577,20 +600,31 @@ function csvExport(investigation: CodexUsageInvestigation, rows: readonly CodexU
     lines.push({ record_kind: 'EMPTY', generated_at: investigation.generatedAt, range: investigation.range });
   }
   return `\uFEFF${CSV_HEADERS.join(',')}\r\n${lines
-    .map((line) => CSV_HEADERS.map((header) => csvCell(line[header] ?? null)).join(','))
+    .map((line) => {
+      const record: CsvRecord = {
+        investigation_id: investigation.investigationId,
+        report_from: investigation.from,
+        report_to: investigation.to,
+        quota_calculated_at: investigation.quotaCalculatedAt ?? null,
+        report_warnings: investigation.warnings.join('|'),
+        api_rate_mode: investigation.pricing.apiRateMode ?? 'STANDARD',
+        ...line,
+      };
+      return CSV_HEADERS.map((header) => csvCell(record[header] ?? null)).join(',');
+    })
     .join('\r\n')}\r\n`;
 }
 
 function jsonExport(investigation: CodexUsageInvestigation, rows: readonly CodexUsageInternalRow[]) {
   return `${JSON.stringify(
     {
-      schemaVersion: 15,
+      schemaVersion: 16,
       valuationKind: 'public_rate_equivalent_not_billed_spend',
       turnSpeedKind: 'completed_turn_median_duration_ratio',
       quotaYieldKind: 'weekly_quota_observation_segment_tokens_per_observed_quota_percent',
       quotaPurityKind: 'historical_single_model_mode_tokens_per_observed_quota_percent',
       quotaSpeedNormalizationKind: 'fast_credit_multiplier_to_standard_equivalent_tokens',
-      sessionLengthCostKind: 'complete_session_event_date_standard_api_equivalent_per_owned_chat_turn',
+      sessionLengthCostKind: sessionLengthValuationKind(investigation),
       investigation,
       sessionModelDays: rows.map((row) => ({
         sessionId: row.sessionId,

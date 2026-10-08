@@ -16,7 +16,7 @@ export function WorkspacePaneScope({ children }: { children: ReactNode }) {
         <div
           ref={setContainer}
           data-workspace-pane-overlays=""
-          className="pointer-events-none absolute inset-0 z-modal isolate transform-gpu"
+          className="@container/workspace-pane pointer-events-none absolute inset-0 z-modal isolate transform-gpu"
         />
       </div>
     </WorkspacePaneContainer.Provider>

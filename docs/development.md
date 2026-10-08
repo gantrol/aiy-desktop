@@ -1,189 +1,140 @@
-# Desktop development
+# 开发
 
-This document covers engineering workflows for `apps/desktop`. For the product overview and external model dependencies, see the [main README](../README.md).
+[![简体中文](assets/zh-cn.svg)](development.md) [![English](assets/en.svg)](development.en.md)
 
-## Requirements
+以下命令均在桌面应用根目录执行，即包含 [package.json](../package.json) 的目录。使用完整工作区时，先进入 `apps/desktop/`。
 
-- Windows 10/11 x64 for packaging.
-- Ubuntu 22.04/24.04 x64 for source evaluation (no Linux package is produced).
-- Node.js 22 or newer.
-- Visual Studio 2022 or Build Tools with the MSVC x64 C++ toolchain, used to compile the Store update helper.
+## 环境要求
 
-The maintained distribution target is Microsoft Store MSIX for Windows Desktop x64. Ubuntu x64 can run the application from source with the normal npm workflow, but Linux packages are not produced. macOS, Linux, NSIS, portable ZIP, and unpacked directories are not release targets. `electron-builder` is retained only to prepare the temporary Windows payload consumed by the MSIX script.
+| 环境    | 要求                                                                             |
+| ------- | -------------------------------------------------------------------------------- |
+| 通用    | Git、Node.js 24 或 22.13+（22.x）、npm；以锁定工具链的 engines 要求为准          |
+| Windows | 开发可直接运行；Store 组包另需 [Windows 构建工具](packaging.md#windows-构建环境) |
+| macOS   | Xcode Command Line Tools，包含编译花瓣输入辅助程序所需的 Swift                   |
+| Linux   | 用于源码运行与验证，当前打包命令不生成 Linux 安装包                              |
 
-## Run from source
+依赖版本由 `package.json` 和 `package-lock.json` 固定。浏览器伴侣在 `browser-companion/` 中维护自己的依赖。
 
-For a standalone checkout of `aiy-desktop`, run these commands from that repository's root. If the desktop repository is nested inside a larger workspace, first change into the desktop application directory; the workspace root may not contain the desktop dependency lockfile.
+## 首次安装
 
-```bash
-npm ci
+确认当前目录后，安装锁定依赖：
+
+```sh
+node --version
+npm --version
+npm ci --no-audit --no-fund
+```
+
+安装成功后启动开发环境：
+
+```sh
 npm run dev
 ```
 
-`npm run dev` installs the Electron version required by the project first. Renderer changes use Vite HMR; main/preload changes rebuild and restart Electron. After changing `electron.vite.config.ts`, stop the dev process completely and start it again so the host reloads its entry configuration.
+`dev` 的前置步骤会准备 Electron，并在 macOS 上准备原生辅助程序。renderer 使用热更新；主进程和 preload 改动会重启 Electron。
 
-On Windows, Dev and Preview prepare an AIY-branded runtime under `.tmp/development-electron/aiy-development-<fingerprint>/electron.exe`. Keep the executable named `electron.exe`: Electron uses that basename to determine `app.isPackaged`, so renaming it makes source runs look for installed resources instead of the checkout's icons, extensions, and Preview snapshot. The fingerprint changes with the icon and runtime; only the executable is copied and edited, while unchanged runtime files use hard links (with a copy fallback) and resource directories use junctions. The npm-managed executable remains unchanged. `ELECTRON_EXEC_PATH` bypasses this preparation.
+## 已有环境
 
-### Preview production builds
+日常开发直接运行 `npm run dev`。只改应用源码、文案、文档或应用版本号，不需要重新安装依赖。
 
-`npm run preview` verifies the Electron installation directly in its prehook, then builds and launches the production app. The prehook avoids nesting another npm invocation. Subsequent runs reuse unchanged main, preload, and renderer bundles. Changes to a target's sources rebuild that target; shared sources, build scripts, configuration, extensions, environment variables, and dependency installation metadata invalidate all targets. Missing or modified output files also trigger a rebuild, including output replaced by `npm run dev` or `npm run build`.
+| 变化                                    | 处理                                    |
+| --------------------------------------- | --------------------------------------- |
+| 同一目录的依赖与运行环境未变            | 复用 `node_modules/`                    |
+| 锁文件只更新顶层和根 package 的应用版本 | 核对差异后复用                          |
+| 依赖声明、实际锁定依赖或安装选项变化    | 核对差异，按锁文件准备需要更新的依赖    |
+| Node/Electron 原生 ABI、平台或架构变化  | 核对并重建或重装受影响的原生依赖        |
+| 依赖缺失、损坏或安装曾中断              | 先查原因；需要完整恢复时再执行 `npm ci` |
 
-Targets that need rebuilding share one configuration load and process, with at most two builds active at once (one on a single-CPU host). Rolldown performs compilation in native threads. The renderer starts first so main and preload compilation can finish alongside it. Each target writes its own output directory and uses the existing production build configuration and checks. A failure stops new work and waits for active builds before returning; Electron starts only after all required builds succeed. Preview logs target timings instead of the full bundle listing; warnings and errors remain visible.
+`npm ls --depth=0` 可以辅助定位直接依赖缺失或版本无效，但不能代替锁文件核对或验证包文件完整性。不要跨机器、跨 checkout 复制依赖目录。
 
-The build tool is pinned to `vite: npm:rolldown-vite@7.3.1`, the [official Vite 7 integration](https://v7.vite.dev/guide/rolldown) of the native Rolldown bundler, with Oxc minification. This also accelerates full `npm run build` runs. The `aiy-electron-rolldown-options` plugin applies electron-vite 5's preset changes to the native options field before validation; keep it on main, preload (including isolated entries), and renderer. Dependency boundaries, standalone preload requirements, and renderer chunk budgets remain enforced. Reinstall dependencies after updating this checkout. The Vite 7 integration is an experimental migration package, so its version is pinned; moving to Vite 8 requires checking electron-vite compatibility separately.
+`npm ci` 会先移除已有 `node_modules/`。执行前检查 Dev、Preview 等进程是否占用该目录；有占用时先保存内容并正常退出对应会话。遇到 `EPERM` 先查文件占用，安装失败后确认依赖完整再继续。保留 npm 下载缓存，不反复清目录重试。[npm ci 说明](https://docs.npmjs.com/cli/v11/commands/npm-ci/)
 
-Main also keeps VFile's small Node adapter modules intact with `aiy-vfile-node-interop`. Rolldown beta.53 otherwise drops their CommonJS default-import conversion during tree shaking, causing Markdown parsing to access an undefined `process.default`. Keep this compatibility plugin until a bundler upgrade is verified by executing Markdown parsing in the built main bundle.
+## 构建与预览
 
-Preload also applies `aiy-preload-document-detection` to ProseMirror's browser feature detection. Shared content schemas currently import the Tiptap serializer, so this code can run before Electron creates `document.documentElement`. The adapter guards that one style lookup, preserves source maps, and fails the build if the dependency's expected expression changes. It does not delay bridge installation or modify renderer editor behavior.
+| 命令                                      | 用途                                         |
+| ----------------------------------------- | -------------------------------------------- |
+| `npm run dev`                             | 开发模式，带热更新                           |
+| `npm run build`                           | 完整生产构建，输出到 `out/`，不启动应用      |
+| `npm run preview`                         | 准备生产构建并启动应用；复用未变化的构建目标 |
+| `npm run preview -- --build-only`         | 按 Preview 的缓存规则准备构建，不启动应用    |
+| `npm run preview -- --force --build-only` | 强制刷新 Preview 构建，不启动应用            |
+| `npm run design:dev`                      | 启动组件设计工作台                           |
 
-```bash
-npm run preview -- --build-only
-npm run preview -- --force
+修改 `electron.vite.config.ts` 后完整重启开发进程。结束开发或预览时使用应用的“退出”，让编辑保存和数据库清理完成。
+
+### Preview 与安装版的边界
+
+`npm run preview` 使用当前工作树的生产构建，通过开发 Electron 启动；它没有热更新，也不具有正式安装包的全部行为。默认启动会固定本次 renderer 与 preload，后续源码改动需要再次启动 Preview 才会进入该实例。生产构建不能代替文件关联、安装资源、商店升级或迁移的发行验收。
+
+Preview 不自动使用临时数据。未指定 `AIY_USER_DATA_DIR` 时，Dev、Preview 和非商店安装版都按非商店规则使用应用数据目录下的 `AIY`；商店版使用 `AIY-Store`。它们也可能因所选空间不同而显示不同内容。指定独立应用数据目录后，仍需确认所选空间是隔离副本，不能把另一个配置目录当作原数据已经复制。
+
+目前打包配置与 MSIX manifest 声明的是 `aiy://` 协议，启动参数处理也只消费该协议；没有接通 `.md`／`.markdown` 文件关联与系统文件打开链路。已有 Markdown 收集导入不等于文件默认打开或原文件编辑。开发脚本中的 deep-link 注册只服务协议，不为 Preview 注册 Markdown 默认打开方式。
+
+组件、页面状态和实验设计的组织与迁移见 [Design Lab](design-lab.md)。使用 `npm run design:storybook` 查看正式编辑工作面、大纲、内容条目、搜索、来源预览和基础控件；相关包只作为开发依赖，Cosmos 已移除。私有组件测试直接复用 stories。既有 `design:dev` 在完整媒体和旧实验迁移期间保留原入口。
+
+## 浏览器伴侣
+
+桌面端和浏览器伴侣分别启动。在桌面应用根目录打开另一个终端；首次使用伴侣时先安装其依赖：
+
+```sh
+npm run install:browser
 ```
 
-`--build-only` prepares the same bundles without launching Electron. `--force` rebuilds every target; use it after manually editing installed dependencies. Cache metadata lives in `.tmp/preview-build/` and uses file size, modification time, and change time without reading every source or generated bundle. After building, the default Preview path starts the installed Electron executable directly, avoiding another Node process and electron-vite import just to launch the app. Other electron-vite options, such as `--mode` or `--config`, use the original CLI without cache reuse. `npm run build` always performs a full production build, including the runtime dependency, preload isolation, and renderer chunk checks.
+后续开发直接启动：
 
-Before launching, default Preview asynchronously copies the renderer output into a session directory under `.tmp/preview-build/` and verifies that the source output has not changed during the copy. The renderer protocol serves that snapshot for the lifetime of the Electron child process, so rebuilding `out/renderer` cannot remove JavaScript or CSS chunks that an already-open window has yet to load. The snapshot is removed after Electron exits or fails to launch. `--build-only` does not create a snapshot; packaged applications use their bundled renderer resources. A window opened before this protection was added needs a full application restart if its original chunks have already been replaced.
-
-Bundle readiness excludes application startup. The `[local-space] context ready` log reports separate database-open, database-initialization, service-connection, extension-loading, and settings timings. Its `databaseCheck` records the reason, check mode, and separate database and foreign-key scan timings. A clean, unchanged database skips those scans. Ordinary unclean app shutdowns use SQLite's [quick_check](https://sqlite.org/pragma.html#pragma_quick_check) plus the full foreign-key check after SQLite performs its own [WAL recovery](https://sqlite.org/wal.html). Quick checks still inspect database structure and table constraints, but omit UNIQUE and index/table consistency verification. Newly created, migrated, or unverified databases retain full integrity and foreign-key checks. An interrupted or failed full check remains marked for a full retry on the next open; it cannot fall back to a quick check.
-
-Recovery checks for an existing file run in a short-lived read-only connection, with one read transaction covering both scans. In-memory databases and initialization inside a transaction use the original connection so uncommitted changes remain visible. Full migration checks always use the original connection. During either scan, SQLite may [map up to 1 GiB of the database](https://sqlite.org/mmap.html) to reuse the OS page cache; this is an address-space limit, not an eager file read or allocation. The previous mapping setting is restored and temporary connections are closed on success and failure, including on Windows where mapped files cannot be truncated. Journal mode, write synchronization, foreign-key enforcement, and interrupted-job recovery are unchanged.
-
-Desktop petals bind to the current library during startup, but their saved windows restore sequentially after the main window is ready and its first bootstrap response has completed (or the existing five-second startup fallback has elapsed). The main window no longer waits for every petal renderer to load. Deferred restoration stops if the context changes or is draining; shutdown waits for the one in-flight renderer before requesting editor saves. Normal in-process library switching still awaits restoration. The `[startup] main window ready` log includes module load, Electron readiness, host setup, library initialization, context activation, and IPC registration timings. For default Preview launches, `previewToWindowMs` also includes compilation and launch time from the Preview script's entry; npm's preceding installation hook is outside that interval.
-
-Use the application's Quit command to complete editor saves and database cleanup before stopping Preview. Repeated quit requests wait for the same cleanup, and a failed service cleanup does not interrupt the remaining services. A terminal or process termination can bypass this path and require a recovery scan on the next launch.
-
-The packaged renderer protocol streams files through asynchronous Node file handles with explicit MIME types for CSS, JavaScript, fonts, and images. Asset loading does not depend on platform MIME inference or a nested Chromium `net.fetch` request. Streams use bounded byte queues and close on cancellation; HEAD responses return metadata without reading file bodies. CSP, path validation, and `nosniff` remain enabled.
-
-### Browser companion during development
-
-`npm run dev` starts Electron and its main-process browser-companion loopback service. It does not start the WXT development server, so browser companion extension issues do not block debugging the desktop app.
-
-To develop the browser companion, start it separately from the umbrella workspace root in a second terminal:
-
-```powershell
+```sh
 npm run dev:browser
 ```
 
-This command starts the browser companion WXT server on `127.0.0.1:3017`. The unpacked development output remains at `../browser-companion/.output/chrome-mv3-dev`, so a development Profile can keep one stable extension path while WXT handles subsequent source updates. Start `npm run dev` separately when the desktop app and its `127.0.0.1:47831` companion service are also needed. Production builds use the separate `../browser-companion/.output/chrome-mv3` directory and cannot replace a running development bundle.
+WXT 默认使用 `127.0.0.1:3017`，端口被占用时以终端输出为准。桌面端仍通过 `npm run dev` 单独启动。
 
-Load `chrome-mv3-dev` as an unpacked extension once in every intended Chrome or Edge Profile. If a Profile previously loaded `chrome-mv3`, remove that old unpacked entry once and load the new development directory; reloading the old entry cannot change its registered filesystem path. In AIY, configure the browser Profile for ChatGPT, Weibo, and WeChat Official Account independently from the menu beside “上传”; development mode accepts a Profile only when the browser's persisted extension path matches the current checkout. The Chrome `How` Profile used by the automated smoke is `Profile 1` and follows this same rule.
+开发扩展在构建完成后使用本地脚本和弹窗资源。`dev:browser` 只负责重建与热更新；停止服务或热更新连接中断后，已安装的开发扩展仍可上传和查看交接状态。桌面端交接服务仍须运行，目标网站也须可访问。首次采用这项改动时，需要重新构建并重新加载浏览器中原有的开发扩展。
 
-Chrome does not allow a running extension to replace itself with a different unpacked bundle. Start `npm run dev:browser` before opening the development Profile. If the Profile is already running an older production bundle in another Chrome process, close that old Profile session once and let the next AIY handoff reopen it after WXT is ready. Edits made during that development session use WXT HMR and do not require a manual extension reload.
+桌面请求由伴侣后台通过扩展的本机访问权限发出，不依赖微博等网站的本机网络权限。后台只转发固定交接接口，核对页面与目标；图片按确认后的分块传输，签名与完整性校验保持不变。采用这项传输改动时，桌面端也须运行更新后的构建；仅重载扩展不足以更新桌面接口。
 
-### External deep links during development
+| 用途                 | 路径或命令                                  |
+| -------------------- | ------------------------------------------- |
+| 浏览器加载的开发扩展 | `browser-companion/.output/chrome-mv3-dev/` |
+| 生产扩展输出         | `browser-companion/.output/chrome-mv3/`     |
+| 类型检查             | `npm run typecheck:browser`                 |
+| 生产构建             | `npm run build:browser`                     |
 
-Ordinary `npm run dev` does not change the operating-system handler for `aiy://`. To register the current Windows checkout for the lifetime of one development session, use:
+开发 Profile 应加载开发目录，生产目录不能替代正在运行的开发扩展。伴侣是独立产物，不包含在桌面 MSIX 中。
 
-```powershell
-npm run dev:deep-link
-```
+## 代码检查
 
-While that process is running, an external link such as `aiy://open/gallery` is routed to the development app. A normal exit removes the development registration. If the launcher is terminated before cleanup, remove the remaining registration explicitly:
+按改动选择检查，发行时使用完整检查：
 
-```powershell
-npm run deep-link:unregister
-```
+| 命令                                     | 检查内容                                                     |
+| ---------------------------------------- | ------------------------------------------------------------ |
+| `npm run verify:touched`                 | 已暂存、未暂存及未跟踪文件的格式和 lint                      |
+| `npm run verify:touched -- --base <ref>` | 同时检查相对指定 Git 引用的已提交改动                        |
+| `npm run typecheck`                      | TypeScript 类型                                              |
+| `npm run test:smoke`                     | 通用启动与存储 smoke                                         |
+| `npm run verify`                         | 定价目录结构、格式、lint、类型、smoke 边界、smoke 和生产构建 |
 
-For a registration that must outlive one development session, manage it explicitly:
+文档改动检查内容、命令、链接和差异。行为改动按风险运行对应的单元、组件或集成检查；通用 smoke 不代表完整功能验收。构建成功也不代表安装、平台交接或实际发布已经通过。
 
-```powershell
-npm run deep-link:register
-npm run dev
-npm run deep-link:unregister
-```
+## 代码与资源位置
 
-Development registration temporarily takes ownership of `aiy://` from any installed build. `aiy-media://` remains an application-internal media protocol and is never registered as an external handler. See [External deep links](deep-links.md) for the supported route and integration examples.
+| 目录                            | 职责                                  |
+| ------------------------------- | ------------------------------------- |
+| `src/main/`                     | Electron 主进程、存储、任务与系统集成 |
+| `src/preload/`                  | renderer 与主进程之间的受限桥接       |
+| `src/renderer/`                 | React 界面、组件、样式与语言资源      |
+| `src/shared/`                   | 跨进程契约、校验与共享规则            |
+| `extensions/`、`content-packs/` | 随应用提供的扩展与内容包              |
+| `browser-companion/`            | 浏览器扩展                            |
+| `scripts/`、`native/`           | 构建工具与原生辅助程序                |
 
-On Linux, the npm-installed Chromium setuid helper cannot be owned by root, and
-Ubuntu 24.04 restricts its unprivileged-user-namespace fallback. The source-only
-development launcher therefore passes Electron's `--no-sandbox` option on Linux.
-Only run a checkout you trust. Packaged renderer processes retain the sandbox
-configured by the application.
+界面文案通过 `useI18n().messages` 获取；同时维护英文 `src/renderer/i18n/locales/en.ts` 和中文 `extensions/com.aiy.language.zh-cn/messages.json`。界面复用现有 shadcn 组件和 Tailwind 工具类，文件处理采用异步 I/O。
 
-Packaged installations do not require Node.js.
+## 日志与排障
 
-## Runtime data
+- 开发日志：`dev-logs/desktop-dev-current.log`。
+- 预览日志：`dev-logs/desktop-preview-current.log`。
+- renderer 诊断：应用用户数据目录下的 `diagnostics/renderer/renderer-current.jsonl`。
 
-The first launch creates an empty, user-owned library. The default data locations are:
+使用 `AIY_USER_DATA_DIR` 可以指定独立的应用数据目录。排查迁移、导入或恢复时使用数据副本，不直接修改唯一的用户数据库。报告问题时提供源码提交、运行命令及脱敏日志。
 
-```text
-Microsoft Store: <Store app data>/AIY-Store/libraries/
-Windows source development: %APPDATA%/AIY/libraries/
-Linux source evaluation: ~/.config/AIY/libraries/
-
-libraries/
-├─ index.json
-└─ <library-id>/
-   ├─ library.json
-   ├─ library.sqlite3
-   ├─ objects/sha256/
-   └─ temp/generation/
-```
-
-Set `AIY_USER_DATA_DIR` to choose a different user-data root. Extensions and test data use their own managed subdirectories under that root.
-
-`0.3.0` is the first public data baseline. The app does not automatically adopt, migrate, or repair development libraries, fixtures, content-pack source directories, or pre-release databases. If a registered library is missing its database file, the app fails closed instead of silently creating a replacement database.
-
-For backup and recovery boundaries, see [Local spaces, backup, and recovery](tutorials/05-local-spaces-backup-and-recovery.md).
-
-## Development commands
-
-| Purpose                              | Command                        |
-| ------------------------------------ | ------------------------------ |
-| Start the development app            | `npm run dev`                  |
-| Start with temporary deep-link owner | `npm run dev:deep-link`        |
-| Persist dev deep-link registration   | `npm run deep-link:register`   |
-| Remove dev deep-link registration    | `npm run deep-link:unregister` |
-| Check touched files                  | `npm run verify:touched`       |
-| Type-check                           | `npm run typecheck`            |
-| Check formatting                     | `npm run format:check`         |
-| Lint                                 | `npm run lint`                 |
-| Public startup smoke                 | `npm test`                     |
-| Check public test boundary           | `npm run verify:test-boundary` |
-| Production build                     | `npm run build`                |
-| Full verification                    | `npm run verify`               |
-
-The public repository keeps only a generic startup-storage smoke check. `npm run verify` runs formatting, lint, type-checking, the public test-boundary check, that smoke check, and a production build. Traditional coverage percentages are reference data and are not part of public verification.
-
-`npm run verify:touched` is the fast feedback lane for an active worktree. It checks format-capable and lintable files reported by Git as staged, unstaged, or untracked, without scanning the whole repository or modifying the checked files. To include committed changes relative to a branch or ref, run `npm run verify:touched -- --base <git-ref>`. This command does not replace type-checking, builds, or the full release gate.
-
-Normal development does not require packaging or updating `release/`.
-
-## Packaging
-
-Run packaging from a clean Windows x64 checkout after a fresh `npm ci`. Do not reuse `node_modules/`, `out/`, or `release/` from another checkout or machine.
-
-The ordinary package commands run the Store gate, build the production bundles, and create an unsigned MSIX for Partner Center:
-
-```powershell
-npm run package
-# npm run make is an exact alias
-```
-
-For packaging-only iteration after the relevant checks have already passed:
-
-```powershell
-npm run make:store
-```
-
-For a locally signed sideload package:
-
-```powershell
-npm run make:store:local
-```
-
-Submission output is written to `release/store-msix-<app-version>/submission/`; the local package and its temporary certificate are written under `release/store-msix-<app-version>/local-test/`. Only the unsigned submission MSIX goes to Partner Center. The generated local-test PFX must never be uploaded or committed.
-
-The script validates the Store identity, x64 architecture, semantic-to-Store version mapping, bundled content boundary, update-helper protocol, signature mode, and SHA-256 metadata before retaining the artifact. The Electron unpacked directory is deleted after it is folded into the MSIX and is not a deliverable.
-
-## Extensions and tutorials
-
-- [User tutorials](tutorials/README.md) — installation, first launch, first generation, material import, dictionary workflows, and local spaces.
-- [Extension development](extensions/README.md) — manifests, language packs, capability extensions, and templates.
-- [Git workflow](git-workflow.md) — branch and release conventions.
-- [Release notes](release/) — version differences, packaging inputs, and release validation.
-
-## License and security
-
-The project is licensed under the [PolyForm Noncommercial License 1.0.0](../LICENSE). For security issues, read [SECURITY.md](../SECURITY.md); do not include credentials, personal data, or vulnerability details in a public issue.
+[文档首页](index.md) · [打包](packaging.md) · [发布](release.md)

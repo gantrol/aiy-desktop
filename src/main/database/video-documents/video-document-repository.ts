@@ -1,4 +1,5 @@
 import type { LibraryStorage } from '@/main/database/core/storage';
+import { continuationSource, registerCreationOutput } from '@/main/database/creations/creation-continuation';
 import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
 import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
 import { VideoDocumentAiActivityRepository } from '@/main/database/video-documents/video-document-ai-activity-repository';
@@ -231,6 +232,17 @@ export class VideoDocumentRepository {
   }
 
   create(input: VideoDocumentCreateInput): VideoDocumentDto {
+    const requestId =
+      input.creationSource?.kind === 'DRAFT'
+        ? `input-video:${createHash('sha256')
+            .update(JSON.stringify([input.creationSource.id, input.videoMaterialId]))
+            .digest('hex')}`
+        : null;
+    if (requestId && this.db.prepare('SELECT 1 FROM documents WHERE id=?').get(requestId)) {
+      const saved = this.get(requestId);
+      if (saved.status !== 'ACTIVE') throw new Error('Document is unavailable');
+      return saved;
+    }
     const existing = this.db
       .prepare(
         `SELECT document.id
@@ -241,7 +253,8 @@ export class VideoDocumentRepository {
         LIMIT 1`,
       )
       .get(input.videoMaterialId) as JsonMap | undefined;
-    if (existing) return this.get(text(existing.id));
+    // Explicit continuation can create another arrangement of the same source video.
+    if (existing && !input.creationSource) return this.get(text(existing.id));
 
     const source = this.db
       .prepare(
@@ -260,7 +273,7 @@ export class VideoDocumentRepository {
     const documentId = this.db
       .transaction(() => {
         const timestamp = now();
-        const id = ulid();
+        const id = requestId ?? ulid();
         this.db
           .prepare(
             `INSERT INTO documents
@@ -287,14 +300,18 @@ export class VideoDocumentRepository {
         this.createBranch(id, 'CLEAN_TRANSCRIPT', 'NONE', timestamp);
         this.createBranch(id, 'ARTICLE', 'NONE', timestamp);
         this.createBranch(id, 'NOTES', 'NONE', timestamp);
-        this.creationItems.createWithForm({
-          albumId: input.albumId ?? null,
-          form: {
-            role: 'VIDEO_DOCUMENT',
-            entity: { kind: 'VIDEO_DOCUMENT', id },
-            anchorKey: null,
+        registerCreationOutput(
+          this.storage,
+          {
+            albumId: input.albumId ?? null,
+            form: {
+              role: 'VIDEO_DOCUMENT',
+              entity: { kind: 'VIDEO_DOCUMENT', id },
+              anchorKey: null,
+            },
           },
-        });
+          input.creationSource ? continuationSource(this.storage, input.creationSource) : undefined,
+        );
         return id;
       })
       .immediate();

@@ -7,6 +7,8 @@ export interface CodexUsageApiPricePeriod {
   cacheWriteInputPerMillionUsd: number | null;
   outputPerMillionUsd: number;
   longContext: boolean;
+  // Some Fast tiers publish short-context prices only.
+  maxInputTokens?: number;
 }
 
 export interface CodexUsageCreditPricePeriod {
@@ -21,6 +23,7 @@ export interface CodexUsageModelPrice {
   verifiedAt: string;
   sourceUrls: string[];
   api: CodexUsageApiPricePeriod[];
+  apiFast?: CodexUsageApiPricePeriod[];
   credits: CodexUsageCreditPricePeriod[];
   fastCreditMultiplier: number | null;
   // Older verified entries use a shared multiplier; newer rates can distinguish included usage.
@@ -30,6 +33,7 @@ export interface CodexUsageModelPrice {
 export interface CodexUsageRateCard {
   schemaVersion: number;
   updatedAt: string;
+  creditUpdatedAt?: string;
   apiSourceUrl: string;
   creditSourceUrl: string;
   longContextThresholdTokens: number;

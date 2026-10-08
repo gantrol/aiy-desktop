@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { registerCreationOutput } from '@/main/database/creations/creation-continuation';
+import type { CreationSource } from '@/shared/contracts/creation-source';
 import type { AssetDto } from '@/shared/contracts';
 import {
   gifAssetIds,
@@ -169,7 +171,10 @@ export class GifDocumentRepository {
       createdAt: text(row.created_at),
     };
   }
-  save(input: GifSaveInput, owner: { sourceDocumentId?: string; targetAlbumId?: string | null } = {}): GifDocument {
+  save(
+    input: GifSaveInput,
+    owner: { sourceDocumentId?: string; targetAlbumId?: string | null; creationSource?: CreationSource } = {},
+  ): GifDocument {
     return this.db
       .transaction(() => {
         const previous = this.db
@@ -227,10 +232,14 @@ export class GifDocumentRepository {
                 anchorKey: null,
               });
             else
-              creations.createWithForm({
-                albumId: owner.targetAlbumId ?? null,
-                form: { role: 'ANIMATION', entity, anchorKey: null },
-              });
+              registerCreationOutput(
+                this.storage,
+                {
+                  albumId: owner.targetAlbumId ?? null,
+                  form: { role: 'ANIMATION', entity, anchorKey: null },
+                },
+                owner.creationSource,
+              );
           } else creations.touchForEntity(entity, updatedAt);
         }
         this.storage.recordChange('GIF_DOCUMENT', input.id, 'SAVE', { revision });

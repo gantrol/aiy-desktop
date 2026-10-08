@@ -108,7 +108,7 @@ function ArticleSession({
               onGenerateHeader={unavailable}
               onGenerateIllustration={unavailable}
               onConfigureArticleCheck={reportUnavailable}
-              onEditCreationInput={unavailable}
+              onContinueInput={unavailable}
               onOpenRelation={reportUnavailable}
               notify={notify}
             />

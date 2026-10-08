@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { VideoDocumentDto, VideoDocumentSummaryDto } from '@/shared/contracts';
+import { useStableCallback } from '@/renderer/lib/useStableCallback';
 
 interface Options {
   active: boolean;
@@ -27,6 +28,10 @@ export function useVideoDocumentList({
   const [loadingMore, setLoadingMore] = useState(false);
   const [revision, setRevision] = useState(0);
   const requestGeneration = useRef(0);
+  const key = JSON.stringify([query, albumId, includeDescendants, unfiledOnly]);
+  const loaded = useRef<{ key: string; refreshKey: number | string; revision: number } | null>(null);
+  const requestedKey = useRef(key);
+  const reportError = useStableCallback(notify);
 
   useEffect(() => {
     const request = ++requestGeneration.current;
@@ -35,16 +40,32 @@ export function useVideoDocumentList({
       setLoading(false);
       return undefined;
     }
+    const cancel = () => {
+      requestGeneration.current += 1;
+    };
+    if (
+      loaded.current?.key === key &&
+      loaded.current.refreshKey === refreshKey &&
+      loaded.current.revision === revision
+    ) {
+      setLoading(false);
+      return cancel;
+    }
+    loaded.current = null;
     let current = true;
-    setItems([]);
-    setTotal(0);
-    setNextCursor(null);
+    if (requestedKey.current !== key) {
+      requestedKey.current = key;
+      setItems([]);
+      setTotal(0);
+      setNextCursor(null);
+    }
     setLoading(true);
     const timeout = window.setTimeout(() => {
       void window.desktopApi
         .videoDocumentsList({ query, albumId, includeDescendants, unfiledOnly, cursor: null, limit: 40 })
         .then((page) => {
           if (!current || request !== requestGeneration.current) return;
+          loaded.current = { key, refreshKey, revision };
           setItems(page.items);
           setTotal(page.total);
           setNextCursor(page.nextCursor);
@@ -53,17 +74,18 @@ export function useVideoDocumentList({
         .catch((reason) => {
           if (!current || request !== requestGeneration.current) return;
           setLoading(false);
-          notify(reason instanceof Error ? reason.message : String(reason));
+          reportError(reason instanceof Error ? reason.message : String(reason));
         });
     }, 180);
     return () => {
       current = false;
+      cancel();
       window.clearTimeout(timeout);
     };
-  }, [active, albumId, includeDescendants, notify, query, refreshKey, revision, unfiledOnly]);
+  }, [active, albumId, includeDescendants, key, query, refreshKey, reportError, revision, unfiledOnly]);
 
   const loadMore = useCallback(async () => {
-    if (!nextCursor || loadingMore) return;
+    if (!active || loading || !nextCursor || loadingMore) return;
     const request = requestGeneration.current;
     const cursor = nextCursor;
     setLoadingMore(true);
@@ -85,11 +107,11 @@ export function useVideoDocumentList({
       setNextCursor(page.nextCursor);
     } catch (reason) {
       if (request !== requestGeneration.current) return;
-      notify(reason instanceof Error ? reason.message : String(reason));
+      reportError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       if (request === requestGeneration.current) setLoadingMore(false);
     }
-  }, [albumId, includeDescendants, loadingMore, nextCursor, notify, query, unfiledOnly]);
+  }, [active, albumId, includeDescendants, loading, loadingMore, nextCursor, reportError, query, unfiledOnly]);
 
   const updateSummary = useCallback((updated: VideoDocumentDto) => {
     setItems((current) => current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));

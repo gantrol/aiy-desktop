@@ -1,5 +1,6 @@
 import { articleCreationInputSchema } from '@/shared/contracts/inspiration-stash';
 import { createOutlineDocument } from '@/shared/outline-document';
+import { isDocumentCreationStartMode } from '@/renderer/components/creator/creationStartMode';
 import { copyLinkedBlockDocument } from '@/shared/block-anchor-copy';
 import { articleMediaBindings } from '@/renderer/components/creator/article-editor/articleContentTransforms';
 import type { CreationStartPlan } from '@/renderer/components/creator/CreationStartActions';
@@ -7,7 +8,7 @@ import type { CreationDraftPromptSnapshot } from '@/renderer/components/creator/
 import { creationDraftCommitIdentity } from '@/renderer/components/creator/workflows/creationDraftSnapshot';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
-import { blockDocumentMarkdown, blockDocumentText, plainTextBlockDocument } from '@/shared/block-document-codecs';
+import { blockDocumentMarkdown, plainTextBlockDocument } from '@/shared/block-document-codecs';
 import type { ArticleContentInput, AssetDto, CreationDraftDto, CreationDraftSaveInput } from '@/shared/contracts';
 import { blockDocumentAssetIds, captureBlockDocument } from '@/shared/contracts/block-document';
 import { useEffect, useRef, useState } from 'react';
@@ -62,14 +63,6 @@ function outcomeTitle(snapshot: OutcomeSnapshot, fallback: string) {
   );
 }
 
-function hasOutcomeContent(snapshot: OutcomeSnapshot) {
-  return snapshot.prompt.document
-    ? Boolean(
-        blockDocumentText(snapshot.prompt.document).trim() || blockDocumentAssetIds(snapshot.prompt.document).length,
-      )
-    : Boolean(snapshot.prompt.manualPrompt.trim());
-}
-
 export function useCreatorOutcomeWorkflow(options: Options) {
   const animation = useGifMakerLauncher();
   const messages = useI18n().messages;
@@ -102,8 +95,6 @@ export function useCreatorOutcomeWorkflow(options: Options) {
       notify(messageFor(reason));
       return;
     }
-    const hasContent = hasOutcomeContent(snapshot);
-    if (plan.kind === 'manuscript' && !hasContent && !snapshot.referenceAssets.length) return;
     const requestIdentity = getRequestIdentity();
     const revision = ++revisionRef.current;
     const requestIsCurrent = () => revisionRef.current === revision && getRequestIdentity() === requestIdentity;
@@ -138,8 +129,11 @@ export function useCreatorOutcomeWorkflow(options: Options) {
         plan.kind === 'outline'
           ? copyLinkedBlockDocument(sourceDocument.root)
           : captureBlockDocument(sourceDocument.root, [], !snapshot.sourceInspirationStashId);
-      const mediaBindings = articleMediaBindings(snapshot.referenceAssets, 'reference');
       const inlineIds = new Set(blockDocumentAssetIds(document));
+      const articleAssets = isDocumentCreationStartMode(draftSnapshot.startMode)
+        ? [...inlineIds].flatMap((id) => draft.referenceAssets.find((asset) => asset.id === id) ?? [])
+        : snapshot.referenceAssets;
+      const mediaBindings = articleMediaBindings(articleAssets, 'reference');
       const contentDocument = captureBlockDocument({
         ...document.root,
         content: [
@@ -165,7 +159,7 @@ export function useCreatorOutcomeWorkflow(options: Options) {
           ),
           markdown: blockDocumentMarkdown(articleDocument, mediaBindings),
           mediaBindings,
-          coverAssetId: snapshot.referenceAssets[0]?.id ?? null,
+          coverAssetId: articleAssets[0]?.id ?? null,
           creationInput: articleCreationInputSchema.parse({
             promptNodes: snapshot.prompt.nodes,
             termPromptLocale: draftSnapshot.termPromptLocale,

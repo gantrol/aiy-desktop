@@ -6,7 +6,7 @@ export function useContentSearchOpen(
   active: boolean,
   selectionKey: string,
   unavailable: string,
-  onOpen: (source: ContentSource) => void,
+  onOpen: (source: ContentSource, query: string) => void,
 ) {
   const request = useRef(0);
   const pending = useRef(false);
@@ -21,7 +21,7 @@ export function useContentSearchOpen(
     setError('');
     return invalidate;
   }, [active, selectionKey, invalidate]);
-  const open = async (source: ContentSource) => {
+  const open = async (source: ContentSource, query = '') => {
     if (!active || pending.current) return;
     pending.current = true;
     const current = ++request.current;
@@ -29,7 +29,7 @@ export function useContentSearchOpen(
     setError('');
     try {
       const document = await contentLibraryApi().readCurrent(source);
-      if (current === request.current) onOpen(document.source);
+      if (current === request.current) onOpen(document.source, query);
     } catch {
       if (current === request.current) setError(unavailable);
     } finally {

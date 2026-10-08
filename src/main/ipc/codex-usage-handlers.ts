@@ -1,6 +1,6 @@
 import path from 'node:path';
 import type { SaveDialogOptions, SaveDialogReturnValue } from 'electron';
-import { CodexUsageInvestigator } from '@/main/extensions/codex-usage-investigator';
+import { CodexUsageWorkerClient } from '@/main/extensions/codex-usage-investigator/worker-client';
 import type { ExtensionRegistry } from '@/main/extensions/registry';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import {
@@ -13,6 +13,7 @@ import {
   codexUsageResumeInputSchema,
   codexUsageScanInputSchema,
   codexUsageStateSchema,
+  codexUsageStateInputSchema,
   codexUsageTaskSchema,
 } from '@/shared/contracts/codex-usage';
 import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
@@ -42,7 +43,7 @@ export function registerCodexUsageIpc({
   chooseSaveFile,
   sendRendererEvent,
 }: Options): CodexUsageIpcController {
-  const investigator = new CodexUsageInvestigator({
+  const investigator = new CodexUsageWorkerClient({
     dataDirectory,
     onTaskChanged: (task) => sendRendererEvent('codex-usage:task-changed', codexUsageTaskSchema.parse(task)),
   });
@@ -51,9 +52,11 @@ export function registerCodexUsageIpc({
       throw new Error('Did Codex Work Hard Today? is disabled or missing permissions');
     }
   };
-  ipcMain.handle('codex-usage:state', async () => {
+  ipcMain.handle('codex-usage:state', async (_event, raw) => {
     active();
-    return codexUsageStateSchema.parse(await investigator.state());
+    return codexUsageStateSchema.parse(
+      await investigator.state(codexUsageStateInputSchema.parse(raw ?? {}).beforeInvestigationId),
+    );
   });
   ipcMain.handle('codex-usage:investigation', async (_event, raw) => {
     active();
@@ -72,7 +75,7 @@ export function registerCodexUsageIpc({
     return codexUsageTaskSchema.parse(await investigator.resume(input.taskId));
   });
   ipcMain.handle('codex-usage:pause', () => {
-    investigator.pause();
+    return investigator.pause();
   });
   ipcMain.handle('codex-usage:clear', async (_event, raw) => {
     active();
@@ -109,7 +112,7 @@ export function registerCodexUsageIpc({
       return investigator.hasPending;
     },
     cancel() {
-      investigator.pause();
+      void investigator.pause().catch(() => undefined);
     },
   };
 }

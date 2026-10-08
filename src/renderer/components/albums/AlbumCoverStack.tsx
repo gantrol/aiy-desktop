@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { FolderIcon, type LucideIcon } from 'lucide-react';
+import { RectangleVerticalIcon, type LucideIcon } from 'lucide-react';
 import {
   albumCoverAssets,
   ALBUM_COVER_LAYERS,
@@ -14,7 +14,7 @@ import { cn } from '@/renderer/lib/utils';
 export function AlbumCoverStack({
   assets,
   title,
-  icon: Icon = FolderIcon,
+  icon: Icon = RectangleVerticalIcon,
   compact = false,
   caption,
   className,

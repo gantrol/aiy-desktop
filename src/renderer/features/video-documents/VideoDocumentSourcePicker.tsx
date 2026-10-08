@@ -1,6 +1,6 @@
 import { FileVideoIcon, ImagesIcon, LoaderCircleIcon, UploadIcon, VideoIcon, XIcon } from 'lucide-react';
 import { useEffect, useState, type RefObject } from 'react';
-import type { GalleryItemDto } from '@/shared/contracts';
+import type { AssetDto, CreationVideoAttachmentDto, GalleryItemDto } from '@/shared/contracts';
 import { materialTitle, mediaMaterial } from '@/renderer/components/gallery/materialLibraryTypes';
 import { AssetMedia } from '@/renderer/components/media/AssetMedia';
 import { Button } from '@/renderer/components/ui/button';
@@ -8,10 +8,16 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/u
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 
+export interface VideoDocumentSelectedSource {
+  materialId: string;
+  asset: AssetDto;
+  title: string;
+}
+
 interface Props {
   inputRef: RefObject<HTMLInputElement | null>;
   localFile: File | null;
-  selectedGalleryVideo: GalleryItemDto | null;
+  selectedVideo: VideoDocumentSelectedSource | null;
   localSourceUrl: string;
   localReading: boolean;
   localDetails: string;
@@ -140,10 +146,67 @@ function GalleryVideoPicker({
   );
 }
 
+export function VideoDocumentAttachedSources({
+  videos,
+  selectedMaterialId,
+  disabled,
+  onSelect,
+  onRemove,
+}: {
+  videos: readonly CreationVideoAttachmentDto[];
+  selectedMaterialId: string | null;
+  disabled: boolean;
+  onSelect(materialId: string): void;
+  onRemove?(materialId: string): void;
+}) {
+  const labels = useI18n().messages.videoDocuments.start;
+  if (!videos.length) return null;
+  return (
+    <div role="group" aria-label={labels.attachedVideos} className="flex min-w-0 flex-wrap gap-2">
+      {videos.map((video) => (
+        <div
+          key={video.materialId}
+          className={cn(
+            'inline-flex max-w-full items-center rounded-md border',
+            selectedMaterialId === video.materialId && 'border-selected-border bg-selected',
+          )}
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            aria-pressed={selectedMaterialId === video.materialId}
+            disabled={disabled}
+            className="min-w-0 shrink"
+            title={video.name}
+            onClick={() => onSelect(video.materialId)}
+          >
+            <VideoIcon className="size-4" aria-hidden="true" />
+            <span className="truncate">{video.name}</span>
+          </Button>
+          {onRemove && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={disabled}
+              aria-label={`${labels.removeAttachment}: ${video.name}`}
+              title={labels.removeAttachment}
+              onClick={() => onRemove(video.materialId)}
+            >
+              <XIcon className="size-3.5" aria-hidden="true" />
+            </Button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function VideoDocumentSourcePicker({
   inputRef,
   localFile,
-  selectedGalleryVideo,
+  selectedVideo,
   localSourceUrl,
   localReading,
   localDetails,
@@ -155,12 +218,8 @@ export function VideoDocumentSourcePicker({
   onClear,
 }: Props) {
   const labels = useI18n().messages.videoDocuments.start;
-  const selected = Boolean(localFile || selectedGalleryVideo);
-  const selectedTitle = localFile
-    ? localFile.name
-    : selectedGalleryVideo
-      ? materialTitle(mediaMaterial(selectedGalleryVideo), labels.sourceVideoFallback)
-      : '';
+  const selected = Boolean(localFile || selectedVideo);
+  const selectedTitle = localFile?.name ?? selectedVideo?.title ?? '';
 
   return (
     <section
@@ -184,9 +243,9 @@ export function VideoDocumentSourcePicker({
                   )}
                 </div>
               )
-            ) : selectedGalleryVideo ? (
+            ) : selectedVideo ? (
               <AssetMedia
-                asset={selectedGalleryVideo.asset}
+                asset={selectedVideo.asset}
                 className="size-full min-h-52 object-contain"
                 muted
                 preload="metadata"
@@ -224,7 +283,7 @@ export function VideoDocumentSourcePicker({
               <GalleryVideoPicker
                 items={galleryVideos}
                 loading={galleryLoading}
-                selectedMaterialId={selectedGalleryVideo?.materialId ?? null}
+                selectedMaterialId={selectedVideo?.materialId ?? null}
                 disabled={disabled}
                 onSelect={onChooseGalleryVideo}
               />
@@ -250,7 +309,7 @@ export function VideoDocumentSourcePicker({
               <GalleryVideoPicker
                 items={galleryVideos}
                 loading={galleryLoading}
-                selectedMaterialId={selectedGalleryVideo?.materialId ?? null}
+                selectedMaterialId={selectedVideo?.materialId ?? null}
                 disabled={disabled}
                 onSelect={onChooseGalleryVideo}
               />

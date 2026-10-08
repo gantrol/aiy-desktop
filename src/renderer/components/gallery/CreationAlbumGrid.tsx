@@ -1,5 +1,5 @@
 import { itemDragIntent } from '@/renderer/components/albums/itemDrag';
-import { ArchiveIcon, FolderOpenIcon, Trash2Icon } from 'lucide-react';
+import { ArchiveIcon, GalleryVerticalEndIcon, Trash2Icon } from 'lucide-react';
 import { useMemo, useState, type DragEvent, type RefObject } from 'react';
 import type { MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
 import {
@@ -16,6 +16,7 @@ import { CollectionAlbumTile } from '@/renderer/components/gallery/CollectionAlb
 import { CollectionMasonry, collectionCoverRatio } from '@/renderer/components/gallery/CollectionMasonry';
 import { useMaterialAlbumMoveActions } from '@/renderer/components/gallery/MaterialAlbumMoveProvider';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
+import { itemActionVisibilityClassName } from '@/renderer/components/ui/item-actions';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/components/ui/context-menu';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
@@ -199,7 +200,7 @@ export function CollectionAlbumCard({
   );
   const detailLabel = detail ?? messages.gallery.albums.materials(album.materialCount);
   const actions: ActionMenuAction[] = [
-    { id: 'open', label: openLabel, icon: FolderOpenIcon, onSelect: () => onOpen(album.id) },
+    { id: 'open', label: openLabel, icon: GalleryVerticalEndIcon, onSelect: () => onOpen(album.id) },
     ...moveActions,
     ...collectionLifecycleActions({
       album,
@@ -234,7 +235,7 @@ export function CollectionAlbumCard({
       data-material-count={album.materialCount}
       data-child-album-count={writableMaterialAlbum ? childAlbumCount : undefined}
       className={cn(
-        'group relative min-w-0 rounded-sm',
+        'group group/item relative min-w-0 rounded-sm',
         album.previewAssets.length > 0 && 'h-full',
         dropActive && 'ring-2 ring-ring',
       )}
@@ -292,6 +293,7 @@ export function CollectionAlbumCard({
         actions={actions}
         label={`${messages.gallery.albums.moreActions}: ${album.title}`}
         className={cn(
+          itemActionVisibilityClassName,
           'absolute z-20 size-7 rounded-sm text-muted-foreground shadow-none',
           album.previewAssets.length > 0 ? 'right-1 top-1 bg-overlay/95' : 'right-0 top-0',
         )}

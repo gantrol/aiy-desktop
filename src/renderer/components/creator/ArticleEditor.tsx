@@ -4,7 +4,7 @@ import {
   ArticleAttachmentsInput,
   useArticleAttachments,
 } from '@/renderer/components/creator/article-editor/ArticleAttachments';
-import { SlidersHorizontalIcon } from 'lucide-react';
+import { ArticleInputHistoryAction } from '@/renderer/components/creator/article-editor/ArticleInputHistoryAction';
 import { useRef, useState } from 'react';
 import { ArticleTitleMetadata } from '@/renderer/components/creator/article-editor/ArticleTitleMetadata';
 import type {
@@ -44,7 +44,6 @@ import { PinContentButton } from '@/renderer/features/desktop-petals/PinContentA
 import {
   ArticleHeaderAiActions,
   ArticleHeaderActions,
-  ArticleHeaderIconButton,
   ArticleSaveStatus,
 } from '@/renderer/components/creator/article-editor/ArticleEditorHeader';
 import {
@@ -89,7 +88,7 @@ interface Props {
     preset: CanvasPresetDto,
   ): Promise<void>;
   onConfigureArticleCheck(): void;
-  onEditCreationInput(articleId: string): Promise<unknown>;
+  onContinueInput(draftId: string): Promise<boolean>;
   onOpenRelation(item: CreationRelationItem): void;
   notify(message: string): void;
 }
@@ -165,32 +164,6 @@ function useArticleVisualGeneration({
   };
 }
 
-function ArticleCreationInputAction({
-  articleId,
-  open,
-  notify,
-}: {
-  articleId: string;
-  open(id: string): Promise<unknown>;
-  notify(message: string): void;
-}) {
-  const session = useArticleEditorSession();
-  const copy = useI18n().messages.creator.manuscriptEditor;
-  return (
-    <ArticleHeaderIconButton
-      label={copy.editCreationInput}
-      variant="ghost"
-      onClick={() =>
-        void (async () => {
-          if (await session.flush('manual')) await open(articleId);
-        })().catch((reason) => notify(String(reason)))
-      }
-    >
-      <SlidersHorizontalIcon className="size-4" />
-    </ArticleHeaderIconButton>
-  );
-}
-
 function useArticleExport(
   session: ReturnType<typeof useArticleEditorSession>,
   onExport: Props['onExport'],
@@ -263,7 +236,7 @@ function ArticleEditorWorkspace({
   onGenerateHeader,
   onGenerateIllustration,
   onConfigureArticleCheck,
-  onEditCreationInput,
+  onContinueInput,
   onSaved,
   onOpenRelation,
   notify,
@@ -316,6 +289,9 @@ function ArticleEditorWorkspace({
   );
 
   const editorMode = useArticleEditorSessionSelector((state) => state.draft.metadata.editorMode);
+  const inputHistoryAction = (
+    <ArticleInputHistoryAction articleId={article.id} spaceId={spaceId} onContinue={onContinueInput} notify={notify} />
+  );
   if (editorMode === 'OUTLINE') {
     return (
       <OutlineArticleEditor
@@ -323,6 +299,7 @@ function ArticleEditorWorkspace({
         spaceId={spaceId}
         articleComments={articleComments}
         titleMetadata={titleMetadata}
+        inputHistoryAction={inputHistoryAction}
         onExport={exportMarkdown}
         notify={notify}
         zh={zh}
@@ -350,9 +327,7 @@ function ArticleEditorWorkspace({
             />
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-1">
-            {article.content.creationInput && (
-              <ArticleCreationInputAction articleId={article.id} open={onEditCreationInput} notify={notify} />
-            )}
+            {inputHistoryAction}
             <PinContentButton
               iconOnly
               source={{ kind: 'ARTICLE', id: article.id }}
@@ -462,7 +437,7 @@ function ArticleEditorWorkspace({
 }
 
 export function ArticleEditor(props: Props) {
-  const { article, locale, notify, onSave, onSaved, spaceId } = props;
+  const { article, notify, onSave, onSaved, spaceId } = props;
   return (
     <ArticleEditorSessionProvider
       key={`${spaceId}:${article.id}`}
@@ -471,7 +446,6 @@ export function ArticleEditor(props: Props) {
       onSave={onSave}
       onSaved={onSaved}
       spaceId={spaceId}
-      zh={locale === 'zh'}
     >
       <OutlineContentLinkHost.Provider value={{ spaceId, articleId: article.id, albumId: article.albumId, notify }}>
         <ArticleEditorWorkspace {...props} />

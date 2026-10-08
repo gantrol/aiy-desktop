@@ -1,4 +1,9 @@
 import { normalizeCreatorPromptNodes } from '@/renderer/components/creator/creatorPromptDocument';
+import {
+  applyDocumentWritingCandidate,
+  captureDocumentWritingTask,
+} from '@/renderer/components/creator/documentWritingEditor';
+import type { DocumentWritingTask } from '@/shared/contracts/document-assistant';
 import { createImagePromptPlan, ImagePromptPlanExtension } from '@/renderer/components/creator/imagePromptPlan';
 import { CreatorPromptEditorSurface } from '@/renderer/components/creator/CreatorPromptEditorSurface';
 import { imageFiles, imageMimeType } from '@/renderer/components/creator/imageImport';
@@ -16,6 +21,7 @@ import { pasteContentImages } from '@/renderer/features/content-editor/contentIm
 import { registerContentImageRecovery } from '@/renderer/features/content-editor/contentImageRecovery';
 import { ContentInputOperations } from '@/renderer/features/content-editor/contentInputOperations';
 import { useContentEditor } from '@/renderer/features/content-editor/useContentEditor';
+import { outlineExtensions } from '@/renderer/features/content-editor/outlineExtensions';
 import { useVideoDocumentEditorComposition } from '@/renderer/features/video-documents/videoDocumentEditorComposition';
 import {
   importVideoDocumentEditorImage,
@@ -101,11 +107,14 @@ function moveOrInsertAtom(
 }
 
 export interface CreatorPromptComposerHandle {
+  captureWritingTask(kind: DocumentWritingTask['kind']): DocumentWritingTask;
+  applyWritingCandidate(task: DocumentWritingTask, markdown: string, placement: 'replace' | 'append'): boolean;
   getNodes(): CreatorPromptNodeInput[];
   getDocument(): BlockDocument;
   hasPendingInput(): boolean;
   whenSettled(): Promise<void>;
   appendText(value: string): void;
+  insertImage(assetId: string): void;
   setImagePromptPlan(prompts: readonly string[], copy: Parameters<typeof createImagePromptPlan>[1]): void;
   reconcileReferences(termIds: readonly string[], paletteIds: readonly string[]): void;
   insertTerm(termId: string, position?: number): void;
@@ -131,6 +140,10 @@ interface Props {
   placeholder: string;
   ariaLabel: string;
   fullWindow?: boolean;
+  presentation?: 'prompt' | 'document';
+  outlineMode?: boolean;
+  autoFocus?: boolean;
+  onEditorChange?(editor: Editor | null): void;
   onNodesChange(nodes: CreatorPromptNodeInput[], document: BlockDocument): void;
   onOpenTerm(term: TermListItem): void;
   onOpenRecipe(paletteId: string): void;
@@ -154,6 +167,10 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
     placeholder,
     ariaLabel,
     fullWindow = false,
+    presentation = 'prompt',
+    outlineMode = false,
+    autoFocus = false,
+    onEditorChange,
     onNodesChange,
     onOpenTerm,
     onOpenRecipe,
@@ -242,18 +259,26 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
         ),
       );
   };
-  const extensions = useMemo(() => [CreatorTermNode, CreatorRecipeNode, ImagePromptPlanExtension], []);
+  const extensions = useMemo(
+    () => [CreatorTermNode, CreatorRecipeNode, ImagePromptPlanExtension, ...(outlineMode ? outlineExtensions() : [])],
+    [outlineMode],
+  );
   const editor = useContentEditor({
+    autofocus: autoFocus ? 'end' : false,
     presentation: {
-      typography: 'compact',
+      typography: presentation === 'document' && !outlineMode ? 'article' : 'compact',
       ariaLabel,
-      className: 'min-h-48 px-5 pt-2 pb-5',
+      className: outlineMode
+        ? 'aiy-outline-editor min-h-64 pl-4 pr-2 pt-2 pb-12'
+        : presentation === 'document'
+          ? 'min-h-64 px-3 pt-2 pb-12'
+          : 'min-h-48 px-5 pt-2 pb-5',
     },
     extensions,
     content: initialContent,
     editorProps: {
       attributes: {
-        'data-generation-prompt': 'true',
+        ...(presentation === 'prompt' ? { 'data-generation-prompt': 'true' } : { 'data-creation-document': 'true' }),
       },
       handleDOMEvents: {
         compositionstart: composition.start,
@@ -340,6 +365,11 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
   });
   editorRef.current = editor;
 
+  useEffect(() => {
+    onEditorChange?.(editor);
+    return () => onEditorChange?.(null);
+  }, [editor, onEditorChange]);
+
   useComposerBridgeSynchronization(editor, bridgeSnapshot);
   useEffect(() => {
     if (!editor) return;
@@ -408,6 +438,9 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
   useImperativeHandle(
     ref,
     () => ({
+      captureWritingTask: (kind) => captureDocumentWritingTask(editor, kind),
+      applyWritingCandidate: (task, markdown, placement) =>
+        applyDocumentWritingCandidate(editor, task, markdown, placement),
       hasPendingInput: () => composition.isInputPending() || inputs.isPending(),
       whenSettled: async () => {
         do {
@@ -424,6 +457,14 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
           editor.state.doc.content.size,
           plainTextBlockDocument(value).root.content ?? [],
         );
+      },
+      insertImage(assetId) {
+        if (!editor || !assetId) return;
+        editor
+          .chain()
+          .focus()
+          .insertContent({ type: 'image', attrs: { assetId, alt: '' } })
+          .run();
       },
       setImagePromptPlan(prompts, copy) {
         if (!editor) return;
@@ -521,6 +562,8 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
       editor={editor}
       empty={editorIsEmpty}
       fullWindow={fullWindow}
+      presentation={presentation}
+      outlineMode={outlineMode}
       placeholder={placeholder}
     />
   );

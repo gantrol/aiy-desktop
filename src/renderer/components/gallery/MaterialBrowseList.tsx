@@ -1,6 +1,4 @@
-import type { ReactNode } from 'react';
 import { FileTextIcon, VideoIcon } from 'lucide-react';
-import { WorkbenchPaneHeader } from '@/renderer/components/workbench/WorkbenchPane';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
@@ -12,21 +10,15 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 export function MaterialBrowseList({
   items,
   selectedKey,
-  toggle,
   onSelect,
 }: {
   items: readonly MaterialLibraryItem[];
   selectedKey: string;
-  toggle: ReactNode;
   onSelect(item: MaterialLibraryItem): void;
 }) {
   const { messages } = useI18n();
   return (
     <>
-      <WorkbenchPaneHeader>
-        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{messages.workbench.browseResults}</h2>
-        {toggle}
-      </WorkbenchPaneHeader>
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-1 p-2">
           {items.map((item) => {

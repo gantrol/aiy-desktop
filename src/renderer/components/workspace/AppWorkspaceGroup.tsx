@@ -1,6 +1,8 @@
 import type { AppLocation, HistoryNavigationGuard, NavigationMode } from '@/renderer/components/app/app-navigation';
 import type { WorkspaceRuntimeGroup, WorkspaceRuntimeTab } from '@/renderer/components/workspace/workspace-state';
+import { activeNavigationEntry } from '@/renderer/components/workspace/workspace-state';
 import { WorkspaceTabStrip } from '@/renderer/components/workspace/WorkspaceTabStrip';
+import { WorkspaceHeader, WorkspaceHeaderTabScope } from '@/renderer/components/workspace/WorkspaceHeader';
 import {
   WorkspaceTabSurface,
   type WorkspaceTabSurfaceProps,
@@ -9,6 +11,7 @@ import type { CodexImagesNavigationState } from '@/renderer/features/extensions/
 import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import { useWorkspaceGroupPresentation } from '@/renderer/components/workspace/useWorkspaceGroupPresentation';
+import { workspaceTabFocusSurfaces } from '@/renderer/commands/shortcut-context';
 import type {
   BootstrapDto,
   ImportedCreationOutputDto,
@@ -31,7 +34,6 @@ interface Props {
   dataRevision: number;
   locale: Locale;
   defaultPromptLocale: Locale | null;
-  onPromptLocaleChange(locale: Locale | null): void;
   comparisonFullWindow: boolean;
   creationPromptFullWindow: boolean;
   loadingPreviews: readonly TransitionPreviewDto[];
@@ -84,9 +86,13 @@ function activateFocusedWorkspaceGroup(event: FocusEvent<HTMLDivElement>, onActi
   onActivateGroup();
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
-  const pane = target.closest('[data-workspace-tab-id]');
+  const pane = target.closest<HTMLElement>('[data-workspace-tab-id], [data-workspace-sidebar-tab-id]');
   if (!pane || !event.currentTarget.contains(pane)) return;
-  pane.querySelector<HTMLElement>('[data-workspace-last-focus]')?.removeAttribute('data-workspace-last-focus');
+  const tabId = pane.dataset.workspaceTabId ?? pane.dataset.workspaceSidebarTabId;
+  if (!tabId) return;
+  for (const surface of workspaceTabFocusSurfaces(event.currentTarget, tabId)) {
+    surface.querySelector('[data-workspace-last-focus]')?.removeAttribute('data-workspace-last-focus');
+  }
   target.setAttribute('data-workspace-last-focus', 'true');
 }
 
@@ -126,7 +132,7 @@ function WorkspaceTabSession({
       role="tabpanel"
       aria-labelledby={tabsVisible ? `workspace-tab-${tab.id}` : undefined}
       data-workspace-tab-id={tab.id}
-      className={visible ? 'absolute inset-0 z-10 min-h-0 min-w-0 overflow-hidden opacity-100' : 'hidden'}
+      className={visible ? 'absolute inset-0 z-10 min-h-0 min-w-0 overflow-hidden' : 'hidden'}
       aria-hidden={!visible}
       inert={!visible}
     >
@@ -192,6 +198,7 @@ export function AppWorkspaceGroup({
   ].slice(0, maxMountedTabsPerGroup);
   const mountedTabIds = new Set(mountedTabIdsRef.current);
   const mountedTabs = group.tabs.filter((tab) => mountedTabIds.has(tab.id));
+  const entry = activeNavigationEntry(mountedTabs.find((tab) => tab.id === group.activeTabId)!);
 
   return (
     <div
@@ -203,58 +210,70 @@ export function AppWorkspaceGroup({
         if (!collapsed) activateFocusedWorkspaceGroup(event, onActivateGroup);
       }}
     >
-      {tabsVisible && (
-        <WorkspaceTabStrip
-          data={surfaceProps.data}
-          group={group}
-          active={active}
-          collapsed={collapsed}
-          onTabsCollapsedChange={onTabsCollapsedChange}
-          onActivate={onActivateTab}
-          onClose={onCloseTab}
-          onCloseOthers={onCloseOtherTabs}
-          onReorder={onReorderTab}
-          onNewTab={(destination) => onNewTab(group.activeTabId, destination)}
-          onOpenBeside={(view) => onOpenBeside(group.activeTabId, view)}
-          splitAxis={splitAxis}
-          splitPosition={splitPosition}
-          onMerge={onMergeGroups}
-          onMoveToOtherGroup={onMoveTabToOtherGroup}
-          onSplit={(axis) => onSplit(group.activeTabId, axis)}
-          onReset={onReset}
-        />
-      )}
-      <div
-        data-workspace-group-body
-        className="flex min-h-0 min-w-0 flex-1 flex-col"
-        aria-hidden={collapsed}
-        inert={collapsed}
+      <WorkspaceHeader
+        tabId={group.activeTabId}
+        mountedTabIds={mountedTabIdsRef.current}
+        enabled={tabsVisible && !collapsed}
+        navigationKey={`${group.activeTabId}:${entry.id}:${entry.location.view}`}
+        surfaceKey={`${group.activeTabId}:${entry.location.view}`}
+        strip={
+          tabsVisible && (
+            <WorkspaceTabStrip
+              data={surfaceProps.data}
+              group={group}
+              active={active}
+              collapsed={collapsed}
+              onTabsCollapsedChange={onTabsCollapsedChange}
+              onActivate={onActivateTab}
+              onClose={onCloseTab}
+              onCloseOthers={onCloseOtherTabs}
+              onReorder={onReorderTab}
+              onNewTab={(destination) => onNewTab(group.activeTabId, destination)}
+              onOpenBeside={(view) => onOpenBeside(group.activeTabId, view)}
+              splitAxis={splitAxis}
+              splitPosition={splitPosition}
+              onMerge={onMergeGroups}
+              onMoveToOtherGroup={onMoveTabToOtherGroup}
+              onSplit={(axis) => onSplit(group.activeTabId, axis)}
+              onReset={onReset}
+            />
+          )
+        }
       >
         <div
-          id={`workspace-group-content-${group.id}`}
-          className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
+          data-workspace-group-body
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
           aria-hidden={collapsed}
           inert={collapsed}
         >
-          <div>
-            {mountedTabs.map((tab) => {
-              const visible = contentVisible && tab.id === group.activeTabId;
-              return (
-                <WorkspaceTabSession
-                  key={tab.id}
-                  {...surfaceProps}
-                  tab={tab}
-                  active={active && !collapsed && visible}
-                  visible={visible}
-                  tabsVisible={tabsVisible}
-                  onNewTab={onNewTab}
-                  onOpenBeside={onOpenBeside}
-                />
-              );
-            })}
+          <div
+            id={`workspace-group-content-${group.id}`}
+            className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
+            aria-hidden={collapsed}
+            inert={collapsed}
+          >
+            <div>
+              {mountedTabs.map((tab) => {
+                const visible = contentVisible && tab.id === group.activeTabId;
+                return (
+                  <WorkspaceHeaderTabScope key={tab.id} tabId={tab.id}>
+                    <WorkspaceTabSession
+                      key={tab.id}
+                      {...surfaceProps}
+                      tab={tab}
+                      active={active && !collapsed && visible}
+                      visible={visible}
+                      tabsVisible={tabsVisible}
+                      onNewTab={onNewTab}
+                      onOpenBeside={onOpenBeside}
+                    />
+                  </WorkspaceHeaderTabScope>
+                );
+              })}
+            </div>
           </div>
         </div>
-      </div>
+      </WorkspaceHeader>
     </div>
   );
 }

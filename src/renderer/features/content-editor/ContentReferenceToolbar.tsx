@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowUpRight, ChevronDown, MoreHorizontal, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
+import { contextualActionVisibilityClassName } from '@/renderer/components/ui/item-actions';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
 import {
   DropdownMenu,
@@ -40,7 +41,7 @@ export function ContentReferenceToolbar(props: ReferenceActionsProps & { visible
       <div
         data-reference-toolbar
         data-visible={show}
-        className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover/reference:opacity-100 group-focus-within/reference:opacity-100 data-[visible=true]:opacity-100"
+        className={`flex shrink-0 items-center gap-0.5 ${contextualActionVisibilityClassName} group-hover/reference:pointer-events-auto group-hover/reference:opacity-100 group-focus-within/reference:pointer-events-auto group-focus-within/reference:opacity-100 data-[visible=true]:pointer-events-auto data-[visible=true]:opacity-100`}
         onPointerDown={(event) => event.stopPropagation()}
       >
         {editable ? (

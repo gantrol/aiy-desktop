@@ -13,14 +13,14 @@ export function HoverRevealButton({ label, children, className, title = label, .
       {...props}
       size="sm"
       className={cn(
-        'group/reveal max-w-8 justify-start gap-2 overflow-hidden px-2 transition-[max-width,background-color,color,border-color,box-shadow] duration-300 ease-out hover:max-w-48 focus-visible:max-w-48',
+        'group/reveal max-w-8 justify-start gap-2 overflow-hidden px-2 transition-[max-width,background-color,color,border-color,box-shadow] duration-300 ease-out hover:max-w-48 focus-visible:max-w-48 [@media(hover:none)]:max-w-48 [@media(any-pointer:coarse)]:max-w-48 motion-reduce:transition-none',
         className,
       )}
       title={title}
       aria-label={props['aria-label'] ?? label}
     >
       {children}
-      <span className="translate-x-1 opacity-0 transition-[transform,opacity] duration-200 ease-out group-hover/reveal:translate-x-0 group-hover/reveal:opacity-100 group-focus-visible/reveal:translate-x-0 group-focus-visible/reveal:opacity-100">
+      <span className="translate-x-1 opacity-0 transition-[transform,opacity] duration-200 ease-out group-hover/reveal:translate-x-0 group-hover/reveal:opacity-100 group-focus-visible/reveal:translate-x-0 group-focus-visible/reveal:opacity-100 [@media(hover:none)]:translate-x-0 [@media(hover:none)]:opacity-100 [@media(any-pointer:coarse)]:translate-x-0 [@media(any-pointer:coarse)]:opacity-100 motion-reduce:transition-none">
         {label}
       </span>
     </Button>

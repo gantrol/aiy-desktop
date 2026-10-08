@@ -15,6 +15,7 @@ import type { AssetFileRevealContext, Locale } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { formatDateTime } from '@/renderer/lib/dateFormat';
 import { cn } from '@/renderer/lib/utils';
+import { itemActionVisibilityClassName } from '@/renderer/components/ui/item-actions';
 import {
   MIN_MATERIAL_FRAME_RATIO,
   MAX_MATERIAL_FRAME_RATIO,
@@ -164,8 +165,9 @@ function SelectionCheckbox({
   return (
     <span
       className={cn(
-        'absolute right-2 top-2 z-30 grid size-7 place-items-center rounded-full border bg-overlay/95 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100',
-        visible && 'opacity-100',
+        itemActionVisibilityClassName,
+        'absolute right-2 top-2 z-30 grid size-7 place-items-center rounded-sm border bg-overlay/95 backdrop-blur-sm',
+        visible && 'pointer-events-auto opacity-100',
         className,
       )}
     >
@@ -329,7 +331,7 @@ function MaterialCardImpl({
         data-material-id={materialId ?? undefined}
         draggable={Boolean(onDragStart)}
         onDragStart={(event) => onDragStart?.(event, item)}
-        className="group relative border-b last:border-b-0"
+        className="group group/item relative border-b last:border-b-0"
       >
         <button
           type="button"
@@ -425,7 +427,7 @@ function MaterialCardImpl({
         onDragStart={(event) => onDragStart?.(event, item)}
         data-material-aspect-ratio={cardAspectRatio.toFixed(3)}
         className={cn(
-          'corner-continuous group relative isolate w-full self-start overflow-hidden rounded-xl border bg-surface transition-colors duration-fast hover:border-border-strong',
+          'corner-continuous group group/item relative isolate w-full self-start overflow-hidden rounded-xl border bg-surface transition-colors duration-fast hover:border-border-strong',
           selected && 'border-border-strong ring-1 ring-border',
           checked && 'border-border-strong ring-1 ring-border',
         )}
@@ -518,7 +520,7 @@ function MaterialCardImpl({
         draggable={Boolean(onDragStart)}
         onDragStart={(event) => onDragStart?.(event, item)}
         data-material-aspect-ratio={cardAspectRatio.toFixed(3)}
-        className="group relative isolate w-full min-w-0 self-start"
+        className="group group/item relative isolate w-full min-w-0 self-start"
       >
         <div
           className={cn(
@@ -570,7 +572,10 @@ function MaterialCardImpl({
               </span>
             )}
             {showName && (
-              <MediaCardCaption data-material-overlay>
+              <MediaCardCaption
+                data-material-overlay
+                className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+              >
                 <strong className="block truncate text-sm font-semibold">{title}</strong>
                 {shapeLabel && <span className="text-xs font-normal opacity-85">{shapeLabel}</span>}
               </MediaCardCaption>

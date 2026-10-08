@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { Layers, Pin, Plus, Images, MoreHorizontal, Eye, EyeOff, Undo2 } from 'lucide-react';
+import { Layers, Pin, Plus, Images, MoreHorizontal, Eye, EyeOff, Undo2, SlidersHorizontal } from 'lucide-react';
 import { PetalList } from '@/renderer/features/desktop-petals/PetalList';
 import {
   DropdownMenu,
@@ -7,7 +7,6 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/renderer/components/ui/dropdown-menu';
-import { Button } from '@/renderer/components/ui/button';
 import { PetalPanel, PetalIconButton } from '@/renderer/features/desktop-petals/PetalControls';
 import { PetalLayers } from '@/renderer/features/desktop-petals/PetalLayers';
 import { PinSourcePicker } from '@/renderer/features/desktop-petals/PinSourcePicker';
@@ -16,8 +15,9 @@ import { DockedPetal } from '@/renderer/features/desktop-petals/DockedPetal';
 import { PetalContextMenu } from '@/renderer/features/desktop-petals/PetalContextMenu';
 import { PetalCleanupMenu } from '@/renderer/features/desktop-petals/PetalCleanupMenu';
 import { PetalMenuContent } from '@/renderer/features/desktop-petals/PetalMenu';
-import { appearanceStyle } from '@/renderer/features/desktop-petals/petal-appearance';
-import { PetalHubSettingsPanel } from '@/renderer/features/desktop-petals/PetalHubSettings';
+import { PetalFlowerLayers } from '@/renderer/features/desktop-petals/PetalFlowerLayers';
+import { useFlowerViewport } from '@/renderer/features/desktop-petals/use-flower-viewport';
+import { PetalHubSettingsPanel, type FlowerSettingsHandle } from '@/renderer/features/desktop-petals/PetalHubSettings';
 import { FlowerCenter, flowerCenterProgress } from '@/renderer/features/desktop-petals/FlowerCenter';
 import { usePetalHubData } from '@/renderer/features/desktop-petals/use-petal-hub-data';
 import { usePetalDock } from '@/renderer/features/desktop-petals/use-petal-dock';
@@ -27,6 +27,7 @@ import { petalErrorText } from '@/shared/petal-errors';
 import type { DesktopPetalSnapshot } from '@/shared/contracts/desktop-petals';
 import type { PetalBoardCommand } from '@/shared/contracts/petal-board';
 import type { PetalHubView } from '@/shared/contracts/petal-hub';
+import { screenMagnifierRunning } from '@/shared/contracts/screen-magnifier';
 export function PetalHub({ snapshot }: { snapshot: DesktopPetalSnapshot }) {
   const { messages } = useI18n(),
     copy = messages.desktopPetals,
@@ -63,7 +64,16 @@ export function PetalHub({ snapshot }: { snapshot: DesktopPetalSnapshot }) {
     }
   };
   const runBoard = (command: PetalBoardCommand) => void boardCommand(command).catch(() => undefined);
-  const centerClick = () => view('settings');
+  const settingsOpen = snapshot.hubView === 'settings';
+  const settingsControls = useRef<FlowerSettingsHandle>(null);
+  const center = useRef<HTMLButtonElement>(null);
+  const viewport = useFlowerViewport(snapshot);
+  const magnifierRunning = screenMagnifierRunning(snapshot.magnifier);
+  const centerClick = () => {
+    setError('');
+    if (!magnifierRunning) return settingsOpen ? settingsControls.current?.close() : view('settings');
+    void window.desktopPetals.magnifier('stop').catch(onError);
+  };
   const board = snapshot.board;
   const undo = snapshot.collectionUndo;
   return (
@@ -100,8 +110,6 @@ export function PetalHub({ snapshot }: { snapshot: DesktopPetalSnapshot }) {
               onClick={() => void dock.reveal()}
             />
           </div>
-        ) : snapshot.hubView === 'settings' ? (
-          <PetalHubSettingsPanel snapshot={snapshot} now={now} quota={quota} />
         ) : snapshot.hubView === 'layers' ? (
           <PetalLayers board={board} onBack={() => view('notes')} onCommand={boardCommand} />
         ) : snapshot.hubView === 'sources' ? (
@@ -156,14 +164,18 @@ export function PetalHub({ snapshot }: { snapshot: DesktopPetalSnapshot }) {
           </PetalPanel>
         ) : (
           <div
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+            className="fixed -translate-x-1/2 -translate-y-1/2"
             style={{
+              left: viewport.x,
+              top: viewport.y,
               width: snapshot.hubSettings.flowerSize,
               height: snapshot.hubSettings.flowerSize,
             }}
           >
             <RoseFlower
+              centerRef={center}
               fold={dock.fold}
+              pluckDisabled={settingsOpen}
               dock={
                 snapshot.dock && petalBounds
                   ? {
@@ -176,11 +188,36 @@ export function PetalHub({ snapshot }: { snapshot: DesktopPetalSnapshot }) {
               onPluck={create}
               onPreview={dock.setPluckPreview}
               onCenterClick={centerClick}
-              centerLabel={copy.settings.title}
+              centerLabel={
+                magnifierRunning
+                  ? copy.magnifier.stop
+                  : settingsOpen
+                    ? copy.settings.petals.collapse
+                    : copy.settings.title
+              }
               onError={onError}
-              center={<FlowerCenter settings={snapshot.hubSettings} timer={snapshot.timer} quota={quota} now={now} />}
-              progress={flowerCenterProgress(snapshot.hubSettings, snapshot.timer, quota, now)}
+              center={
+                <FlowerCenter
+                  settings={snapshot.hubSettings}
+                  timer={snapshot.timer}
+                  quota={quota}
+                  now={now}
+                  magnifier={snapshot.magnifier}
+                />
+              }
+              progress={
+                magnifierRunning ? undefined : flowerCenterProgress(snapshot.hubSettings, snapshot.timer, quota, now)
+              }
             />
+            {magnifierRunning && !settingsOpen && (
+              <PetalIconButton
+                label={copy.settings.petals.adjust}
+                className="absolute -bottom-2 right-0 bg-background/90"
+                onClick={() => view('settings')}
+              >
+                <SlidersHorizontal />
+              </PetalIconButton>
+            )}
             {undo && (
               <PetalIconButton
                 label={copy.actions.undoCollection}
@@ -200,45 +237,26 @@ export function PetalHub({ snapshot }: { snapshot: DesktopPetalSnapshot }) {
                 {snapshot.hubSettings.title}
               </span>
             )}
-            {board.layers.length > 1 &&
-              board.layers.map((layer, index) => {
-                const angle = ((-90 + (index * 360) / board.layers.length) * Math.PI) / 180,
-                  radius = snapshot.hubSettings.flowerSize / 2 + 10;
-                const selected = board.activeLayerId === layer.id,
-                  hidden = board.hiddenLayerIds.includes(layer.id);
-                return (
-                  <Button
-                    disabled={dock.fold > 0}
-                    key={layer.id}
-                    variant="ghost"
-                    className="absolute size-5 -translate-x-1/2 -translate-y-1/2 rounded-full p-1"
-                    style={{
-                      opacity: Math.max(0, 1 - dock.fold * 5),
-                      ...appearanceStyle(layer.color),
-                      left: snapshot.hubSettings.flowerSize / 2 + Math.cos(angle) * radius,
-                      top: snapshot.hubSettings.flowerSize / 2 + Math.sin(angle) * radius,
-                    }}
-                    title={layer.name || copy.board.defaultLayer}
-                    aria-label={layer.name || copy.board.defaultLayer}
-                    aria-pressed={!hidden}
-                    onClick={() =>
-                      runBoard({ kind: selected && !hidden ? 'toggle-layer' : 'select-layer', id: layer.id })
-                    }
-                  >
-                    <span
-                      className={`size-2 rounded-full border border-[var(--petal-edge)] ${hidden ? 'bg-transparent' : 'bg-[var(--petal-edge)]'} ${selected ? 'outline outline-1 outline-offset-2 outline-[var(--petal-edge)]' : ''}`}
-                    />
-                  </Button>
-                );
-              })}
+            <PetalFlowerLayers snapshot={snapshot} fold={dock.fold} onCommand={runBoard} />
           </div>
         )}
-        {error && (
+        {settingsOpen && (
+          <PetalHubSettingsPanel
+            ref={settingsControls}
+            snapshot={snapshot}
+            now={now}
+            quota={quota}
+            onClosed={() => {
+              if (document.hasFocus()) center.current?.focus({ preventScroll: true });
+            }}
+          />
+        )}
+        {(error || snapshot.magnifier?.status === 'failed') && (
           <div
             role="alert"
             className="absolute inset-x-2 bottom-1 max-h-12 overflow-y-auto bg-background px-2 py-1 text-xs text-destructive"
           >
-            {petalErrorText(error, copy.errors)}
+            {error ? petalErrorText(error, copy.errors) : copy.errors.magnifierFailed}
           </div>
         )}
       </section>

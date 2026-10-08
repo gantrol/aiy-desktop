@@ -27,6 +27,7 @@ import { useStableCallback } from '@/renderer/lib/useStableCallback';
 const GifMaker = lazy(() => import('@/renderer/features/gif-making/GifMaker'));
 export type AnimationLocation = Extract<CreatorLocation, { surface: 'animation' }>;
 export interface GifLaunchInput {
+  creationSource?: GifWorkspaceCreateInput['creationSource'];
   forceNew?: boolean;
   title?: string;
   initialPrompt?: string;
@@ -160,6 +161,7 @@ export function GifMakerProvider({
           sourceDocumentId: input.sourceDocumentId,
           targetAlbumId: input.targetAlbumId,
           consumeCreationDraft: input.consumeCreationDraft,
+          creationSource: input.creationSource,
           motionDraft: input.initialPrompt
             ? {
                 prompt: input.initialPrompt,

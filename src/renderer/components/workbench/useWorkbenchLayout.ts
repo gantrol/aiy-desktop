@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
 import { useWorkbenchScopeKey } from '@/renderer/components/workbench/WorkbenchScope';
 import { beginPanePointerDrag, createPaneResizeGesture } from '@/renderer/components/workbench/paneResize';
+import { sidebarRailWidth } from '@/renderer/components/workbench/WorkbenchSidebarHeader';
 
 interface LayoutPreference {
   expanded: boolean;
@@ -33,11 +34,13 @@ export function useWorkbenchLayout(
   const [width, setWidth] = useState(0);
   const [visible, setVisible] = useState(false);
   const [preview, setPreview] = useState<LayoutPreference | null>(null);
+  const [disclosureMotion, setDisclosureMotion] = useState(false);
   const displayed = preview ?? preference;
   const resizing = preview !== null;
   const cleanupDrag = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
     cleanupDrag.current?.();
+    setDisclosureMotion(false);
     setPreference(loadPreference(key, initialWidth));
   }, [key, initialWidth]);
   // A hidden tab reports zero width. Keep its last usable geometry until it is visible again.
@@ -74,20 +77,22 @@ export function useWorkbenchLayout(
   const resize = (next: number) => {
     if (!Number.isFinite(next)) return;
     cleanupDrag.current?.();
+    setDisclosureMotion(false);
     if (!displayed.expanded) {
-      if (next > 0) updatePreference({ ...preference, expanded: true });
+      if (next > sidebarRailWidth) updatePreference({ ...preference, expanded: true });
     } else if (next < 200) updatePreference({ ...preference, expanded: false });
     else updatePreference({ ...preference, expanded: true, width: Math.min(maximumWidth, next) });
   };
   const beginResize = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || event.isPrimary === false || !wide) return;
     cleanupDrag.current?.();
+    setDisclosureMotion(false);
     let candidate = preference;
     let active = true;
     let removeListeners: (() => void) | null = null;
     const gesture = createPaneResizeGesture(
       { collapsed: !preference.expanded, width: Math.min(preference.width, maximumWidth) },
-      { minimum: 200, maximum: maximumWidth, collapsedWidth: 0 },
+      { minimum: 200, maximum: maximumWidth, collapsedWidth: sidebarRailWidth },
     );
     const finish = (cancelled: boolean) => {
       if (!active) return;
@@ -110,16 +115,18 @@ export function useWorkbenchLayout(
     );
     cleanupDrag.current = () => finish(true);
   };
-  // A gesture cannot continue with bounds captured from another container geometry.
+  // New container geometry and tab visibility take over immediately, not through a stale disclosure.
   useLayoutEffect(() => {
     cleanupDrag.current?.();
-  }, [wide, maximumWidth, measureParent]);
+    setDisclosureMotion(false);
+  }, [wide, maximumWidth, measureParent, width, visible]);
   return {
     root,
     scopeKey: key,
     visible,
     wide,
     resizing,
+    animateDisclosure: disclosureMotion && wide && visible && !resizing,
     expanded: displayed.expanded,
     collectionWidth,
     maximumWidth,
@@ -127,6 +134,8 @@ export function useWorkbenchLayout(
     beginResize,
     setExpanded: (expanded: boolean) => {
       cleanupDrag.current?.();
+      // CSS can reverse from the current width; no timer or completion event owns layout state.
+      setDisclosureMotion(wide && visible && expanded !== displayed.expanded);
       updatePreference({ ...preference, expanded });
     },
   };

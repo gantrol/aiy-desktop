@@ -34,32 +34,34 @@ export function ArticleDeliveryHeader({
   const { messages } = useI18n();
   const copy = messages.articleDelivery.batch;
   return (
-    <div className="flex shrink-0 items-center gap-1 border-b px-4 py-3 pr-12">
-      <DialogHeader className="mr-auto">
-        <DialogTitle className="text-base">{copy.title}</DialogTitle>
-      </DialogHeader>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        disabled={locked || loading}
-        aria-label={copy.refresh}
-        title={copy.refresh}
-        onClick={onRefresh}
-      >
-        <RefreshCwIcon className="size-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        disabled={busy}
-        aria-label={messages.articleDelivery.history}
-        title={messages.articleDelivery.history}
-        onClick={onOpenHistory}
-      >
-        <HistoryIcon className="size-4" />
-      </Button>
+    <div className="shrink-0 border-b">
+      <div className="flex items-center gap-1 px-4 py-3 pr-12">
+        <DialogHeader className="mr-auto">
+          <DialogTitle className="text-base">{copy.title}</DialogTitle>
+        </DialogHeader>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={locked || loading}
+          aria-label={copy.refresh}
+          title={copy.refresh}
+          onClick={onRefresh}
+        >
+          <RefreshCwIcon className="size-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={busy}
+          aria-label={messages.articleDelivery.history}
+          title={messages.articleDelivery.history}
+          onClick={onOpenHistory}
+        >
+          <HistoryIcon className="size-4" />
+        </Button>
+      </div>
       <ArticleDeliveryPresetMenu
         disabled={locked}
         loading={loading}

@@ -284,11 +284,7 @@ export function ArticleDeliveryDialog({
       }}
     >
       <DialogContent
-        className={
-          paneContainer
-            ? 'inset-0 flex h-full max-h-full w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 shadow-none'
-            : 'flex max-h-[90vh] max-w-md flex-col gap-0 overflow-hidden p-0'
-        }
+        className="flex max-w-md flex-col gap-0 overflow-hidden rounded-lg p-0"
         aria-describedby={undefined}
         showCloseButton={!batch.busy}
       >

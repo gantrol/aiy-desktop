@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { CodexUsageInvestigation, CodexUsageQuotaPuritySample } from '@/shared/contracts/codex-usage';
 import { groupCodexQuotaPurity } from '@/shared/codex-quota-purity';
+import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/renderer/components/ui/table';
@@ -61,7 +62,7 @@ function PurityChart({
     <div className="grid gap-1">
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        role="img"
+        role="group"
         aria-label={text.trend}
         className={compact ? 'h-10 w-full text-foreground' : 'h-44 w-full text-foreground'}
       >
@@ -85,7 +86,15 @@ function PurityChart({
                 strokeWidth="2"
               />
             )}
-            <circle cx={x} cy={y} r={compact ? 2.5 : 3.5} fill="currentColor">
+            <circle
+              cx={x}
+              cy={y}
+              r={compact ? 2.5 : 3.5}
+              fill="currentColor"
+              tabIndex={compact ? undefined : 0}
+              role="img"
+              aria-label={`${text.observation} #${numbers.format(firstIndex + index)} · ${date.format(new Date(point.from))} – ${date.format(new Date(point.to))} · ${numbers.format(point.quotaPercentConsumed)}% · ${numbers.format(value)} ${unit}`}
+            >
               <title>
                 {text.observation} #{numbers.format(firstIndex + index)} · {date.format(new Date(point.from))} –{' '}
                 {date.format(new Date(point.to))} · {numbers.format(point.quotaPercentConsumed)}% ·{' '}
@@ -137,9 +146,20 @@ function PurityInfo({ investigation }: { investigation: CodexUsageInvestigation 
     .filter(Boolean)
     .join(' ');
   return (
-    <CodexUsageEvidenceHelp label={content} destructive={problem}>
-      {content}
-    </CodexUsageEvidenceHelp>
+    <span className="flex min-w-0 flex-wrap items-center gap-1">
+      {issues.map((issue) => (
+        <Badge
+          key={issue}
+          variant="outline"
+          className={`h-auto max-w-full min-w-0 shrink whitespace-normal break-words py-1 text-left leading-tight ${problem ? 'text-destructive' : ''}`}
+        >
+          {issue}
+        </Badge>
+      ))}
+      <CodexUsageEvidenceHelp label={content} destructive={problem}>
+        {content}
+      </CodexUsageEvidenceHelp>
+    </span>
   );
 }
 
@@ -154,10 +174,12 @@ export function CodexUsagePurityOverview({
   const groups = useMemo(() => groupCodexQuotaPurity(investigation.quotaPurity), [investigation.quotaPurity]);
   const rows = groups.slice(0, 3);
   return (
-    <div className="grid gap-3">
-      <div className="flex items-center gap-1">
-        <span>{labels.quotaYield.tokensPerOnePercent}</span>
-        <span className="text-muted-foreground">· {labels.purity.localScope}</span>
+    <div className="grid min-w-0 gap-3">
+      <div className="grid min-w-0 gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5">
+          <span className="min-w-0 break-words">{labels.quotaYield.tokensPerOnePercent}</span>
+          <span className="text-muted-foreground">· {labels.purity.localScope}</span>
+        </div>
         <PurityInfo investigation={investigation} />
       </div>
       {rows.map((row) => {
@@ -165,8 +187,8 @@ export function CodexUsagePurityOverview({
           tokens = latest?.tokensPerOnePercent ?? null,
           delta = change(row.samples, row.samples.length - 1, 'total');
         return (
-          <div key={row.key} className="grid gap-1">
-            <span className="break-words">
+          <div key={row.key} className="grid min-w-0 gap-1">
+            <span className="min-w-0 break-words [overflow-wrap:anywhere]">
               {row.sample.model} ·{' '}
               {labels.quotaYield.modes[row.sample.serviceTier === 'ALL' ? 'UNKNOWN' : row.sample.serviceTier]}
             </span>
@@ -175,7 +197,7 @@ export function CodexUsagePurityOverview({
               <span>{delta === null ? '—' : `${delta > 0 ? '+' : ''}${formatters.numbers.format(delta)}%`}</span>
             </div>
             {latest && (
-              <span className="text-muted-foreground">
+              <span className="min-w-0 break-words text-muted-foreground">
                 {formatters.date.format(new Date(latest.to))} · {row.sample.planType} ·{' '}
                 {row.sample.limitId ?? labels.quota.defaultLimit} ·{' '}
                 {row.sample.windowDurationMins === 10080

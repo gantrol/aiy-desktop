@@ -478,8 +478,13 @@ export class CodexQuotaYieldAccumulator {
       nonCachedTokens * (speedMultiplier ?? 0),
     );
     const valuation = estimateCodexUsage(model, event.usage, event.serviceTier, event.timestamp);
-    state.standardEquivalentApiUsd += (valuation.apiEquivalentUsd ?? 0) * (speedMultiplier ?? 0);
-    state.apiComplete &&= valuation.apiEquivalentUsd !== null;
+    // This quota-normalized value deliberately uses Standard prices before applying the quota multiplier.
+    const standardValuation =
+      event.serviceTier === 'STANDARD'
+        ? valuation
+        : estimateCodexUsage(model, event.usage, 'STANDARD', event.timestamp);
+    state.standardEquivalentApiUsd += (standardValuation.apiEquivalentUsd ?? 0) * (speedMultiplier ?? 0);
+    state.apiComplete &&= standardValuation.apiEquivalentUsd !== null;
     state.credits += valuation.codexCredits ?? 0;
     state.creditsComplete &&= valuation.codexCredits !== null;
   }

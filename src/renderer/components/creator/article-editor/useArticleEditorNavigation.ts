@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { ContentSearchTargetContext } from '@/renderer/features/content-search/ContentSearchTargetContext';
 import type {
   ArticleEditTrailEntryDto,
   ArticleEditorLocationDto,
@@ -57,6 +58,11 @@ export function useArticleEditorNavigation({
     registerLocationFlush,
   } = useWorkspaceArticleEditorState(articleId);
   const navigationState = state ?? initialNavigationState(articleId);
+  const searchTarget = useContext(ContentSearchTargetContext);
+  const locatingSearch =
+    searchTarget?.source.kind === 'ARTICLE' &&
+    searchTarget.source.id === articleId &&
+    Boolean(searchTarget.query.trim());
   const navigationStateRef = useRef(navigationState);
   navigationStateRef.current = navigationState;
   const [editTrail, setEditTrail] = useState(navigationState.editTrail);
@@ -196,7 +202,8 @@ export function useArticleEditorNavigation({
       restoreFrameRef.current = null;
       const location = articleLocation ?? navigationStateRef.current.resumeLocation;
       const scrollRoot = scrollRootRef.current;
-      if (location && !location.blockId && scrollRoot) handle.revealArticleLocation(location, scrollRoot);
+      if ((!locatingSearch || articleLocation) && location && !location.blockId && scrollRoot)
+        handle.revealArticleLocation(location, scrollRoot);
       restoredEntryRef.current = navigationEntryId;
     });
   }
@@ -207,9 +214,10 @@ export function useArticleEditorNavigation({
     const scrollRoot = scrollRootRef.current;
     if (!handle || !scrollRoot) return;
     const location = articleLocation ?? navigationStateRef.current.resumeLocation;
-    if (location && !location.blockId) handle.revealArticleLocation(location, scrollRoot);
+    if ((!locatingSearch || articleLocation) && location && !location.blockId)
+      handle.revealArticleLocation(location, scrollRoot);
     restoredEntryRef.current = navigationEntryId;
-  }, [articleLocation, navigationEntryId]);
+  }, [articleLocation, navigationEntryId, locatingSearch]);
 
   function jumpToLocation(location: ArticleEditorLocationDto) {
     const handle = editorHandleRef.current;

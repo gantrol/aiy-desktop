@@ -6,6 +6,8 @@ import { useWorkbenchLayout } from '@/renderer/components/workbench/useWorkbench
 import { beginPanePointerDrag } from '@/renderer/components/workbench/paneResize';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
+import { WorkbenchSidebar } from '@/renderer/components/workbench/WorkbenchSidebar';
+import { sidebarRailWidth } from '@/renderer/components/workbench/WorkbenchSidebarHeader';
 
 /** Direct child of a horizontal flex workspace. Compact mode hides, never unmounts, its content siblings. */
 export function WorkbenchNavigationPane({
@@ -15,6 +17,7 @@ export function WorkbenchNavigationPane({
   initialWidth = 256,
   minimumContentWidth = 480,
   toggleHost,
+  header,
   children,
   className,
   ...props
@@ -26,6 +29,7 @@ export function WorkbenchNavigationPane({
   minimumContentWidth?: number;
   /** Mount in an existing toolbar outside the collapsible navigation and content regions. */
   toggleHost?: HTMLElement | null;
+  header?: ComponentProps<typeof WorkbenchSidebar>['header'];
 }) {
   const layout = useWorkbenchLayout(layoutKey, initialWidth, minimumContentWidth, true);
   const [compactOpen, setCompactOpen] = useState(false);
@@ -75,7 +79,7 @@ export function WorkbenchNavigationPane({
   const control = (
     <WorkbenchPaneToggle
       ref={button}
-      floating={toggleHost === undefined}
+      floating={!layout.wide && toggleHost === undefined}
       floatingHost={host}
       data-pane-toggle
       expanded={expanded}
@@ -84,17 +88,30 @@ export function WorkbenchNavigationPane({
       onClick={toggle}
     />
   );
+  const resizeHandle = (
+    <WorkbenchPaneResizeHandle
+      edge="right"
+      visibility="always"
+      label={copy.resizePane(label)}
+      value={layout.wide ? (expanded ? Math.round(layout.collectionWidth) : sidebarRailWidth) : Number(compactOpen)}
+      min={layout.wide ? sidebarRailWidth : 0}
+      max={layout.wide ? Math.round(layout.maximumWidth) : 1}
+      step={layout.wide ? 16 : 1}
+      onValueChange={layout.wide ? layout.resize : (value) => setCompactOpen(Boolean(value))}
+      onPointerDown={beginResize}
+    />
+  );
   return (
     <div
       {...props}
       ref={layout.root}
       data-workbench-navigation-pane
-      data-inline-toggle={toggleHost !== undefined}
+      data-inline-toggle={layout.wide || toggleHost !== undefined}
       data-mode={layout.wide ? 'split' : 'compact'}
       data-open={expanded}
       data-resizing={layout.resizing}
       className={cn('relative flex min-h-0 min-w-0 shrink-0 flex-col', className)}
-      style={layout.wide ? { width: expanded ? layout.collectionWidth : 0 } : { width: compactOpen ? '100%' : 0 }}
+      style={layout.wide ? undefined : { width: compactOpen ? '100%' : 0 }}
       onKeyDown={(event) => {
         if (event.key === 'Escape' && !layout.wide && compactOpen && !event.defaultPrevented) {
           event.preventDefault();
@@ -104,30 +121,22 @@ export function WorkbenchNavigationPane({
         }
       }}
     >
-      <aside
-        id={id}
-        aria-label={label}
-        hidden={!expanded}
-        inert={!expanded}
-        className={cn(
-          'min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-r bg-surface-sunken/45',
-          expanded ? 'flex' : 'hidden',
-        )}
+      <WorkbenchSidebar
+        contentId={id}
+        label={label}
+        wide={layout.wide}
+        expanded={expanded}
+        width={layout.collectionWidth}
+        animate={layout.animateDisclosure}
+        toggle={layout.wide ? control : null}
+        header={header}
+        className="flex-1"
+        resizeHandle={layout.wide ? resizeHandle : null}
       >
         {children}
-      </aside>
-      <WorkbenchPaneResizeHandle
-        edge="right"
-        visibility="always"
-        label={copy.resizePane(label)}
-        value={layout.wide ? (expanded ? Math.round(layout.collectionWidth) : 0) : Number(compactOpen)}
-        min={0}
-        max={layout.wide ? Math.round(layout.maximumWidth) : 1}
-        step={layout.wide ? 16 : 1}
-        onValueChange={layout.wide ? layout.resize : (value) => setCompactOpen(Boolean(value))}
-        onPointerDown={beginResize}
-      />
-      {toggleHost === undefined ? control : toggleHost && createPortal(control, toggleHost)}
+      </WorkbenchSidebar>
+      {!layout.wide && resizeHandle}
+      {!layout.wide && (toggleHost === undefined ? control : toggleHost && createPortal(control, toggleHost))}
     </div>
   );
 }

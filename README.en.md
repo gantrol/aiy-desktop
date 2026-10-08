@@ -12,7 +12,7 @@
   <p>
     <a href="https://github.com/gantrol/aiy-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/gantrol/aiy-desktop?display_name=tag&amp;style=flat-square&amp;label=release" alt="Latest release" /></a>
     <a href="https://apps.microsoft.com/detail/9nwd1hg6tczh"><img src="https://img.shields.io/badge/platform-Windows%2010%2F11%20x64%20Store-4b5563?style=flat-square" alt="Windows 10/11 x64 Microsoft Store" /></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-7c3aed?style=flat-square" alt="PolyForm Noncommercial 1.0.0" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0%20%2B%20plugin%20exception-7c3aed?style=flat-square" alt="AGPL-3.0-only with AIY Plugin Exception 1.0" /></a>
   </p>
 
   <p>
@@ -115,6 +115,6 @@ The [browser companion](browser-companion/README.md) lives in this repository wi
 
 ## License and security
 
-AIY is provided under the [PolyForm Noncommercial License 1.0.0](LICENSE), which permits use, modification, and distribution for noncommercial purposes. Commercial use requires separate authorization.
+AIY is licensed under [GNU AGPL version 3 only](LICENSE), which permits commercial use, with the [AIY Plugin Exception 1.0](LICENSE-PLUGIN-EXCEPTION). Independent plugins may remain closed source, charge fees, and be distributed with AIY. The host and modifications to it remain subject to AGPL source-code and licensing obligations.
 
 Please report vulnerabilities through the private process described in [SECURITY.md](SECURITY.md). Do not submit credentials, personal data, or vulnerability details in a public issue.

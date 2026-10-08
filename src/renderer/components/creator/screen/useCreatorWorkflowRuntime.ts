@@ -115,7 +115,6 @@ export function useCreatorWorkflowRuntime({
     manualPrompt: document.manualPrompt,
     notify,
     onOpenStash(stash) {
-      selection.contentSelection.setSelectedInspirationStashId(stash.id);
       selection.contentSelection.setSelectedIdeaCreationId(null);
       selection.contentSelection.setSelectedAlbumId(null);
       projection.panes.setCompactPanel('creator');

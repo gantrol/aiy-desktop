@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { creationSourceSchema } from '@/shared/contracts/creation-source';
 import type { AssetDto } from '@/shared/contracts';
 import type { GifGenerationApi } from '@/shared/contracts/gif-generation';
 import {
@@ -151,6 +152,7 @@ export const gifWorkspaceCreateSchema = z
     sourceDocumentId: z.string().uuid().optional(),
     targetAlbumId: gifIdSchema.nullable().optional(),
     consumeCreationDraft: z.object({ id: gifIdSchema, updatedAt: z.string().datetime() }).strict().optional(),
+    creationSource: creationSourceSchema.optional(),
   })
   .strict()
   .refine((input) => input.id !== input.motionId);

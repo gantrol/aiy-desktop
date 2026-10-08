@@ -19,11 +19,11 @@ export function sameSharedDocument(schema: Schema, first: BlockDocument, second:
   return schema.nodeFromJSON(first.root).eq(schema.nodeFromJSON(second.root));
 }
 
-export function applySharedDocument(editor: Editor, before: BlockDocument, next: BlockDocument) {
+export function applySharedDocument(editor: Editor, before: BlockDocument, next: BlockDocument, addToHistory = false) {
   if (editor.isDestroyed || !editor.isEditable || editor.view.composing) return false;
   if (!editor.state.doc.eq(editor.schema.nodeFromJSON(before.root))) return false;
   const document = editor.schema.nodeFromJSON(next.root);
   document.check();
-  editor.view.dispatch(sharedDocumentTransaction(editor.state.tr, document));
+  editor.view.dispatch(sharedDocumentTransaction(editor.state.tr, document).setMeta('addToHistory', addToHistory));
   return true;
 }

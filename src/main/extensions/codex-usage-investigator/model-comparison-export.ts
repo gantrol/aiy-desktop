@@ -43,7 +43,14 @@ export function codexModelComparisonExportRows(investigation: CodexUsageInvestig
   const throughput = analysis.outputThroughput;
   return [
     ...rows,
-    ...(throughput?.groups ?? []).map((group) => ({
+    ...(throughput
+      ? [
+          { model: null, reasoningEffort: null, serviceTier: 'ALL', throughput: throughput.overall, scope: 'OVERALL' },
+          ...throughput.groups.map((group) => ({ ...group, scope: 'MODEL_AND_REASONING_EFFORT' })),
+        ]
+      : []
+    ).map((group) => ({
+      analysis_scope: group.scope,
       record_kind: 'OUTPUT_THROUGHPUT',
       generated_at: investigation.generatedAt,
       time_zone: investigation.timeZone,

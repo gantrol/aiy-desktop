@@ -46,6 +46,9 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
   });
   const draftsDeleted = useStableCallback(navigation.creation.discardDeletedDraft);
   const startNewCreation = useStableCallback(() => void navigation.creation.startNewCreation(null, 'push'));
+  const startNewDocument = useStableCallback(
+    (mode: 'outline' | 'manuscript') => void navigation.creation.startNewCreation(null, 'push', true, mode),
+  );
   const startNewCreationInAlbum = useStableCallback(
     (albumId: string) => void navigation.creation.startNewCreation(albumId, 'push'),
   );
@@ -76,6 +79,7 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
   });
   return (
     <div
+      data-workspace-sidebar-body
       className={
         !animationWorkspace && (app.comparisonFullWindow || app.promptFullWindow)
           ? 'hidden'
@@ -126,7 +130,7 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
         onResizeStart={beginResize}
         onResizeValueChange={setResultWidth}
         onFilterChange={selection.setCreationLibraryFilter}
-        onSelectInspirationStash={navigation.content.chooseInspirationStash}
+        onSelectInspirationStash={navigation.content.chooseArticle}
         onSelectImageBreakdown={navigation.content.chooseImageBreakdown}
         onSelectEvaluationSuite={navigation.content.chooseEvaluationSuite}
         onSelectSocialPost={navigation.content.chooseSocialPost}
@@ -142,6 +146,7 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
         onSelectAlbum={navigation.content.chooseAlbum}
         onMore={navigation.output.showMoreResults}
         onNew={startNewCreation}
+        onNewDocument={startNewDocument}
         onNewInAlbum={startNewCreationInAlbum}
         onRenameSeries={navigation.output.requestSeriesRename}
         onRenameAlbum={library.setRenameAlbum}
@@ -179,7 +184,7 @@ export function CreatorSpecializedWorkspace({ imageBreakdownSourceFormId, model 
           }),
         generateIllustration: workflow.content.derivedVisual.openArticleIllustrationWorkspace,
         onSaved: app.onArticleSaved,
-        editCreationInput: navigation.content.chooseInspirationStash,
+        continueInput: navigation.creation.resumeCreationDraft,
         save: workflow.content.article.saveArticleRevision,
       }}
       articleRelations={selected.articleRelations}
@@ -193,7 +198,7 @@ export function CreatorSpecializedWorkspace({ imageBreakdownSourceFormId, model 
               void animation?.open({ documentId: form.entityRef.id });
               break;
             case 'INSPIRATION':
-              void navigation.content.chooseInspirationStash(form.entityRef.id);
+              void navigation.content.chooseArticle(form.entityRef.id);
               break;
             case 'IMAGE_BREAKDOWN':
               void navigation.content.chooseImageBreakdown(form.entityRef.id);

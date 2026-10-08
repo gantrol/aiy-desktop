@@ -16,6 +16,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/
 import { Input } from '@/renderer/components/ui/input';
 import { Label } from '@/renderer/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
+import { CodexOutputThroughputValue } from '@/renderer/features/extensions/CodexOutputThroughput';
 import { CodexModelDistributionChart } from '@/renderer/features/extensions/CodexModelDistributionChart';
 import { CodexModelEvidenceChart } from '@/renderer/features/extensions/CodexModelEvidenceChart';
 import { CodexModelComparisonChartLegend } from '@/renderer/features/extensions/CodexModelComparisonChartLegend';
@@ -35,6 +36,7 @@ import {
   saveComparisonWorkspace,
   readComparisonPlans,
   saveNamedComparison,
+  deleteNamedComparison,
   freezeCodexComparison,
   downloadCodexComparison,
   type CodexComparisonWorkspace,
@@ -96,12 +98,13 @@ export function CodexModelPairComparison({
   throughputAnalysis = report?.modelComparison?.outputThroughput,
 }: CodexModelPairComparisonProps) {
   const text = useI18n().messages.extensions.codexUsageInvestigator.evidence;
-  const id = useId();
   const [settings, setSettings] = useState(readComparisonWorkspace);
   const { metric, view, threshold } = settings;
   const defaults = useMemo(() => defaultComparisonGroups(byReasoningEffort), [byReasoningEffort]);
   const [selectionA, selectionB] = settings.selection;
   const retentionKnown = !samplesTruncated;
+  const throughputLabels = useI18n().messages.extensions.codexThroughput;
+  const workspace = useI18n().messages.extensions.codexUsageInvestigator.workspace;
   const pair = useMemo(() => {
     const selections = [selectionA, selectionB];
     const side = (index: 0 | 1) => {
@@ -110,6 +113,10 @@ export function CodexModelPairComparison({
     };
     return [side(0), side(1)] as const;
   }, [byReasoningEffort, defaults, selectionA, selectionB]);
+  const throughputs = [
+    selectedCodexOutputThroughput(throughputAnalysis, pair[0].selection),
+    selectedCodexOutputThroughput(throughputAnalysis, pair[1].selection),
+  ] as const;
   const resolved: CodexComparisonWorkspace = { ...settings, selection: [pair[0].selection, pair[1].selection] };
   const summaries = useMemo(
     () =>
@@ -132,7 +139,6 @@ export function CodexModelPairComparison({
     cautions.empty && text.emptySelection,
     cautions.mixed && text.mixed,
     cautions.differentEffort && text.effortMismatch,
-    cautions.differentMode && text.modeMismatch,
     cautions.overlap && text.overlap,
     cautions.unknown && text.unknown,
   ].filter((note): note is string => Boolean(note));
@@ -195,50 +201,7 @@ export function CodexModelPairComparison({
           />
         ))}
       </div>
-      <div className="grid gap-3 @xl/codex-usage:grid-cols-2">
-        <div className="grid gap-1.5">
-          <Label htmlFor={`${id}-metric`}>{labels.distribution}</Label>
-          <Select
-            value={metric}
-            onValueChange={(value) => {
-              if (METRICS.includes(value as CodexModelComparisonMetric))
-                change({ ...resolved, metric: value as CodexModelComparisonMetric, threshold: '' });
-            }}
-          >
-            <SelectTrigger id={`${id}-metric`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {METRICS.map((key) => (
-                <SelectItem key={key} value={key}>
-                  {labels.metrics[key]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor={`${id}-chart`}>{text.chart}</Label>
-          <Select
-            value={view}
-            onValueChange={(value) => {
-              if (CHARTS.includes(value as CodexComparisonWorkspace['view']))
-                change({ ...resolved, view: value as CodexComparisonWorkspace['view'] });
-            }}
-          >
-            <SelectTrigger id={`${id}-chart`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CHARTS.map((key) => (
-                <SelectItem key={key} value={key}>
-                  {text[key]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <ComparisonDisplayControls settings={resolved} labels={labels} text={text} onChange={change} />
       <div className="flex flex-wrap items-center gap-2">
         <CodexUsageEvidenceHelp label={`${text.observationOnly} ${text.contextMissing}`}>
           {text.observationOnly} {text.contextMissing}
@@ -249,24 +212,38 @@ export function CodexModelPairComparison({
           </Badge>
         ))}
       </div>
-      <div className="grid min-w-0 gap-1 text-xs">
-        {pair.map((side, index) => (
-          <p key={index} className="break-words">
-            {index ? labels.compareB : labels.compareA}: {comparisonSelectionLabel(side.selection, labels)}
-          </p>
+      <dl className="grid grid-cols-2 gap-4 border-b pb-3">
+        {summaries.map((summary, index) => (
+          <div key={index} className="grid gap-1">
+            <dt className="text-xs">
+              {index ? labels.compareB : labels.compareA} · {labels.metrics[metric]} · {text.median}
+            </dt>
+            <dd className="text-xl font-semibold tabular-nums">{summary.p50 === null ? '—' : format(summary.p50)}</dd>
+            <dd className="text-xs text-muted-foreground">
+              {text.sample}: {numbers.format(summary.valid)} / {numbers.format(summary.eligible)}
+            </dd>
+            <dd className="text-xs">
+              {throughputLabels.turn}: <CodexOutputThroughputValue throughput={throughputs[index]} />
+            </dd>
+            <dd className="text-xs" title={throughputLabels.generationNote}>
+              {throughputLabels.generation} ({throughputLabels.unit}): {throughputLabels.unmeasured}
+            </dd>
+            <dd className="text-xs">
+              {throughputLabels.coverage}:{' '}
+              {throughputs[index]
+                ? `${numbers.format(throughputs[index].pairedTurnCount)} / ${numbers.format(throughputs[index].completedTurnCount + throughputs[index].abortedTurnCount)}`
+                : '—'}
+            </dd>
+            {throughputs[index]?.partial && (
+              <dd className="text-xs text-muted-foreground">
+                {workspace.partial} · {throughputLabels.missingUsage}:{' '}
+                {numbers.format(throughputs[index].missingUsageTurnCount)} · {throughputLabels.invalidDuration}:{' '}
+                {numbers.format(throughputs[index].invalidDurationTurnCount)}
+              </dd>
+            )}
+          </div>
         ))}
-      </div>
-      <CodexModelComparisonOverall
-        throughputs={[
-          selectedCodexOutputThroughput(throughputAnalysis, pair[0].selection),
-          selectedCodexOutputThroughput(throughputAnalysis, pair[1].selection),
-        ]}
-        groups={[pair[0].groups, pair[1].groups]}
-        labels={labels}
-        numbers={numbers}
-        tokens={tokens}
-        money={money}
-      />
+      </dl>
       <CodexModelComparisonChartLegend
         configurations={chartData.configurations}
         label={`${labels.model} · ${labels.effort}`}
@@ -322,6 +299,23 @@ export function CodexModelPairComparison({
           />
         </CollapsibleContent>
       </Collapsible>
+      <Collapsible className="min-w-0 border-t pt-3">
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" size="sm">
+            {labels.overall.title}
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-2">
+          <CodexModelComparisonOverall
+            throughputs={throughputs}
+            groups={[pair[0].groups, pair[1].groups]}
+            labels={labels}
+            numbers={numbers}
+            tokens={tokens}
+            money={money}
+          />
+        </CollapsibleContent>
+      </Collapsible>
       <ComparisonPlans
         settings={resolved}
         report={report}
@@ -348,6 +342,7 @@ function ComparisonPlans({
 }) {
   const text = useI18n().messages.extensions.codexUsageInvestigator.evidence;
   const id = useId();
+  const workspace = useI18n().messages.extensions.codexUsageInvestigator.workspace;
   const [plans, setPlans] = useState(readComparisonPlans);
   const [planName, setPlanName] = useState('');
   const [planToLoad, setPlanToLoad] = useState('');
@@ -429,6 +424,22 @@ function ComparisonPlans({
           >
             {text.load}
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="justify-self-start"
+            disabled={!planToLoad}
+            onClick={() => {
+              const remaining = deleteNamedComparison(planToLoad);
+              if (remaining) {
+                setPlans(remaining);
+                setPlanToLoad('');
+                setStatus(workspace.deleted);
+              } else setStatus(text.storageFailed);
+            }}
+          >
+            {workspace.deletePlan}
+          </Button>
         </div>
       </div>
       {report && (
@@ -450,5 +461,66 @@ function ComparisonPlans({
         {status}
       </p>
     </section>
+  );
+}
+
+function ComparisonDisplayControls({
+  settings: resolved,
+  labels,
+  text,
+  onChange: change,
+}: {
+  settings: CodexComparisonWorkspace;
+  labels: Labels;
+  text: ReturnType<typeof useI18n>['messages']['extensions']['codexUsageInvestigator']['evidence'];
+  onChange(value: CodexComparisonWorkspace): void;
+}) {
+  const id = useId();
+  const { metric, view } = resolved;
+  return (
+    <div className="grid gap-3 @xl/codex-usage:grid-cols-2">
+      <div className="grid gap-1.5">
+        <Label htmlFor={`${id}-metric`}>{labels.distribution}</Label>
+        <Select
+          value={metric}
+          onValueChange={(value) => {
+            if (METRICS.includes(value as CodexModelComparisonMetric))
+              change({ ...resolved, metric: value as CodexModelComparisonMetric, threshold: '' });
+          }}
+        >
+          <SelectTrigger id={`${id}-metric`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {METRICS.map((key) => (
+              <SelectItem key={key} value={key}>
+                {labels.metrics[key]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor={`${id}-chart`}>{text.chart}</Label>
+        <Select
+          value={view}
+          onValueChange={(value) => {
+            if (CHARTS.includes(value as CodexComparisonWorkspace['view']))
+              change({ ...resolved, view: value as CodexComparisonWorkspace['view'] });
+          }}
+        >
+          <SelectTrigger id={`${id}-chart`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CHARTS.map((key) => (
+              <SelectItem key={key} value={key}>
+                {text[key]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
   );
 }

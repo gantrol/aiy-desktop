@@ -3,6 +3,7 @@ import type { CreationFormEntityRef } from '@/shared/contracts';
 import type { CreatorScreenViewModel } from '@/renderer/components/creator/screen/creatorScreenViewModel';
 import type { CreationFormProjection } from '@/renderer/components/creator/creationLibraryProjection';
 import { CreationWorkNavigationContext } from '@/renderer/components/creator/CreationWorkNavigation';
+import { creationFormByEntity } from '@/renderer/components/creator/creationFormEntities';
 
 function activeWork(model: CreatorScreenViewModel): CreationFormEntityRef | null {
   const { app, selection, workbench } = model;
@@ -31,6 +32,14 @@ export function CreatorWorkNavigationProvider({
   children: ReactNode;
 }) {
   const { navigation, app } = model;
+  const activeEntity = activeWork(model);
+  const context = activeEntity
+    ? creationFormByEntity(app.data.creationItems, activeEntity.kind, activeEntity.id)
+    : null;
+  const draft =
+    !activeEntity && model.selection.creationMode === 'new'
+      ? model.selection.creationDraftSession.getSavedDraft()
+      : null;
   const select = async (form: CreationFormProjection) => {
     return form.role === 'IMAGE_CREATION'
       ? navigation.creation.chooseSeries(form.session?.primarySeries.id ?? form.entityRef.id)
@@ -43,7 +52,16 @@ export function CreatorWorkNavigationProvider({
           ? null
           : {
               data: app.data,
-              activeEntity: activeWork(model),
+              activeEntity,
+              activeCreationItemId: draft?.creationItemId,
+              sourceFormId: draft?.creationSource?.kind === 'FORM' ? draft.creationSource.id : undefined,
+              onCreateAnother: context
+                ? async () => {
+                    await navigation.creation.startNewCreation(context.item.albumId, 'push', true, 'manuscript', {
+                      creationSource: { kind: 'FORM', id: context.form.id },
+                    });
+                  }
+                : undefined,
               onSelect: select,
               notify: app.notify,
             }

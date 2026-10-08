@@ -1,6 +1,35 @@
 import { contentEditorMessages } from '@/shared/i18n/content-editor';
+import { imageEditorMessages } from '@/shared/i18n/image-editor';
 /** English base shared by the renderer catalog and native flower menus. */
 export const desktopPetalMessages = {
+  magnifier: {
+    useInFlower: 'Open flower controls',
+    start: 'Start magnifier',
+    stop: 'Close magnifier',
+    close: 'Close',
+    scale: 'Magnification',
+    size: 'Lens size',
+    sizes: { small: 'Small', medium: 'Medium', large: 'Large' },
+  },
+  imageEditor: imageEditorMessages,
+  temporary: {
+    title: 'Temporary files',
+    newNote: 'New temporary note',
+    import: 'Import Markdown or image…',
+    clipboard: 'Paste as temporary file',
+    promote: 'Make permanent',
+    convert: 'Edit as note',
+    discard: 'Discard temporary file',
+    discardConfirm: 'Discard this temporary file?',
+    limit: 'Capacity (MiB)',
+    used: 'Used',
+    cleanup: 'Clear closed reference images',
+    protected: 'Edited content',
+    open: 'Open',
+    save: 'Save',
+    cancel: 'Cancel',
+    empty: 'No temporary files',
+  },
   scope: {
     note: 'Note',
     current: 'Current space',
@@ -143,6 +172,8 @@ export const desktopPetalMessages = {
     materials: 'Edit linked materials',
     bodyRequired: 'Write the post body first',
     bodyLimit: 'Upload is limited to 10,000 characters',
+    xTitleLimit: 'Shorten the title to fit in the first X post',
+    xThreadInvalid: 'This text cannot be split into valid X posts',
     mediaLimit: 'This destination accepts up to {count} images',
     missingImage: 'An inline image is missing from the attachment list',
     numbering: 'decimal',
@@ -405,13 +436,22 @@ export const desktopPetalMessages = {
     },
   },
   settings: {
-    title: 'Flower center display',
+    title: 'Flower settings',
+    petals: {
+      display: 'Display',
+      timer: 'Timer',
+      magnifier: 'Magnifier',
+      appearance: 'Appearance',
+      collapse: 'Close settings',
+      adjust: 'Adjust magnifier',
+    },
     content: 'Display',
     modes: {
       none: 'Flower only',
       clock: 'Regional time',
       pomodoro: 'Pomodoro timer',
       codex: 'Codex quota remaining',
+      magnifier: 'Screen magnifier',
     },
     region: 'Region / time zone',
     zoneHint: 'For example, Asia/Shanghai or America/Los_Angeles. Daylight saving time is handled automatically.',
@@ -454,6 +494,14 @@ export const desktopPetalMessages = {
     defaultLimit: 'Default quota',
   },
   errors: {
+    magnifierUnsupported: 'Magnifier requires Windows x64.',
+    magnifierDisabled: 'Enable Screen Magnifier and allow screen access in Extensions.',
+    magnifierOwnerHidden: 'Show the flower center to start the magnifier.',
+    magnifierFailed: 'Magnifier could not run. Click the flower center to retry.',
+    temporaryCapacity: 'Temporary storage is full. Make files permanent, discard files, or increase the capacity.',
+    temporaryChooseSpace: 'Choose a space in the main window, then make this file permanent.',
+    temporaryPromotionPending:
+      'The transfer is incomplete. The temporary original is retained. Retry Make permanent in the same space.',
     fileLimit: 'Up to 100 files, 64 MiB per file and 256 MiB per import.',
     pinLimit: 'Up to 200 content pins are supported.',
     layerLimit: 'Up to 8 layers are supported.',

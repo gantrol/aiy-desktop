@@ -10,6 +10,7 @@ import {
   LocateIcon,
   Trash2Icon,
   StarIcon,
+  TextIcon,
 } from 'lucide-react';
 import { ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
@@ -24,6 +25,7 @@ import type { ArticleImagePlacement } from '@/renderer/features/video-documents/
 import type { VideoDocumentRevisionMediaDto } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
+import { ArticleImageDescriptionDialog } from '@/renderer/components/creator/article-editor/ArticleImageDescriptionDialog';
 import {
   ArticleMediaCover,
   articleCoverSourceDragType,
@@ -83,12 +85,75 @@ function unplacedImageActions(
   ];
 }
 
+function ArticleMediaHeading({
+  large,
+  empty,
+  notice,
+  media,
+  onResize,
+}: {
+  large: boolean;
+  empty: boolean;
+  notice: string;
+  media: readonly VideoDocumentRevisionMediaDto[];
+  onResize(): void;
+}) {
+  const copy = useI18n().messages.contentEditor;
+  return (
+    <>
+      {!empty && (
+        <div className="sticky -top-3 z-20 -mx-3 -mt-3 flex min-h-10 shrink-0 items-center justify-end border-b bg-background px-3">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={large ? copy.smallThumbnails : copy.largeThumbnails}
+            title={large ? copy.smallThumbnails : copy.largeThumbnails}
+            aria-pressed={large}
+            onClick={onResize}
+          >
+            <LayoutGridIcon className="size-4" />
+          </Button>
+        </div>
+      )}
+      <div className={notice === copy.imageMoveFailed ? 'text-xs text-destructive' : 'sr-only'} role="status">
+        {notice}
+      </div>
+      <ArticleMediaCover media={media} />
+      {empty && (
+        <div className="grid min-h-24 flex-1 place-items-center text-muted-foreground">
+          <ImagesIcon className="size-5" aria-label={copy.media} />
+        </div>
+      )}
+    </>
+  );
+}
+
+function ArticleImageControls({ index, actions }: { index: number; actions: ActionMenuAction[] }) {
+  const copy = useI18n().messages.contentEditor;
+  return (
+    <div className="absolute inset-x-1 top-1 flex items-center justify-between gap-1">
+      <span className="pointer-events-none rounded-sm bg-background/95 px-1.5 py-1 text-2xs tabular-nums">
+        {index + 1}
+      </span>
+      <ActionMenuButton
+        actions={actions}
+        label={copy.imageMenu.replace('{index}', String(index + 1))}
+        variant="secondary"
+        className="rounded-sm bg-background/95"
+        side="bottom"
+        align="end"
+      />
+    </div>
+  );
+}
+
 export function ArticleMediaPanel({
   images,
   unplaced,
   media,
   onMove,
   onRemove,
+  onDescribe,
   onLocate,
   onUndo,
   onRedo,
@@ -98,6 +163,7 @@ export function ArticleMediaPanel({
   media: readonly VideoDocumentRevisionMediaDto[];
   onMove(elementId: string, targetId: string): boolean;
   onRemove(elementId: string): boolean;
+  onDescribe(elementId: string, expected: string, alt: string): boolean;
   onLocate(elementId: string): void;
   onUndo(): boolean;
   onRedo(): boolean;
@@ -109,6 +175,7 @@ export function ArticleMediaPanel({
   const [dropId, setDropId] = useState<string | null>(null);
   const [moveId, setMoveId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const [describing, setDescribing] = useState<ArticleImagePlacement | null>(null);
   const sourceRef = useRef<string | null>(null);
   const focusRef = useRef<string | null>(null);
   const handles = useRef(new Map<string, HTMLDivElement>());
@@ -142,29 +209,13 @@ export function ArticleMediaPanel({
       className="flex min-h-full min-w-0 flex-col gap-2"
       onKeyDown={(event) => handleMediaHistoryShortcut(event, onUndo, onRedo)}
     >
-      {entries.length > 0 && (
-        <div className="sticky -top-3 z-20 -mx-3 -mt-3 flex min-h-10 shrink-0 items-center justify-end border-b bg-background px-3">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={large ? copy.smallThumbnails : copy.largeThumbnails}
-            title={large ? copy.smallThumbnails : copy.largeThumbnails}
-            aria-pressed={large}
-            onClick={() => setLarge((value) => !value)}
-          >
-            <LayoutGridIcon className="size-4" />
-          </Button>
-        </div>
-      )}
-      <div className={notice === copy.imageMoveFailed ? 'text-xs text-destructive' : 'sr-only'} role="status">
-        {notice}
-      </div>
-      <ArticleMediaCover media={media} />
-      {!entries.length && (
-        <div className="grid min-h-24 flex-1 place-items-center text-muted-foreground">
-          <ImagesIcon className="size-5" aria-label={copy.media} />
-        </div>
-      )}
+      <ArticleMediaHeading
+        large={large}
+        empty={!entries.length}
+        notice={notice}
+        media={media}
+        onResize={() => setLarge((value) => !value)}
+      />
       <div
         className={cn(
           'grid content-start gap-2',
@@ -215,6 +266,13 @@ export function ArticleMediaPanel({
                   if (entries.length === 1) sectionRef.current?.focus({ preventScroll: true });
                 },
               );
+          if (image.placementId)
+            actions.splice(1, 0, {
+              id: 'description',
+              label: copy.imageDescription,
+              icon: TextIcon,
+              onSelect: () => setDescribing(images.find((entry) => entry.elementId === image.elementId) ?? null),
+            });
           return (
             <div
               key={image.elementId}
@@ -299,22 +357,11 @@ export function ArticleMediaPanel({
                 mediaUrl={asset?.mediaUrl}
                 index={index}
                 actions={actions}
-                controls={
-                  <div className="absolute inset-x-1 top-1 flex items-center justify-between gap-1">
-                    <span className="pointer-events-none rounded-sm bg-background/95 px-1.5 py-1 text-2xs tabular-nums">
-                      {index + 1}
-                    </span>
-                    <ActionMenuButton
-                      actions={actions}
-                      label={copy.imageMenu.replace('{index}', String(index + 1))}
-                      variant="secondary"
-                      className="rounded-sm bg-background/95"
-                      side="bottom"
-                      align="end"
-                    />
-                  </div>
-                }
+                controls={<ArticleImageControls index={index} actions={actions} />}
               />
+              {'alt' in image && image.alt && (
+                <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{image.alt}</div>
+              )}
             </div>
           );
         })}
@@ -327,6 +374,15 @@ export function ArticleMediaPanel({
           onMove={move}
           onClose={() => setMoveId(null)}
           onRestoreFocus={() => handles.current.get(moveId)?.focus()}
+        />
+      )}
+      {describing && (
+        <ArticleImageDescriptionDialog
+          key={describing.elementId}
+          initial={describing.alt ?? ''}
+          onApply={(alt) => onDescribe(describing.elementId, describing.alt ?? '', alt)}
+          onClose={() => setDescribing(null)}
+          onRestoreFocus={() => handles.current.get(describing.elementId)?.focus()}
         />
       )}
     </section>

@@ -1,5 +1,5 @@
 import { History, GaugeIcon, ImagesIcon, Settings } from 'lucide-react';
-import { useState } from 'react';
+import { Activity, useState } from 'react';
 import type { ExtensionDto } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
@@ -10,6 +10,7 @@ import { CodexUsageInvestigatorConfiguration } from '@/renderer/features/extensi
 import { CodexVisualizationDiscoveryConfiguration } from '@/renderer/features/extensions/CodexVisualizationDiscoveryConfiguration';
 import { ExtensionFeatureErrorBoundary } from '@/renderer/features/extensions/ExtensionFeatureErrorBoundary';
 import { CodexFlowerSettings } from '@/renderer/features/extensions/codex-content/CodexFlowerSettings';
+import './codex-artifacts-screen.css';
 
 interface Props {
   active: boolean;
@@ -35,6 +36,7 @@ export function CodexArtifactsScreen({ active, extension, notify, onOpenCreation
   const [tab, setTab] = useState<WorkspaceTab>(initialTab);
   const [materialTab, setMaterialTab] = useState('images');
   const [historyToggleHost, setHistoryToggleHost] = useState<HTMLDivElement | null>(null);
+  const [usageToggleHost, setUsageToggleHost] = useState<HTMLDivElement | null>(null);
   const [visited, setVisited] = useState(() => new Set<WorkspaceTab>([tab]));
   const change = (next: string) => {
     setTab(next as WorkspaceTab);
@@ -70,9 +72,15 @@ export function CodexArtifactsScreen({ active, extension, notify, onOpenCreation
     );
   }
   return (
-    <Tabs value={tab} onValueChange={change} className="size-full bg-background">
-      <div className="flex min-w-0 shrink-0 items-center border-b px-3">
-        <div ref={setHistoryToggleHost} className={tab === 'history' ? 'mr-2 flex shrink-0' : 'hidden'} />
+    <Tabs
+      value={tab}
+      onValueChange={change}
+      data-codex-artifacts-screen
+      className="grid size-full grid-cols-[auto_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] bg-background"
+    >
+      <div className="relative z-10 col-start-2 row-start-1 flex min-w-0 items-center border-b bg-background px-3">
+        <div ref={setHistoryToggleHost} className={tab === 'history' ? 'mr-2 flex shrink-0 empty:hidden' : 'hidden'} />
+        <div ref={setUsageToggleHost} className={tab === 'usage' ? 'mr-2 flex shrink-0 empty:hidden' : 'hidden'} />
         <TabsList className="min-w-0 flex-1 overflow-x-auto border-b-0" aria-label={copy.codex.title}>
           {(
             [
@@ -90,24 +98,26 @@ export function CodexArtifactsScreen({ active, extension, notify, onOpenCreation
         </TabsList>
       </div>
       {visited.has('history') && (
-        <TabsContent
-          forceMount
-          value="history"
-          hidden={tab !== 'history'}
-          className="min-h-0 flex-1 data-[state=inactive]:hidden"
-        >
-          <ExtensionFeatureErrorBoundary scope={extension.manifest.id + ':history'}>
-            <CodexHistorySearchConfiguration
-              active={active && tab === 'history'}
-              extension={extension}
-              standalone
-              navigationToggleHost={historyToggleHost}
-              notify={notify}
-            />
-          </ExtensionFeatureErrorBoundary>
-        </TabsContent>
+        <Activity mode={tab === 'history' ? 'visible' : 'hidden'}>
+          <TabsContent
+            forceMount
+            value="history"
+            hidden={tab !== 'history'}
+            className="col-span-2 col-start-1 row-span-2 row-start-1 grid min-w-0 grid-cols-subgrid grid-rows-subgrid data-[state=inactive]:hidden"
+          >
+            <ExtensionFeatureErrorBoundary scope={extension.manifest.id + ':history'}>
+              <CodexHistorySearchConfiguration
+                active={active && tab === 'history'}
+                extension={extension}
+                standalone
+                navigationToggleHost={historyToggleHost}
+                notify={notify}
+              />
+            </ExtensionFeatureErrorBoundary>
+          </TabsContent>
+        </Activity>
       )}
-      <TabsContent value="materials" className="min-h-0 flex-1">
+      <TabsContent value="materials" className="col-span-2 row-start-2 min-h-0 min-w-0">
         <Tabs value={materialTab} onValueChange={setMaterialTab} className="size-full">
           <TabsList className="max-w-full shrink-0 overflow-x-auto px-3">
             <TabsTrigger value="images" className="shrink-0">
@@ -142,23 +152,26 @@ export function CodexArtifactsScreen({ active, extension, notify, onOpenCreation
         </Tabs>
       </TabsContent>
       {visited.has('usage') && (
-        <TabsContent
-          forceMount
-          value="usage"
-          hidden={tab !== 'usage'}
-          className="min-h-0 flex-1 data-[state=inactive]:hidden"
-        >
-          <ExtensionFeatureErrorBoundary scope={extension.manifest.id + ':usage'}>
-            <CodexUsageInvestigatorConfiguration
-              active={active && tab === 'usage'}
-              extension={extension}
-              standalone
-              notify={notify}
-            />
-          </ExtensionFeatureErrorBoundary>
-        </TabsContent>
+        <Activity mode={tab === 'usage' ? 'visible' : 'hidden'}>
+          <TabsContent
+            forceMount
+            value="usage"
+            hidden={tab !== 'usage'}
+            className="col-span-2 col-start-1 row-span-2 row-start-1 grid min-w-0 grid-cols-subgrid grid-rows-subgrid data-[state=inactive]:hidden"
+          >
+            <ExtensionFeatureErrorBoundary scope={extension.manifest.id + ':usage'}>
+              <CodexUsageInvestigatorConfiguration
+                active={active && tab === 'usage'}
+                extension={extension}
+                standalone
+                navigationToggleHost={usageToggleHost}
+                notify={notify}
+              />
+            </ExtensionFeatureErrorBoundary>
+          </TabsContent>
+        </Activity>
       )}
-      <TabsContent value="settings" className="min-h-0 flex-1 overflow-y-auto">
+      <TabsContent value="settings" className="col-span-2 row-start-2 min-h-0 min-w-0 overflow-y-auto">
         <CodexFlowerSettings active={active && tab === 'settings'} />
       </TabsContent>
     </Tabs>

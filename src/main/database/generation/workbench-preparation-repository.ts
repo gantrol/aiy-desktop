@@ -1,4 +1,5 @@
 import { stat } from 'node:fs/promises';
+import { draftCreationSource, registerCreationOutput } from '@/main/database/creations/creation-continuation';
 import path from 'node:path';
 import { ulid } from 'ulid';
 import type { AssetDto, GenerationInput, PromptCommonInputDto } from '@/shared/contracts';
@@ -226,14 +227,18 @@ export class WorkbenchPreparationRepository extends WorkbenchReader {
       return;
     }
 
-    creationItems.createWithForm({
-      albumId: targetAlbumId,
-      form: {
-        role: 'IMAGE_CREATION',
-        entity: { kind: 'PROMPT_SERIES', id: seriesId },
-        anchorKey: null,
+    registerCreationOutput(
+      this.storage,
+      {
+        albumId: targetAlbumId,
+        form: {
+          role: 'IMAGE_CREATION',
+          entity: { kind: 'PROMPT_SERIES', id: seriesId },
+          anchorKey: null,
+        },
       },
-    });
+      input.creationDraftId ? draftCreationSource(this.storage, input.creationDraftId) : undefined,
+    );
   }
 
   private resolveSourceImportId(input: GenerationInput, seriesId: string): string | null {

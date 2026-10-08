@@ -22,6 +22,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { WordPalette } from '@/renderer/components/dictionary/WordPalette';
 import { Button } from '@/renderer/components/ui/button';
+import { ItemActions, itemActionButtonClassName } from '@/renderer/components/ui/item-actions';
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@/renderer/components/ui/command';
 import {
   Dialog,
@@ -102,27 +103,50 @@ function ReferenceAssetCard({
   onMove(index: number, direction: -1 | 1): void;
   onRemove(assetId: string): void;
 }) {
+  const labels = useI18n().messages.dictionary.editor;
   return (
-    <div className="group relative isolate h-24 w-16 shrink-0 overflow-hidden rounded-md border bg-surface-sunken">
-      <ImageAmbientBackdrop src={asset.mediaUrl} loading="lazy" />
-      <img className="relative z-10 size-full object-contain" src={asset.mediaUrl} alt="" loading="lazy" />
-      <div className="absolute inset-x-1 bottom-1 z-20 flex justify-center rounded bg-overlay opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
-        <Button type="button" variant="ghost" size="icon-sm" disabled={index === 0} onClick={() => onMove(index, -1)}>
+    <div className="group/item w-24 shrink-0">
+      <div className="relative isolate h-24 overflow-hidden rounded-sm bg-surface-sunken">
+        <ImageAmbientBackdrop src={asset.mediaUrl} loading="lazy" />
+        <img className="relative z-10 size-full object-contain" src={asset.mediaUrl} alt="" loading="lazy" />
+      </div>
+      <ItemActions className="flex-wrap justify-center py-1">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className={itemActionButtonClassName}
+          title={labels.moveLeft}
+          aria-label={labels.moveLeft}
+          disabled={index === 0}
+          onClick={() => onMove(index, -1)}
+        >
           <ChevronLeftIcon className="size-3" />
         </Button>
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
+          className={itemActionButtonClassName}
+          title={labels.moveRight}
+          aria-label={labels.moveRight}
           disabled={index === count - 1}
           onClick={() => onMove(index, 1)}
         >
           <ChevronRightIcon className="size-3" />
         </Button>
-        <Button type="button" variant="ghost" size="icon-sm" onClick={() => onRemove(asset.id)}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className={itemActionButtonClassName}
+          title={labels.removeImage}
+          aria-label={labels.removeImage}
+          onClick={() => onRemove(asset.id)}
+        >
           <XIcon className="size-3" />
         </Button>
-      </div>
+      </ItemActions>
     </div>
   );
 }

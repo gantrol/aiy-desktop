@@ -1,11 +1,22 @@
 import { itemReorderHandler } from '@/renderer/components/albums/itemDrag';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { XIcon } from 'lucide-react';
-import type { AssetDto, FacetDefinitionDto, TermListItem } from '@/shared/contracts';
+import type { AssetDto, FacetDefinitionDto, GalleryItemDto, TermListItem } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
-import { ScrollArea } from '@/renderer/components/ui/scroll-area';
-import { Skeleton } from '@/renderer/components/ui/skeleton';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/renderer/components/ui/dialog';
+import { useWorkspacePaneContainer } from '@/renderer/components/workspace/WorkspacePaneScope';
+import { MaterialImagePickerResults } from '@/renderer/components/gallery/MaterialImagePickerResults';
+import {
+  MaterialImagePickerToolbar,
+  materialImagePickerScope,
+} from '@/renderer/components/gallery/MaterialImagePickerToolbar';
 import { buildDictionaryMaterialTree } from '@/renderer/components/gallery/dictionaryMaterialTree';
 import { MaterialLibraryNavigation } from '@/renderer/components/gallery/MaterialLibraryNavigation';
 import type {
@@ -23,8 +34,8 @@ import {
   useMaterialImagePickerMaterials,
 } from '@/renderer/components/gallery/useMaterialImagePickerData';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { cn } from '@/renderer/lib/utils';
 import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
+import { cn } from '@/renderer/lib/utils';
 
 const ignoreMaterialMutation = () => Promise.resolve();
 
@@ -56,6 +67,7 @@ function MaterialImagePickerSelectionStrip<T extends MaterialImagePickerImage>({
   onRemove(imageId: string): void;
   onReorder(images: T[]): void;
 }) {
+  const copy = useI18n().messages.gallery.imagePicker;
   const [draggingId, setDraggingId] = useState<string | null>(null);
   if (!images.length) return null;
   return (
@@ -63,7 +75,6 @@ function MaterialImagePickerSelectionStrip<T extends MaterialImagePickerImage>({
       <div className="mb-1.5 flex items-center justify-between gap-3 text-xs text-muted-foreground">
         <span>{labels.selectedOrder}</span>
         <div className="flex items-center gap-2">
-          <span>{labels.dragToReorder}</span>
           <Button type="button" variant="ghost" size="2xs" onClick={onClear}>
             {labels.deselectAll}
           </Button>
@@ -74,10 +85,26 @@ function MaterialImagePickerSelectionStrip<T extends MaterialImagePickerImage>({
           <div
             key={image.id}
             role="listitem"
+            tabIndex={0}
+            aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
             draggable
             data-dragging={draggingId === image.id ? 'true' : undefined}
-            className="relative aspect-[4/3] h-16 shrink-0 cursor-grab overflow-hidden rounded-md border bg-surface opacity-100 outline-none active:cursor-grabbing data-[dragging=true]:opacity-50"
-            title={labels.dragToReorder}
+            className="relative aspect-[4/3] h-12 shrink-0 cursor-grab overflow-hidden rounded-sm border border-selected-border bg-surface opacity-100 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:cursor-grabbing data-[dragging=true]:opacity-50"
+            title={copy.reorder}
+            aria-label={`${labels.selectedOrder}: ${index + 1}. ${copy.reorder}`}
+            onKeyDown={(event) => {
+              if (
+                event.target !== event.currentTarget ||
+                !event.altKey ||
+                !['ArrowLeft', 'ArrowRight'].includes(event.key)
+              )
+                return;
+              event.preventDefault();
+              event.stopPropagation();
+              const after = event.key === 'ArrowRight';
+              const target = images[index + (after ? 1 : -1)];
+              if (target) onReorder(reorderMaterialImagePickerImages(images, image.id, target.id, after));
+            }}
             onDragStart={(event) => {
               setDraggingId(image.id);
               event.dataTransfer.effectAllowed = 'move';
@@ -136,56 +163,6 @@ function MaterialImagePickerSelectionStrip<T extends MaterialImagePickerImage>({
   );
 }
 
-function MaterialImagePickerCandidate({
-  asset,
-  index,
-  selectedIndex,
-  disabled,
-  chooseLabel,
-  onToggle,
-}: {
-  asset: AssetDto;
-  index: number;
-  selectedIndex: number;
-  disabled: boolean;
-  chooseLabel: string;
-  onToggle(assetId: string): void;
-}) {
-  const selected = selectedIndex >= 0;
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      aria-label={`${chooseLabel}: ${index + 1} · ${asset.width}×${asset.height}`}
-      data-picker-asset-id={asset.id}
-      aria-pressed={selected}
-      className={cn(
-        'relative isolate aspect-[4/3] overflow-hidden rounded-lg border-2 border-transparent bg-surface-sunken outline-none transition-colors hover:border-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
-        selected && 'border-selected-border ring-2 ring-ring',
-      )}
-      onClick={() => onToggle(asset.id)}
-    >
-      <AssetThumbnail
-        asset={asset}
-        size={512}
-        ambient
-        width={asset.width}
-        height={asset.height}
-        className="relative z-10 size-full object-contain"
-        alt=""
-        loading="lazy"
-        decoding="async"
-        draggable={false}
-      />
-      {selected && (
-        <span className="absolute right-2 top-2 z-20 grid size-6 place-items-center rounded-md border border-selected-border bg-selected text-xs font-semibold tabular-nums text-selected-foreground">
-          {selectedIndex + 1}
-        </span>
-      )}
-    </button>
-  );
-}
-
 function MaterialImagePickerFooter({
   selectedCount,
   selectedLabel,
@@ -208,18 +185,18 @@ function MaterialImagePickerFooter({
   onSecondaryAction?(): void;
 }) {
   return (
-    <DialogFooter className="items-center border-t px-5 py-4 sm:justify-between">
+    <DialogFooter className="shrink-0 flex-row flex-wrap items-center justify-between border-t px-3 py-2 sm:justify-between">
       <span className="text-xs text-muted-foreground">{selectedLabel(selectedCount)}</span>
-      <div className="flex gap-2">
+      <div className="ml-auto flex min-w-0 flex-wrap justify-end gap-2">
         {secondaryActionLabel && onSecondaryAction && (
-          <Button type="button" variant="outline" onClick={onSecondaryAction}>
+          <Button type="button" variant="outline" size="sm" onClick={onSecondaryAction}>
             {secondaryActionLabel}
           </Button>
         )}
-        <Button type="button" variant="ghost" onClick={onCancel}>
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           {cancelLabel}
         </Button>
-        <Button type="button" disabled={applyDisabled} onClick={onApply}>
+        <Button type="button" size="sm" disabled={applyDisabled} onClick={onApply}>
           {applyLabel}
         </Button>
       </div>
@@ -326,10 +303,12 @@ interface MaterialImagePickerDialogProps<T extends MaterialImagePickerImage> {
   selectedImages: readonly T[];
   labels: MaterialImagePickerLabels;
   maxSelected: number;
+  includeVideos?: boolean;
+  selectionDisabledReason?(item: GalleryItemDto, selected: readonly T[]): string | undefined;
   secondaryAction?: { label: string; onSelect(): void };
   diagnostics?: MaterialImagePickerDiagnosticSink;
   beginDiagnostics?(details?: MaterialImagePickerDiagnosticDetails): void | (() => void);
-  createImage(asset: AssetDto): T;
+  createImage(asset: AssetDto, item: GalleryItemDto): T;
   onOpenChange(open: boolean): void;
   onCollectionChange(collection: MaterialImagePickerCollection): void;
   onApply(images: T[]): void;
@@ -342,11 +321,63 @@ function MaterialImagePickerHeader({
   title: string;
   onToggleHostChange(host: HTMLDivElement | null): void;
 }) {
+  const { messages } = useI18n();
   return (
-    <DialogHeader className="flex-row items-center gap-2 border-b px-5 py-4">
+    <DialogHeader className="shrink-0 flex-row items-center gap-2 border-b px-3 py-2">
       <div ref={onToggleHostChange} className="flex shrink-0" />
-      <DialogTitle>{title}</DialogTitle>
+      <DialogTitle className="min-w-0 flex-1 truncate text-sm">{title}</DialogTitle>
+      <DialogClose asChild>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={messages.common.close}>
+          <XIcon aria-hidden="true" className="size-4" />
+        </Button>
+      </DialogClose>
     </DialogHeader>
+  );
+}
+
+function MaterialImagePickerSurface({
+  open,
+  dialogName,
+  title,
+  onOpenChange,
+  onToggleHostChange,
+  children,
+}: {
+  open: boolean;
+  dialogName: string;
+  title: string;
+  onOpenChange(open: boolean): void;
+  onToggleHostChange(host: HTMLDivElement | null): void;
+  children: ReactNode;
+}) {
+  const paneContainer = useWorkspacePaneContainer();
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  return (
+    <Dialog container={paneContainer} open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        data-dialog={dialogName}
+        aria-describedby={undefined}
+        showCloseButton={false}
+        className={cn(
+          'flex h-[min(88dvh,52rem)] max-h-[calc(100dvh-1.5rem)] max-w-6xl flex-col gap-0 overflow-hidden rounded-md p-0',
+          paneContainer &&
+            'h-full max-h-full w-full rounded-none border-0 shadow-none @min-[40rem]/workspace-pane:h-[calc(100%-1.5rem)] @min-[40rem]/workspace-pane:w-[calc(100%-1.5rem)] @min-[40rem]/workspace-pane:rounded-md @min-[40rem]/workspace-pane:border',
+        )}
+        onOpenAutoFocus={(event) => {
+          returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          event.preventDefault();
+          if (event.target instanceof HTMLElement)
+            event.target.querySelector<HTMLInputElement>('input[type="search"]')?.focus();
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          if (returnFocusRef.current?.isConnected) returnFocusRef.current.focus({ preventScroll: true });
+        }}
+      >
+        <MaterialImagePickerHeader title={title} onToggleHostChange={onToggleHostChange} />
+        {children}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -361,6 +392,8 @@ export function MaterialImagePickerDialog<T extends MaterialImagePickerImage>({
   selectedImages,
   labels,
   maxSelected,
+  includeVideos = false,
+  selectionDisabledReason,
   secondaryAction,
   diagnostics,
   beginDiagnostics,
@@ -375,12 +408,15 @@ export function MaterialImagePickerDialog<T extends MaterialImagePickerImage>({
   const materialViewportRef = useRef<HTMLDivElement>(null);
   const collectionKey = JSON.stringify(collection);
   const [draftImages, setDraftImages] = useState<T[]>(() => [...selectedImages]);
+  const [query, setQuery] = useState('');
   const [navigationToggleHost, setNavigationToggleHost] = useState<HTMLDivElement | null>(null);
   const materialState = useMaterialImagePickerMaterials({
     active: open,
     libraryKey,
     dataRevision,
     collection,
+    query,
+    includeVideos,
     diagnostics,
   });
   const albumState = useMaterialImagePickerAlbums({
@@ -418,6 +454,7 @@ export function MaterialImagePickerDialog<T extends MaterialImagePickerImage>({
   useLayoutEffect(() => {
     if (open && !wasOpenRef.current) {
       setDraftImages([...selectedImages]);
+      setQuery('');
       orderCustomizedRef.current = selectedImages.length > 0;
     }
     wasOpenRef.current = open;
@@ -425,7 +462,7 @@ export function MaterialImagePickerDialog<T extends MaterialImagePickerImage>({
 
   useLayoutEffect(() => {
     if (open) materialViewportRef.current?.scrollTo({ top: 0, behavior: 'auto' });
-  }, [collectionKey, open]);
+  }, [collectionKey, open, query]);
 
   useEffect(() => {
     if (
@@ -460,9 +497,10 @@ export function MaterialImagePickerDialog<T extends MaterialImagePickerImage>({
       }
       if (current.length >= maxSelected) return current;
       const selected = new Map(current.map((image) => [image.id, image]));
-      const asset = materialState.images.find((image) => image.asset.id === assetId)?.asset;
-      if (!asset) return current;
-      const image = createImage(asset);
+      const candidate = materialState.images.find((image) => image.asset.id === assetId);
+      if (!candidate || selectionDisabledReason?.(candidate.item, current)) return current;
+      const { asset, item } = candidate;
+      const image = createImage(asset, item);
       if (orderCustomizedRef.current) return [...current, image];
       selected.set(asset.id, image);
       const currentCollectionIds = new Set(materialState.images.map((image) => image.asset.id));
@@ -476,132 +514,114 @@ export function MaterialImagePickerDialog<T extends MaterialImagePickerImage>({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-dialog={dialogName} className="max-h-[90vh] max-w-6xl gap-0 overflow-hidden p-0">
-        <MaterialImagePickerHeader title={labels.title} onToggleHostChange={setNavigationToggleHost} />
-        <div className="flex h-[min(70vh,42rem)] min-h-0 overflow-hidden">
-          <MaterialLibraryNavigation
-            toggleHost={navigationToggleHost}
-            albums={albumState.albums}
-            browseOnly
-            category={collection.kind === 'dictionary' ? 'DICTIONARY' : 'MATERIAL'}
-            activeAlbumId={collection.kind === 'album' ? collection.albumId : null}
-            dictionarySelection={collection.kind === 'dictionary' ? collection : null}
-            dictionaryTree={dictionaryTree}
-            labels={navigationLabels}
-            busy={albumsPending}
-            diagnostics={diagnostics}
-            onSelectCategory={(category) =>
-              onCollectionChange(category === 'DICTIONARY' ? { kind: 'dictionary', scope: 'ALL' } : { kind: 'all' })
-            }
-            onSelectAlbum={(albumId) => onCollectionChange({ kind: 'album', albumId })}
-            onSelectDictionary={(next) => onCollectionChange({ ...next, scope: 'ALL' })}
-            onCreate={ignoreMaterialMutation}
-            onRename={ignoreMaterialMutation}
-            onArchive={ignoreMaterialMutation}
-            onDelete={ignoreMaterialMutation}
-            onCollectMaterials={ignoreMaterialMutation}
-          />
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-            {albumState.failed && (
-              <p className="border-b px-4 py-2 text-xs text-destructive">{labels.albumsLoadFailed}</p>
-            )}
-            {materialPending && (
-              <p className="border-b px-4 py-2 text-xs text-muted-foreground">{labels.loadingMaterials}</p>
-            )}
-            {materialState.failed && (
-              <p className="border-b px-4 py-2 text-xs text-destructive">{labels.materialsLoadFailed}</p>
-            )}
-            <MaterialImagePickerSelectionStrip
-              images={draftImages}
-              labels={labels}
-              onClear={() => {
-                orderCustomizedRef.current = false;
-                setDraftImages([]);
-              }}
-              onRemove={(imageId) => {
-                setDraftImages((current) => {
-                  const next = current.filter((image) => image.id !== imageId);
-                  if (!next.length) orderCustomizedRef.current = false;
-                  return next;
-                });
-              }}
-              onReorder={(images) => {
-                orderCustomizedRef.current = true;
-                setDraftImages(images);
-              }}
-            />
-            <ScrollArea
-              aria-busy={materialState.loading}
-              data-stale={materialState.stale ? 'true' : undefined}
-              className="min-h-0 flex-1"
-              viewportRef={materialViewportRef}
-            >
-              <div className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-4">
-                {materialPending &&
-                  materialState.images.length === 0 &&
-                  Array.from({ length: 8 }, (_, index) => (
-                    <Skeleton key={index} className="aspect-[4/3] animate-none rounded-lg" />
-                  ))}
-                {materialState.images.map(({ asset }, index) => (
-                  <MaterialImagePickerCandidate
-                    key={asset.id}
-                    asset={asset}
-                    index={index}
-                    selectedIndex={draftImages.findIndex((image) => image.id === asset.id)}
-                    disabled={materialState.stale}
-                    chooseLabel={labels.choose}
-                    onToggle={toggle}
-                  />
-                ))}
-                {materialState.loaded &&
-                  !materialState.loading &&
-                  !materialState.failed &&
-                  materialState.images.length === 0 && (
-                    <div className="col-span-full grid h-48 place-items-center text-sm text-muted-foreground">
-                      {labels.noImages}
-                    </div>
-                  )}
-                {materialState.nextCursor && (
-                  <div className="col-span-full flex justify-center py-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={materialState.stale || materialState.loadingMore}
-                      onClick={() => void materialState.loadMore()}
-                    >
-                      {materialState.loadingMore
-                        ? messages.gallery.screen.loadingMore
-                        : messages.gallery.screen.loadMore}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
-          </div>
-        </div>
-        <MaterialImagePickerFooter
-          selectedCount={draftImages.length}
-          selectedLabel={labels.selected}
-          cancelLabel={messages.common.cancel}
-          applyLabel={labels.apply}
-          applyDisabled={draftImages.length === 0 && selectedImages.length === 0}
-          secondaryActionLabel={secondaryAction?.label}
-          onCancel={() => onOpenChange(false)}
-          onSecondaryAction={
-            secondaryAction
-              ? () => {
-                  onOpenChange(false);
-                  secondaryAction.onSelect();
-                }
-              : undefined
+    <MaterialImagePickerSurface
+      open={open}
+      dialogName={dialogName}
+      title={labels.title}
+      onOpenChange={onOpenChange}
+      onToggleHostChange={setNavigationToggleHost}
+    >
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <MaterialLibraryNavigation
+          toggleHost={navigationToggleHost}
+          albums={albumState.albums}
+          browseOnly
+          category={collection.kind === 'dictionary' ? 'DICTIONARY' : 'MATERIAL'}
+          activeAlbumId={collection.kind === 'album' ? collection.albumId : null}
+          dictionarySelection={collection.kind === 'dictionary' ? collection : null}
+          dictionaryTree={dictionaryTree}
+          labels={navigationLabels}
+          busy={albumsPending}
+          diagnostics={diagnostics}
+          onSelectCategory={(category) =>
+            onCollectionChange(category === 'DICTIONARY' ? { kind: 'dictionary', scope: 'ALL' } : { kind: 'all' })
           }
-          onApply={() => {
-            onApply(draftImages);
-            onOpenChange(false);
-          }}
+          onSelectAlbum={(albumId) => onCollectionChange({ kind: 'album', albumId })}
+          onSelectDictionary={(next) => onCollectionChange({ ...next, scope: 'ALL' })}
+          onCreate={ignoreMaterialMutation}
+          onRename={ignoreMaterialMutation}
+          onArchive={ignoreMaterialMutation}
+          onDelete={ignoreMaterialMutation}
+          onCollectMaterials={ignoreMaterialMutation}
         />
-      </DialogContent>
-    </Dialog>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+          <MaterialImagePickerToolbar
+            scope={materialImagePickerScope(collection, albumState.albums, dictionaryTree, navigationLabels)}
+            onQueryChange={(next) => {
+              if (next.trim() !== query.trim() && draftImages.length) orderCustomizedRef.current = true;
+              setQuery(next);
+            }}
+          />
+          {albumState.failed && (
+            <p className="border-b px-4 py-2 text-xs text-destructive">{labels.albumsLoadFailed}</p>
+          )}
+          {materialPending && (
+            <p className="border-b px-4 py-2 text-xs text-muted-foreground">{labels.loadingMaterials}</p>
+          )}
+          {materialState.failed && (
+            <div
+              role="alert"
+              className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2 text-xs text-destructive"
+            >
+              <span>{labels.materialsLoadFailed}</span>
+              <Button type="button" variant="ghost" size="xs" onClick={materialState.retry}>
+                {messages.workbench.retry}
+              </Button>
+            </div>
+          )}
+          <MaterialImagePickerSelectionStrip
+            images={draftImages}
+            labels={labels}
+            onClear={() => {
+              orderCustomizedRef.current = false;
+              setDraftImages([]);
+            }}
+            onRemove={(imageId) => {
+              setDraftImages((current) => {
+                const next = current.filter((image) => image.id !== imageId);
+                if (!next.length) orderCustomizedRef.current = false;
+                return next;
+              });
+            }}
+            onReorder={(images) => {
+              orderCustomizedRef.current = true;
+              setDraftImages(images);
+            }}
+          />
+          <MaterialImagePickerResults
+            state={materialState}
+            pending={materialPending}
+            selectedImages={draftImages}
+            maxSelected={maxSelected}
+            selectionDisabledReason={(item) => selectionDisabledReason?.(item, draftImages)}
+            chooseLabel={labels.choose}
+            emptyLabel={query.trim() ? messages.gallery.imagePicker.noResults : labels.noImages}
+            viewportRef={materialViewportRef}
+            onToggle={toggle}
+          />
+        </div>
+      </div>
+      <MaterialImagePickerFooter
+        selectedCount={draftImages.length}
+        selectedLabel={labels.selected}
+        cancelLabel={messages.common.cancel}
+        applyLabel={labels.apply}
+        applyDisabled={draftImages.length === 0 && selectedImages.length === 0}
+        secondaryActionLabel={secondaryAction?.label}
+        onCancel={() => onOpenChange(false)}
+        onSecondaryAction={
+          secondaryAction
+            ? () => {
+                onOpenChange(false);
+                secondaryAction.onSelect();
+              }
+            : undefined
+        }
+        onApply={() => {
+          onApply(draftImages);
+          onOpenChange(false);
+        }}
+      />
+    </MaterialImagePickerSurface>
   );
 }

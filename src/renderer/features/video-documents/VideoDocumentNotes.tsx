@@ -7,6 +7,7 @@ import type {
   VideoDocumentTimelineSegment,
 } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
+import { ItemActions } from '@/renderer/components/ui/item-actions';
 import { Input } from '@/renderer/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { Textarea } from '@/renderer/components/ui/textarea';
@@ -83,7 +84,7 @@ function NoteRow({ note, draft, durationMs, saving, labels, onSeek, onDraftChang
   const validTime = timestampMs !== null && timestampMs >= 0 && timestampMs <= durationMs;
   const dirty = draft.text.trim() !== note.text || timestampMs !== note.timestampMs;
   return (
-    <div className="group/note grid grid-cols-[4.75rem_minmax(0,1fr)_auto] items-start gap-3 border-b py-3">
+    <div className="group/item grid grid-cols-[4.75rem_minmax(0,1fr)_auto] items-start gap-3 border-b py-3">
       <div className="grid gap-1">
         <Input
           value={draft.time}
@@ -112,7 +113,7 @@ function NoteRow({ note, draft, durationMs, saving, labels, onSeek, onDraftChang
           }
         }}
       />
-      <div className="flex opacity-0 transition-opacity group-hover/note:opacity-100 focus-within:opacity-100">
+      <ItemActions>
         {dirty && validTime && draft.text.trim() && (
           <Button
             type="button"
@@ -137,7 +138,7 @@ function NoteRow({ note, draft, durationMs, saving, labels, onSeek, onDraftChang
         >
           <Trash2Icon className="size-3.5" />
         </Button>
-      </div>
+      </ItemActions>
     </div>
   );
 }

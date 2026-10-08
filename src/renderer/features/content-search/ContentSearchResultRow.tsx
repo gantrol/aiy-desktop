@@ -67,23 +67,21 @@ export function ContentSearchResultRow({
       >
         <Icon aria-hidden="true" className="mt-0.5 size-4 text-muted-foreground" />
         <span className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="min-w-0 flex-1 break-words text-sm font-medium">
-              <ContentSearchHighlight text={item.title || copy.untitled} terms={terms} />
-            </span>
-            {date && (
-              <time dateTime={item.updatedAt} className="shrink-0 text-2xs text-muted-foreground">
-                {date}
-              </time>
-            )}
+          <span className="line-clamp-2 break-words text-sm font-medium" title={item.title || copy.untitled}>
+            <ContentSearchHighlight text={item.title || copy.untitled} terms={terms} />
           </span>
           {item.preview && (
             <span className="line-clamp-2 whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground-secondary">
               <ContentSearchHighlight text={item.preview} terms={terms} />
             </span>
           )}
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-muted-foreground">
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-muted-foreground">
             <span>{copy[kind]}</span>
+            {date && (
+              <time dateTime={item.updatedAt} className="shrink-0">
+                {date}
+              </time>
+            )}
             <span aria-hidden="true">·</span>
             <span>{copy[item.match]}</span>
             {!item.bodyIndexed && <span className="text-warning">{copy.titleOnly}</span>}

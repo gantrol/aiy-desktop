@@ -17,14 +17,10 @@ import {
   codexUsageQuotaSamplePercentSchema,
   codexUsageTaskSchema,
 } from '@/shared/contracts/codex-usage';
-import {
-  CODEX_QUOTA_PURITY_VERSION,
-  readCodexQuotaPurity,
-} from '@/main/extensions/codex-usage-investigator/quota-purity';
+import { readCodexQuotaPurity } from '@/main/extensions/codex-usage-investigator/quota-purity';
 import { codexUsageDateRangeEpochs } from '@/shared/codex-usage-time';
 import { CodexUsageCacheDatabase } from '@/main/extensions/codex-usage-investigator/cache-database';
 import { serializeCodexUsageExport } from '@/main/extensions/codex-usage-investigator/export';
-import { refreshCodexOfficialSpeeds } from '@/main/extensions/codex-usage-investigator/official-speed';
 import { codexUsageRangeStart, scanCodexUsage } from '@/main/extensions/codex-usage-investigator/scanner';
 
 interface InvestigatorOptions {
@@ -55,6 +51,11 @@ export class CodexUsageInvestigator {
   private controller: AbortController | null = null;
   private currentTask: CodexUsageTask | null = null;
   private clearing = false;
+  private exporting = false;
+  private readonly quotaVariants = new Map<
+    string,
+    Pick<CodexUsageInvestigation, 'quotaPurity' | 'quotaPurityIssue' | 'quotaCalculatedAt'>
+  >();
   private readonly purityReads = new Map<string, Promise<CodexUsageInvestigation>>();
 
   constructor(options: InvestigatorOptions) {
@@ -63,7 +64,7 @@ export class CodexUsageInvestigator {
   }
 
   get hasPending() {
-    return this.controller !== null || this.clearing;
+    return this.controller !== null || this.clearing || this.exporting || this.purityReads.size > 0;
   }
 
   private getCache() {
@@ -73,25 +74,19 @@ export class CodexUsageInvestigator {
     }));
   }
 
-  async state(): Promise<CodexUsageState> {
-    const persisted = (await this.getCache()).state();
+  async state(beforeInvestigationId?: string): Promise<CodexUsageState> {
+    const persisted = (await this.getCache()).state(beforeInvestigationId);
     return this.currentTask ? { ...persisted, task: this.currentTask } : persisted;
   }
 
   async investigation(investigationId: string, minimumQuotaPercent?: number): Promise<CodexUsageInvestigation> {
-    const pending = this.purityReads.get(investigationId);
-    if (pending) {
-      const result = await pending;
-      if (minimumQuotaPercent === undefined || result.quotaPurity?.minimumQuotaPercent === minimumQuotaPercent) {
-        return result;
-      }
-      // Serialize changes to a report so an earlier calculation cannot overwrite a later selection.
-      return this.investigation(investigationId, minimumQuotaPercent);
-    }
+    const key = JSON.stringify([investigationId, minimumQuotaPercent ?? null]);
+    const pending = this.purityReads.get(key);
+    if (pending) return pending;
     const result = this.readInvestigation(investigationId, minimumQuotaPercent).finally(() =>
-      this.purityReads.delete(investigationId),
+      this.purityReads.delete(key),
     );
-    this.purityReads.set(investigationId, result);
+    this.purityReads.set(key, result);
     return result;
   }
 
@@ -104,35 +99,34 @@ export class CodexUsageInvestigator {
     const minimumQuotaPercent =
       requestedQuotaPercent ??
       (savedQuotaPercent.success ? savedQuotaPercent.data : CODEX_USAGE_DEFAULT_QUOTA_SAMPLE_PERCENT);
-    if (
-      current &&
-      ((current.algorithmVersion === CODEX_QUOTA_PURITY_VERSION &&
-        current.minimumQuotaPercent === minimumQuotaPercent) ||
-        (requestedQuotaPercent === undefined &&
-          cache.hasRetainedHistory(
-            investigation.from ? Date.parse(investigation.from) : null,
-            Date.parse(investigation.to),
-          )))
-    ) {
-      return refreshCodexOfficialSpeeds(investigation);
-    }
-    const [quotaPurity, refreshed] = await Promise.all([
-      readCodexQuotaPurity(cache, investigation.from, investigation.to, minimumQuotaPercent).catch(() => null),
-      refreshCodexOfficialSpeeds(investigation),
-    ]);
-    const result = codexUsageInvestigationSchema.parse({
-      ...refreshed,
+    // Reading a historical report never upgrades its calculations or reference data.
+    if (requestedQuotaPercent === undefined || current?.minimumQuotaPercent === minimumQuotaPercent)
+      return investigation;
+    if (this.controller || this.clearing) throw new Error('CODEX_USAGE_BUSY');
+    const key = JSON.stringify([investigationId, minimumQuotaPercent]);
+    const cached = this.quotaVariants.get(key);
+    if (cached) return codexUsageInvestigationSchema.parse({ ...investigation, ...cached });
+    const quotaPurity = await readCodexQuotaPurity(
+      cache,
+      investigation.from,
+      investigation.to,
+      minimumQuotaPercent,
+    ).catch(() => null);
+    const variant = codexUsageInvestigationSchema.parse({
+      ...investigation,
       quotaPurity,
       quotaPurityIssue: quotaPurity ? null : 'READ_FAILED',
+      quotaCalculatedAt: new Date().toISOString(),
     });
     if (quotaPurity) {
-      try {
-        cache.saveInvestigationPurity(result);
-      } catch {
-        result.quotaPurityIssue = 'CACHE_WRITE_FAILED';
-      }
+      if (this.quotaVariants.size >= 8) this.quotaVariants.delete(this.quotaVariants.keys().next().value!);
+      this.quotaVariants.set(key, {
+        quotaPurity: variant.quotaPurity,
+        quotaPurityIssue: variant.quotaPurityIssue,
+        quotaCalculatedAt: variant.quotaCalculatedAt,
+      });
     }
-    return result;
+    return variant;
   }
 
   async start(input: CodexUsageScanInput) {
@@ -140,17 +134,21 @@ export class CodexUsageInvestigator {
     if (this.hasPending) throw new Error('A Codex usage investigation is already running');
     const now = Date.now();
     const timestamp = new Date(now).toISOString();
-    const epochs =
-      input.range === 'CUSTOM' && input.dateRange
+    const source = input.sourceInvestigationId ? cache.investigation(input.sourceInvestigationId) : null;
+    if (input.sourceInvestigationId && !source) throw new Error('Codex usage investigation was not found');
+    const scope = source ?? input;
+    const epochs = source
+      ? { fromEpoch: source.from ? Date.parse(source.from) : null, toEpoch: Date.parse(source.to) }
+      : input.range === 'CUSTOM' && input.dateRange
         ? codexUsageDateRangeEpochs(input.dateRange, input.timeZone, now)
         : { fromEpoch: codexUsageRangeStart(input.range, now, input.timeZone), toEpoch: now };
     cache.cancelPendingTasks();
     const task = codexUsageTaskSchema.parse({
       taskId: randomUUID(),
-      range: input.range,
-      dateRange: input.dateRange,
-      timeZone: input.timeZone,
-      granularity: input.granularity,
+      range: scope.range,
+      dateRange: scope.dateRange,
+      timeZone: scope.timeZone,
+      granularity: scope.granularity,
       detailedStatistics: input.detailedStatistics,
       status: 'RUNNING',
       createdAt: timestamp,
@@ -200,6 +198,7 @@ export class CodexUsageInvestigator {
     try {
       if (level === 'LOCAL_INDEX') await cache.backupFacts();
       const removed = cache.cleanup(level);
+      this.quotaVariants.clear();
       const state = cache.state();
       this.currentTask = state.task;
       return codexUsageCleanupResultSchema.parse({ level, removed, state });
@@ -214,12 +213,17 @@ export class CodexUsageInvestigator {
     destinationPath: string,
     minimumQuotaPercent?: number,
   ) {
-    const cache = await this.getCache();
-    const investigation = await this.investigation(investigationId, minimumQuotaPercent);
-    const rows = cache.exportRows(investigationId);
-    if (!investigation || !rows) throw new Error('Codex usage investigation was not found');
-    const contents = serializeCodexUsageExport(await refreshCodexOfficialSpeeds(investigation), rows, format);
-    await writeFile(destinationPath, contents, { encoding: 'utf8' });
+    if (this.clearing || this.exporting) throw new Error('CODEX_USAGE_BUSY');
+    this.exporting = true;
+    try {
+      const cache = await this.getCache();
+      const investigation = await this.investigation(investigationId, minimumQuotaPercent);
+      const rows = cache.exportRows(investigationId);
+      if (!rows) throw new Error('Codex usage investigation was not found');
+      await writeFile(destinationPath, serializeCodexUsageExport(investigation, rows, format), { encoding: 'utf8' });
+    } finally {
+      this.exporting = false;
+    }
   }
 
   private launch(task: CodexUsageTask, cache: CodexUsageCacheDatabase) {

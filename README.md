@@ -9,7 +9,7 @@
   <p>
     <a href="https://github.com/gantrol/aiy-desktop/releases"><img src="https://img.shields.io/github/v/release/gantrol/aiy-desktop?display_name=tag&amp;style=flat-square&amp;label=release" alt="GitHub 已发布版本" /></a>
     <a href="https://apps.microsoft.com/detail/9nwd1hg6tczh"><img src="https://img.shields.io/badge/Windows-10%2F11%20x64-4b5563?style=flat-square" alt="Windows 10/11 x64" /></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-4b5563?style=flat-square" alt="PolyForm Noncommercial 1.0.0" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0%20%2B%20plugin%20exception-4b5563?style=flat-square" alt="AGPL-3.0-only with AIY Plugin Exception 1.0" /></a>
   </p>
 </div>
 
@@ -149,6 +149,6 @@ AIY 基于 Electron、React、TypeScript、Tailwind CSS 和 SQLite 构建。运�
 
 ## 许可与安全
 
-AIY 依据 [PolyForm Noncommercial License 1.0.0](LICENSE) 提供源码，允许非商业目的的使用、修改和分发；商业用途需要另行授权。
+AIY 采用 [GNU AGPL-3.0-only](LICENSE)。附带的 [AIY 插件例外](LICENSE-PLUGIN-EXCEPTION)允许独立插件闭源、收费及随应用分发；宿主及其修改仍须遵守 AGPL 的源码和许可义务。具体边界见[软件许可说明](docs/licensing.md)。
 
 请按照 [SECURITY.md](SECURITY.md) 中的私密流程报告漏洞，不要在公开 Issue 中提交凭据、个人数据或漏洞细节。

@@ -55,6 +55,7 @@ function periods(values, label, kind) {
             'cacheWriteInputPerMillionUsd',
             'outputPerMillionUsd',
             'longContext',
+            ...(Object.hasOwn(value, 'maxInputTokens') ? ['maxInputTokens'] : []),
           ]
         : ['effectiveFrom', 'inputPerMillion', 'cachedInputPerMillion', 'outputPerMillion'],
     );
@@ -70,6 +71,12 @@ function periods(values, label, kind) {
       rate(value.cacheWriteInputPerMillionUsd, `${name}.cacheWriteInputPerMillionUsd`, true);
       rate(value.outputPerMillionUsd, `${name}.outputPerMillionUsd`);
       requireValue(typeof value.longContext === 'boolean', `${name}.longContext: expected boolean`);
+      if (Object.hasOwn(value, 'maxInputTokens')) {
+        requireValue(
+          Number.isSafeInteger(value.maxInputTokens) && value.maxInputTokens > 0,
+          `${name}.maxInputTokens: invalid input limit`,
+        );
+      }
     } else {
       rate(value.inputPerMillion, `${name}.inputPerMillion`);
       rate(value.cachedInputPerMillion, `${name}.cachedInputPerMillion`);
@@ -82,6 +89,7 @@ export function validateCodexUsageRateCard(card) {
   object(card, 'catalog', [
     'schemaVersion',
     'updatedAt',
+    ...(Object.hasOwn(card, 'creditUpdatedAt') ? ['creditUpdatedAt'] : []),
     'apiSourceUrl',
     'creditSourceUrl',
     'longContextThresholdTokens',
@@ -89,6 +97,10 @@ export function validateCodexUsageRateCard(card) {
   ]);
   requireValue(card.schemaVersion === 1, 'catalog: unsupported schemaVersion');
   date(card.updatedAt, 'catalog.updatedAt');
+  if (Object.hasOwn(card, 'creditUpdatedAt')) {
+    date(card.creditUpdatedAt, 'catalog.creditUpdatedAt');
+    requireValue(card.creditUpdatedAt <= card.updatedAt, 'catalog: credit verification is newer than catalog');
+  }
   source(card.apiSourceUrl, 'catalog.apiSourceUrl');
   source(card.creditSourceUrl, 'catalog.creditSourceUrl');
   requireValue(
@@ -109,6 +121,7 @@ export function validateCodexUsageRateCard(card) {
       'verifiedAt',
       'sourceUrls',
       'api',
+      ...(Object.hasOwn(model, 'apiFast') ? ['apiFast'] : []),
       'credits',
       'fastCreditMultiplier',
       ...(Object.hasOwn(model, 'fastIncludedUsageMultiplier') ? ['fastIncludedUsageMultiplier'] : []),
@@ -127,6 +140,7 @@ export function validateCodexUsageRateCard(card) {
       identifiers.add(alias);
     }
     periods(model.api, `${key}.api`, 'api');
+    if (Object.hasOwn(model, 'apiFast')) periods(model.apiFast, `${key}.apiFast`, 'api');
     periods(model.credits, `${key}.credits`, 'credits');
     requireValue(model.api.length + model.credits.length > 0, `${key}: no rates`);
     rate(model.fastCreditMultiplier, `${key}.fastCreditMultiplier`, true);

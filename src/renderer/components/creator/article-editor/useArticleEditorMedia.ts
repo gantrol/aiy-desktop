@@ -51,6 +51,8 @@ export function useArticleEditorMedia({
     },
     onImageMove: (elementId: string, targetId: string) => editor?.moveImage(elementId, targetId) ?? false,
     onImageRemove: (elementId: string) => editor?.removeImage(elementId) ?? false,
+    onImageDescribe: (elementId: string, expected: string, alt: string) =>
+      editor?.describeImage(elementId, expected, alt) ?? false,
     onImageUndo: () => editor?.undo() ?? false,
     onImageRedo: () => editor?.redo() ?? false,
     onImageLocate(elementId: string) {

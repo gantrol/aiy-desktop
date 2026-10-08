@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { MeMenu } from '@/renderer/features/me/MeMenu';
 import type { AppView } from '@/renderer/components/app/app-navigation';
 import {
@@ -19,6 +20,7 @@ interface Props {
   codexImagesVisible: boolean;
   transitionShowcaseVisible: boolean;
   view: AppView;
+  updateControl?: ReactNode;
   onViewChange(view: AppView): void;
   notify(message: string): void;
 }
@@ -31,6 +33,7 @@ export function AppSidebar({
   codexImagesVisible,
   transitionShowcaseVisible,
   view,
+  updateControl,
   onViewChange,
   notify,
 }: Props) {
@@ -81,6 +84,7 @@ export function AppSidebar({
             <MeMenu view={view} spaceName={spaceName} disabled={spaceTransitioning} onNavigate={onViewChange} />
           </div>
         </nav>
+        {updateControl}
       </aside>
     </TooltipProvider>
   );

@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import throughputSql from '@/main/database/sql/codex-output-throughput.sql?raw';
+import ownedTurnsSql from '@/main/database/sql/codex-owned-user-turns.sql?raw';
 import {
   codexOutputThroughputAnalysisSchema,
   type CodexOutputThroughput,
@@ -19,7 +20,7 @@ const rowSchema = z.object({
   model: z.string().nullable(),
   reasoningEffort: z.string().nullable(),
   serviceTier: z.enum(['STANDARD', 'FAST', 'UNKNOWN']),
-  startedMs: count,
+  startedMs: count.nullable(),
   terminalMs: count,
   terminalState: z.enum(['COMPLETED', 'ABORTED']),
   durationMs: count.nullable(),
@@ -38,7 +39,7 @@ export async function readCodexOutputThroughput(
     updatedAfter?: ReadonlyMap<string, number>;
   },
 ) {
-  const statement = database.prepare(throughputSql);
+  const statement = database.prepare(`${ownedTurnsSql}${throughputSql}`);
   const overall = emptyCodexOutputThroughput();
   const sessions = new Map<string, CodexOutputThroughput>();
   const groups = new Map<string, CodexOutputThroughputGroup>();

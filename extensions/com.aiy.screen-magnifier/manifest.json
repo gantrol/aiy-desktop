@@ -1,0 +1,26 @@
+{
+  "manifestVersion": 1,
+  "kind": "CAPABILITY",
+  "id": "com.aiy.screen-magnifier",
+  "version": "0.1.0",
+  "displayName": "Screen Magnifier",
+  "description": "Magnify the desktop around the pointer while the flower is visible. Windows x64.",
+  "engines": { "aiy": "^0.3.10" },
+  "runtime": { "kind": "HOST", "id": "screen-magnifier" },
+  "contributes": { "commands": ["screenMagnifier.start", "screenMagnifier.stop"] },
+  "permissions": ["screen.read:desktop-region"],
+  "optionalPermissions": [],
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "displayName": "Screen Magnifier",
+        "description": "Magnify the desktop around the pointer while the flower is visible. Windows x64."
+      },
+      "zh": {
+        "displayName": "屏幕放大镜",
+        "description": "花花显示期间，放大鼠标附近的桌面界面。适用于 Windows x64。"
+      }
+    }
+  }
+}

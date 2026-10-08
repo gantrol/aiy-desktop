@@ -34,28 +34,15 @@ export function KeywordBubbles({
                   aria-label={`${word.term} · ${counts}`}
                   aria-pressed={current}
                   className={cn(
-                    'group shrink-0 flex-col gap-1 overflow-hidden rounded-full border border-border/60 bg-muted p-2 hover:bg-selected hover:text-selected-foreground focus-visible:bg-selected focus-visible:text-selected-foreground',
+                    'shrink-0 flex-col gap-1 overflow-hidden rounded-full border border-border/60 bg-muted p-2 hover:bg-selected hover:text-selected-foreground focus-visible:bg-selected focus-visible:text-selected-foreground',
                     current && 'border-selected-foreground bg-selected text-selected-foreground',
                   )}
                   style={{ width: size, height: size }}
                   onClick={() => onSelect(current ? '' : word.term)}
                 >
-                  <span
-                    className={cn(
-                      'w-full truncate text-sm font-medium opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100',
-                      current && 'opacity-100',
-                    )}
-                  >
-                    {word.term}
-                  </span>
+                  <span className="w-full truncate text-sm font-medium">{word.term}</span>
                   {size >= 84 && (
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        'text-xs tabular-nums opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100',
-                        current && 'opacity-100',
-                      )}
-                    >
+                    <span aria-hidden="true" className="text-xs tabular-nums">
                       {word.count}
                     </span>
                   )}

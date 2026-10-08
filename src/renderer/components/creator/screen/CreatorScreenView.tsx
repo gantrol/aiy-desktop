@@ -14,6 +14,7 @@ import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { CreatorWorkNavigationProvider } from '@/renderer/components/creator/screen/CreatorWorkNavigation';
 import type { MessageCatalog } from '@/renderer/i18n/types';
+import { useWorkspaceSidebarWidth, WorkspaceSidebarContent } from '@/renderer/components/workspace/WorkspaceHeader';
 
 const CreatorOutputWorkspace = lazy(() =>
   import('@/renderer/components/creator/screen/CreatorOutputWorkspace').then((module) => ({
@@ -33,6 +34,15 @@ export function CreatorScreenView({ model }: Props) {
   const derivedVisual = model.workflow.content.derivedVisual;
   const animationId = animationWorkspace && app.location.surface === 'animation' ? app.location.documentId : null;
   const { setCompactPanel } = projection.panes;
+  const sidebarVisible =
+    projection.panes.multiPane &&
+    app.libraryVisible !== false &&
+    Boolean(animationWorkspace || (!app.comparisonFullWindow && !app.promptFullWindow));
+  const sidebarWidth = useWorkspaceSidebarWidth(
+    sidebarVisible ? projection.panes.resultWidth : 0,
+    projection.panes.animateDisclosure,
+  );
+  const gridStyle = projection.panes.workspaceGridStyle;
   useEffect(() => {
     if (animationId) setCompactPanel('creator');
   }, [animationId, setCompactPanel]);
@@ -74,30 +84,39 @@ export function CreatorScreenView({ model }: Props) {
         <div
           ref={projection.panes.workspaceRef}
           className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] overflow-hidden"
-          style={projection.panes.workspaceGridStyle}
+          style={
+            sidebarVisible && gridStyle
+              ? {
+                  ...gridStyle,
+                  gridTemplateColumns: String(gridStyle.gridTemplateColumns).replace(/^\S+/, sidebarWidth),
+                }
+              : gridStyle
+          }
         >
           {app.libraryVisible !== false && <CreatorLibraryWorkspace model={model} />}
-          {animationWorkspace && (
-            <div
-              className={`${projection.panes.multiPane || projection.panes.compactPanel === 'creator' ? 'flex' : 'hidden'} min-h-0 min-w-0 overflow-hidden bg-background`}
-            >
-              {animationWorkspace}
-            </div>
-          )}
-          {!animationWorkspace && specializedWorkspaceVisible && (
-            <CreatorSpecializedWorkspace model={model} imageBreakdownSourceFormId={sourceForms.imageBreakdown} />
-          )}
-          {!animationWorkspace && <CreatorInputWorkspace model={model} sourceFormId={sourceForms.active} />}
-          {projection.showOutputPane && !app.promptFullWindow && (
-            <WorkspaceDetailLoadingBoundary
-              className="min-h-0 min-w-0 overflow-hidden"
-              visible={
-                app.comparisonFullWindow || projection.panes.multiPane || projection.panes.compactPanel === 'output'
-              }
-            >
-              <CreatorOutputWorkspace model={model} sourceFormId={sourceForms.active} />
-            </WorkspaceDetailLoadingBoundary>
-          )}
+          <WorkspaceSidebarContent>
+            {animationWorkspace && (
+              <div
+                className={`${projection.panes.multiPane || projection.panes.compactPanel === 'creator' ? 'flex' : 'hidden'} min-h-0 min-w-0 overflow-hidden bg-background`}
+              >
+                {animationWorkspace}
+              </div>
+            )}
+            {!animationWorkspace && specializedWorkspaceVisible && (
+              <CreatorSpecializedWorkspace model={model} imageBreakdownSourceFormId={sourceForms.imageBreakdown} />
+            )}
+            {!animationWorkspace && <CreatorInputWorkspace model={model} sourceFormId={sourceForms.active} />}
+            {projection.showOutputPane && !app.promptFullWindow && (
+              <WorkspaceDetailLoadingBoundary
+                className="min-h-0 min-w-0 overflow-hidden"
+                visible={
+                  app.comparisonFullWindow || projection.panes.multiPane || projection.panes.compactPanel === 'output'
+                }
+              >
+                <CreatorOutputWorkspace model={model} sourceFormId={sourceForms.active} />
+              </WorkspaceDetailLoadingBoundary>
+            )}
+          </WorkspaceSidebarContent>
         </div>
         <AssetBreakdownSourceFormProvider sourceFormId={sourceForms.active}>
           <CreatorScreenDialogs model={model} />

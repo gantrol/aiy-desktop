@@ -1,4 +1,11 @@
-import { FileTextIcon, FolderIcon, ImageIcon, LayersIcon, LoaderCircleIcon, type LucideIcon } from 'lucide-react';
+import {
+  FileTextIcon,
+  RectangleVerticalIcon,
+  ImageIcon,
+  LayersIcon,
+  LoaderCircleIcon,
+  type LucideIcon,
+} from 'lucide-react';
 import { useMemo, useRef } from 'react';
 import {
   creationFormPreviewAssets,
@@ -25,6 +32,7 @@ import { creationTextPreview } from '@/renderer/components/creator/creationTextE
 import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
 import { MediaCardCaption } from '@/renderer/components/media/MediaCardCaption';
 import { ActionMenuButton } from '@/renderer/components/ui/action-menu';
+import { ItemActions } from '@/renderer/components/ui/item-actions';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -103,7 +111,7 @@ function AlbumContentCard({ row, layout, ...props }: Omit<AlbumContentsProps, 'e
       })}
       onDragEnd={endCreationTreeDrag}
       className={cn(
-        'group relative min-w-0',
+        'group group/item relative min-w-0',
         grid ? cn('flex flex-col', !textOnly && 'h-full') : 'flex items-center gap-1 rounded-sm hover:bg-hover',
       )}
     >
@@ -158,10 +166,7 @@ function AlbumContentCard({ row, layout, ...props }: Omit<AlbumContentsProps, 'e
         )}
       </Button>
       {(hasMenu || hasPreview) && (
-        <div
-          data-item-drag-ignore
-          className={cn('flex shrink-0 items-center gap-1', grid && 'absolute right-1 top-1 z-20')}
-        >
+        <ItemActions className={cn('gap-1', grid && 'absolute right-1 top-1 z-20')}>
           {hasPreview && (
             <AlbumPreviewPopover
               assets={covers}
@@ -184,7 +189,7 @@ function AlbumContentCard({ row, layout, ...props }: Omit<AlbumContentsProps, 'e
               }))}
             />
           )}
-        </div>
+        </ItemActions>
       )}
     </article>
   );
@@ -209,7 +214,7 @@ export function AlbumContents({ entries, layout, ...props }: AlbumContentsProps)
               preview: entry.album.previewAssets[0] ?? entry.album.documentPreviewAssets?.[0],
               covers: albumCoverAssets([...entry.album.previewAssets, ...(entry.album.documentPreviewAssets ?? [])]),
               forms: [],
-              Icon: FolderIcon,
+              Icon: RectangleVerticalIcon,
             };
           case 'CREATION':
             return {

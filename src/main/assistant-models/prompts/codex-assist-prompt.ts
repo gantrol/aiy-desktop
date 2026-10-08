@@ -1,4 +1,5 @@
 import type { CodexAssistInput, CreatorAgentTurnDto } from '@/shared/contracts';
+import { buildDocumentWritingPrompt } from '@/main/assistant-models/prompts/document-writing-prompt';
 import { codexWebSearchPrompt } from '@/main/assistant-models/prompts/codex-web-search-prompt';
 import { buildCreatorAssistPayload } from '@/main/assistant-models/prompts/creator-assist-payload';
 
@@ -24,6 +25,7 @@ function taskPrompt(input: CodexAssistInput) {
 }
 
 export function buildCodexAssistPrompt(input: CodexAssistInput, history: CreatorAgentTurnDto[] = []) {
+  if (input.documentTask) return buildDocumentWritingPrompt(input);
   const outputLanguage = input.locale === 'zh' ? '简体中文' : '英文';
   return `你是本地 AI 绘图 Prompt 工作台中的创作助手。
 ${taskPrompt(input)}

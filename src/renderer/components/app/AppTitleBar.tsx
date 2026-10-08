@@ -15,6 +15,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 import type { AppView } from '@/renderer/components/app/app-navigation';
 import { AppIconMenu } from '@/renderer/components/app/AppIconMenu';
+import { TemporaryFilesButton } from '@/renderer/features/desktop-petals/TemporaryFilesButton';
 import { GenerationStatusPopover } from '@/renderer/components/app/GenerationStatusPopover';
 import { AppWindowControls } from '@/renderer/components/app/AppWindowControls';
 import { commandAriaShortcut } from '@/renderer/commands/app-shortcuts';
@@ -114,6 +115,7 @@ export function AppTitleBar({
         )}
       >
         <div className="app-title-bar-actions flex min-w-0 items-center">
+          {menuDisabled && <TemporaryFilesButton />}
           <AppIconMenu
             view={view}
             disabled={menuDisabled}

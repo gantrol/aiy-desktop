@@ -93,7 +93,7 @@ export function DesktopPetalsApp() {
     <ExtensionContentLinks applications={snapshot?.contentApplications}>
       <Suspense fallback={null}>
         {snapshot &&
-          (isContentPinId(snapshot.instanceId) && pin ? (
+          ((isContentPinId(snapshot.instanceId) || snapshot.temporary?.kind === 'IMAGE') && pin ? (
             <ReadySurface>
               <ContentPin key={`${snapshot.libraryId}:${pin.id}`} pin={pin} snapshot={snapshot} />
             </ReadySurface>
@@ -103,11 +103,7 @@ export function DesktopPetalsApp() {
             </ReadySurface>
           ) : snapshot.instanceId && snapshot.expanded && snapshot.notes[0] ? (
             <ReadySurface>
-              <StickyNote
-                key={`${snapshot.libraryId}:${snapshot.instanceId}`}
-                initialNote={snapshot.notes[0]}
-                snapshot={snapshot}
-              />
+              <StickyNote key={snapshot.instanceId} initialNote={snapshot.notes[0]} snapshot={snapshot} />
             </ReadySurface>
           ) : !snapshot.instanceId ? (
             <ReadySurface>

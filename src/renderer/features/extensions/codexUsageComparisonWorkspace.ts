@@ -87,6 +87,18 @@ export function saveNamedComparison(name: string, settings: CodexComparisonWorks
   }
 }
 
+export function deleteNamedComparison(name: string) {
+  try {
+    const parsed = plansSchema.safeParse(readStored(PLANS_KEY) ?? []);
+    if (!parsed.success || !globalThis.localStorage) return null;
+    const plans = parsed.data.filter((plan) => plan.name !== name);
+    globalThis.localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
+    return plans;
+  } catch {
+    return null;
+  }
+}
+
 /** Deliberate allow-list: never serialize the investigation's source paths or prompts. */
 export function freezeCodexComparison(
   report: CodexUsageInvestigation,

@@ -6,6 +6,12 @@ export function workspaceShortcutLayerOpen(root: ParentNode = document) {
   );
 }
 
+export function workspaceTabFocusSurfaces(group: HTMLElement, tabId: string) {
+  return [...group.querySelectorAll<HTMLElement>('[data-workspace-tab-id], [data-workspace-sidebar-tab-id]')].filter(
+    (element) => (element.dataset.workspaceTabId ?? element.dataset.workspaceSidebarTabId) === tabId,
+  );
+}
+
 export function focusWorkspaceTab(groupId: string, tabId: string) {
   const group = [...document.querySelectorAll<HTMLElement>('[data-workspace-group-id]')].find(
     (element) => element.dataset.workspaceGroupId === groupId,
@@ -17,7 +23,9 @@ export function focusWorkspaceTab(groupId: string, tabId: string) {
     );
   if (!group || !pane || workspaceShortcutLayerOpen()) return;
   const candidates = [
-    ...pane.querySelectorAll<HTMLElement>('[data-workspace-last-focus]'),
+    ...workspaceTabFocusSurfaces(group, tabId).flatMap((surface) => [
+      ...surface.querySelectorAll<HTMLElement>('[data-workspace-last-focus]'),
+    ]),
     ...pane.querySelectorAll<HTMLElement>('[contenteditable="true"], input, textarea, button, [tabindex="0"]'),
     ...group.querySelectorAll<HTMLElement>('[role="tab"][aria-selected="true"]'),
   ];

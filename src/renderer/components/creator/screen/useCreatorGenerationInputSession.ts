@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { creationStartModeForDraft } from '@/renderer/components/creator/creationStartMode';
 import { creatorInputScopeKey } from '@/renderer/components/creator/workflows/creatorInputScopeKey';
 import type {
   AssistantRunDto,
@@ -168,7 +169,11 @@ export function useCreatorGenerationInputSession({
         ? (location.versionId ?? null)
         : null,
     patchSavedDraftTitle: creationDraftSession.patchSavedDraftTitle,
-    replaceDraftSession: creationDraftSession.replaceDraftSession,
+    replaceDraftSession: (draft) => {
+      creationDraftSession.replaceDraftSession(draft);
+      selection.setCreationStartMode(creationStartModeForDraft(draft));
+      selection.setWritingInstruction(draft?.writingInstruction ?? '');
+    },
     replacePromptDocument: promptDocument.replaceDocument,
     series,
     setCanvasPresetKey,

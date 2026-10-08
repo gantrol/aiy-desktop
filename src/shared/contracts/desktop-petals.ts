@@ -1,4 +1,12 @@
 import type { CreationItemDto, InspirationStashDto } from '@/shared/contracts';
+import { screenMagnifierStateSchema, type ScreenMagnifierAction } from '@/shared/contracts/screen-magnifier';
+import type { ImageEditCommand, ImageEditSnapshot } from '@/shared/contracts/image-edit';
+import type { ImagePrivacyCommand, ImagePrivacyResult } from '@/shared/contracts/image-privacy';
+import {
+  temporaryFileSummarySchema,
+  type TemporaryFilesCommand,
+  type TemporaryFilesSnapshot,
+} from '@/shared/contracts/temporary-files';
 import { petalNoteSummarySchema } from '@/shared/contracts/petal-note-summary';
 import type { ContentAlbumOption } from '@/shared/content-album-options';
 import { blockDocumentSchema, type BlockDocument } from '@/shared/contracts/block-document';
@@ -96,6 +104,7 @@ export const petalPointSchema = z
   .strict();
 export const desktopNoteSchema = z
   .object({
+    temporary: z.boolean().optional(),
     id,
     stashId: id,
     text: z.string().max(1_000_000),
@@ -177,6 +186,8 @@ export const desktopNoteDraftDtoSchema = z
   .strict();
 export const desktopPetalSnapshotSchema = z
   .object({
+    temporary: temporaryFileSummarySchema.optional(),
+    temporaryTargetSpace: z.string().optional(),
     titlesVisible: z.boolean().default(true),
     libraryId: id,
     libraryName: z.string(),
@@ -201,6 +212,7 @@ export const desktopPetalSnapshotSchema = z
     contentActions: z.array(z.string()).default([]),
     contentApplications: z.array(contentApplicationSchema).default([]),
     hubView: petalHubViewSchema.default('flower'),
+    magnifier: screenMagnifierStateSchema.optional(),
     hubSettings: petalHubSettingsSchema.default(() => petalHubSettingsSchema.parse({})),
     timer: petalTimerSchema.default(() => petalTimerSchema.parse({})),
     board: petalBoardSchema,
@@ -244,6 +256,9 @@ export interface DesktopPetalSourceEvent {
   open: boolean;
 }
 export interface DesktopPetalsApi extends ContentImageImportsApi, PetalWorkspaceApi {
+  temporaryFiles(command: TemporaryFilesCommand): Promise<TemporaryFilesSnapshot>;
+  imageEdit(command: ImageEditCommand): Promise<ImageEditSnapshot>;
+  imagePrivacy(command: ImagePrivacyCommand): Promise<ImagePrivacyResult>;
   files(command: NoteFileCommand): Promise<DesktopNote>;
   preview(input: PetalPreviewRequest): Promise<PetalPreviewContent | null>;
   drawer(command: PetalDrawerCommand): Promise<void>;
@@ -289,6 +304,7 @@ export interface DesktopPetalsApi extends ContentImageImportsApi, PetalWorkspace
   reload(): Promise<void>;
   hubView(view: PetalHubView): Promise<void>;
   configureHub(settings: PetalHubSettings): Promise<void>;
+  magnifier(action: ScreenMagnifierAction): Promise<void>;
   timerAction(action: PetalTimerAction): Promise<void>;
   hubQuota(): Promise<PetalQuota>;
   snapshot(): Promise<DesktopPetalSnapshot>;

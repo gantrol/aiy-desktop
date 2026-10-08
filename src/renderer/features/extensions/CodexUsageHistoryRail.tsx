@@ -1,7 +1,6 @@
-import { ActivityIcon, HistoryIcon } from 'lucide-react';
+import { ActivityIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { CodexUsageHistoryItem, CodexUsageTask } from '@/shared/contracts';
-import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { formatCodexUsageDateRange } from '@/renderer/features/extensions/CodexUsageDateRangePicker';
@@ -12,12 +11,14 @@ type UsageLabels = ReturnType<typeof useI18n>['messages']['extensions']['codexUs
 
 interface Props {
   history: readonly CodexUsageHistoryItem[];
+  hasMore: boolean;
+  loading: boolean;
+  onLoadMore(): void;
   locale: 'en' | 'zh';
   labels: UsageLabels;
   selectedId: string | null;
   task: CodexUsageTask | null;
   workspaceNavigation?: ReactNode;
-  headerControl?: ReactNode;
   onSelect(investigationId: string): void;
 }
 
@@ -56,12 +57,14 @@ function CurrentTask({ task, labels, locale }: { task: CodexUsageTask; labels: U
 
 export function CodexUsageHistoryRail({
   history,
+  hasMore,
+  loading,
+  onLoadMore,
   locale,
   labels,
   selectedId,
   task,
   workspaceNavigation,
-  headerControl,
   onSelect,
 }: Props) {
   const numberLocale = locale === 'zh' ? 'zh-CN' : 'en-US';
@@ -70,14 +73,6 @@ export function CodexUsageHistoryRail({
   return (
     <aside className="flex size-full min-h-0 min-w-0 flex-col bg-surface-sunken" aria-label={labels.history}>
       {workspaceNavigation && <div className="border-b p-2">{workspaceNavigation}</div>}
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b px-3">
-        <HistoryIcon className="size-4 text-muted-foreground" />
-        <h3 className="text-xs font-semibold">{labels.history}</h3>
-        <Badge variant="secondary" className="ml-auto tabular-nums">
-          {history.length}
-        </Badge>
-        {headerControl}
-      </header>
       {task && <CurrentTask task={task} labels={labels} locale={locale} />}
       <ScrollArea className="min-h-0 flex-1">
         <div className="grid gap-0.5 p-2">
@@ -111,6 +106,11 @@ export function CodexUsageHistoryRail({
               </Button>
             );
           })}
+          {hasMore && (
+            <Button variant="ghost" size="sm" disabled={loading} onClick={onLoadMore}>
+              {loading ? labels.workspace.loading : labels.workspace.loadMore}
+            </Button>
+          )}
           {!history.length && (
             <div className="grid min-h-24 place-items-center px-3 text-center text-xs text-muted-foreground">
               {labels.reportRail.empty}

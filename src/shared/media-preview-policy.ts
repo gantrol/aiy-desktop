@@ -74,6 +74,7 @@ export function imagePreviewSource(asset: PreviewAsset, poster: string, intent: 
     : poster;
 }
 
-export function mediaPosterUrl(assetId: string, size = 512): string {
+export function mediaPosterUrl(assetId: string, size = 512, mediaUrl?: string): string {
+  if (mediaUrl?.startsWith('aiy-media://temporary/')) return `${mediaUrl}?poster=1`;
   return `aiy-media://asset-thumbnail/${encodeURIComponent(assetId)}?size=${size}&representation=still`;
 }

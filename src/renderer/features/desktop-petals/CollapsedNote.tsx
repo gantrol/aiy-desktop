@@ -44,6 +44,16 @@ function NoteSurface({ note, snapshot }: { note: PetalNoteSummary; snapshot: Des
         onError={onError}
         menuPreview={snapshot.flowerPreview}
         menuActions={{
+          temporary: Boolean(snapshot.temporary),
+          promotionTarget: snapshot.temporaryTargetSpace,
+          onPromote: snapshot.temporary
+            ? () =>
+                window.desktopPetals.temporaryFiles({
+                  kind: 'promote',
+                  id: note.id,
+                  expectedHash: snapshot.notes[0].contentHash,
+                })
+            : undefined,
           note,
           home: snapshot.home,
           alwaysOnTop: snapshot.alwaysOnTop,

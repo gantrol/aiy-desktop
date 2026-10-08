@@ -1,10 +1,12 @@
 import { termDraftSchema } from '@/main/database/dictionary/term-draft-schema';
+import { documentWritingTaskSchema } from '@/shared/contracts/document-assistant';
 import { importedImageMetadataSchema, importedImageRelationshipSchema } from '@/main/ipc/import-metadata-schema';
 import { blockDocumentSchema } from '@/shared/contracts/block-document';
 import { contentSourceSchema } from '@/shared/contracts/content-library';
-import { creationDraftLoadInputSchema } from '@/shared/contracts/creation-draft';
+import { creationDraftLoadInputSchema, creationStartModeSchema } from '@/shared/contracts/creation-draft';
 import { creatorImageImportMimeTypeSchema } from '@/shared/contracts/creator-import';
 import { z } from 'zod';
+import { creationSourceSchema } from '@/shared/contracts/creation-source';
 import { generationQualitySchema } from '@/shared/generation-quality';
 
 export const localeSchema = z.enum(['zh', 'en']);
@@ -198,13 +200,14 @@ export const creatorAgentAssistSchema = assistSchema
 
 export const creatorAgentChatSchema = assistSchema
   .extend({
+    documentTask: documentWritingTaskSchema.optional(),
     mode: z.literal('chat'),
     scope: creatorAgentScopeSchema,
     message: z.string().max(8_000).default(''),
     attachmentAssetIds: z.array(id).max(8).default([]),
   })
   .superRefine((value, context) => {
-    if (!value.message.trim() && value.attachmentAssetIds.length === 0) {
+    if (!value.message.trim() && value.attachmentAssetIds.length === 0 && !value.documentTask) {
       context.addIssue({ code: 'custom', message: 'A conversation turn requires a message or image attachment' });
     }
   });
@@ -638,7 +641,9 @@ export const intakeSchema = z
   });
 
 export const creationDraftSaveSchema = z.object({
+  writingInstruction: z.string().max(8_000).optional(),
   id: id.nullable(),
+  startMode: creationStartModeSchema.optional(),
   expectedUpdatedAt: z.string().min(1).max(100).nullable().optional(),
   targetAlbumId: id.nullable(),
   title: z.string().max(300),
@@ -683,6 +688,10 @@ export const creationDraftStartSchema = z
   .object({
     albumId: id.nullable(),
     termPromptLocale: localeSchema,
+    startMode: creationStartModeSchema.optional(),
+    referenceAssetIds: z.array(id).max(100).optional(),
+    videoMaterialIds: z.array(id).max(8).optional(),
+    creationSource: creationSourceSchema.optional(),
   })
   .strict();
 

@@ -31,11 +31,12 @@ export interface VideoDocumentQuickInsertNoteRequest {
 }
 
 export interface VideoDocumentWysiwygEditorHandle {
-  applySharedDocument?(before: BlockDocument, next: BlockDocument): boolean;
+  applySharedDocument?(before: BlockDocument, next: BlockDocument, addToHistory?: boolean): boolean;
   insertFigureReference(assetId: string, label: string): boolean;
   getImagePlacements(): import('@/renderer/features/video-documents/articleImageOperations').ArticleImagePlacement[];
   moveImage(elementId: string, targetId: string): boolean;
   removeImage(elementId: string): boolean;
+  describeImage(elementId: string, expected: string, alt: string): boolean;
   undo(): boolean;
   redo(): boolean;
   removeImageAssets(assetIds: readonly string[], removeReferences?: boolean): boolean;
@@ -70,6 +71,7 @@ export interface VideoDocumentWysiwygEditorProps {
   outlinePreferenceKey?: string;
   beforeReferenceCapture?(): Promise<import('@/shared/contracts/content-source').ContentSource | null>;
   onTransferSaved?(article: import('@/shared/contracts').ArticleDto): void;
+  createOutlinePage?: import('@/renderer/features/content-editor/ContentReferenceHost').ReferenceHost['createOutlinePage'];
   readOnly?: boolean;
   mediaIntake?: 'INLINE' | 'EXTERNAL';
   figureAssetIds?: readonly string[];

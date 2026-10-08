@@ -28,10 +28,10 @@ export function noteFilePath(libraryRoot: string, file: NoteFile) {
   const value = noteFileSchema.parse(file);
   return path.join(libraryRoot, 'objects', 'note-files', value.hash.slice(0, 2), `${value.hash}${value.extension}`);
 }
-export async function storeNoteFile(libraryRoot: string, name: string, bytes: Uint8Array): Promise<NoteFile> {
+export async function noteFileMetadata(name: string, bytes: Uint8Array): Promise<NoteFile> {
   const suffix = path.extname(name).toLowerCase();
   const extension = /^\.[a-z0-9]{1,16}$/.test(suffix) ? suffix : '.bin';
-  const file = noteFileSchema.parse({
+  return noteFileSchema.parse({
     id: randomUUID(),
     name,
     extension,
@@ -39,6 +39,9 @@ export async function storeNoteFile(libraryRoot: string, name: string, bytes: Ui
     mimeType: mimeTypes[extension] ?? 'application/octet-stream',
     byteSize: bytes.byteLength,
   });
+}
+export async function storeNoteFile(libraryRoot: string, name: string, bytes: Uint8Array): Promise<NoteFile> {
+  const file = await noteFileMetadata(name, bytes);
   const destination = noteFilePath(libraryRoot, file);
   await mkdir(path.dirname(destination), { recursive: true });
   try {

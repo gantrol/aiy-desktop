@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'wxt';
 import { offlineDevelopmentHtmlPlugins } from './build/offline-development';
@@ -54,6 +55,11 @@ export default defineConfig({
   },
   webExt: { disabled: true },
   hooks: {
+    'build:publicAssets'(_wxt, files) {
+      for (const name of ['LICENSE', 'LICENSE-PLUGIN-EXCEPTION', 'THIRD_PARTY_NOTICES.md']) {
+        files.push({ absoluteSrc: fileURLToPath(new URL(`../${name}`, import.meta.url)), relativeDest: name });
+      }
+    },
     'config:resolved'(wxt) {
       developmentCommand = wxt.config.command === 'serve';
     },

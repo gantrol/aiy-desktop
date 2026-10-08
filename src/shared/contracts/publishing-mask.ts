@@ -21,6 +21,8 @@ function override<Value extends z.ZodType>(value: Value) {
 export const publishingMaskOverridesSchema = z
   .object({
     title: override(z.string().max(200)),
+    // Omitted in older drafts: include the manuscript title when preparing a new post.
+    titleInBody: z.boolean().optional(),
     cover: override(id),
     // Null follows source order. An explicit empty order remains a deliberate choice.
     mediaOrder: z
@@ -71,6 +73,12 @@ export const publishingMaskSaveInputSchema = publishingMaskScopeSchema
     overrides: publishingMaskOverridesSchema,
   })
   .superRefine((input, context) => {
+    if (input.overrides.titleInBody !== undefined && !publishingMaskSupportsBodyTitle(input.target))
+      context.addIssue({
+        code: 'custom',
+        path: ['overrides', 'titleInBody'],
+        message: 'This platform uses its own title field',
+      });
     if (!publishingMaskSupportsTitle(input.target) && input.overrides.title.mode !== 'INHERIT')
       context.addIssue({
         code: 'custom',
@@ -125,6 +133,10 @@ export function inheritedPublishingMask(): PublishingMaskOverrides {
 
 export function publishingMaskSupportsTitle(target: PublishingMaskTarget): boolean {
   return target.platform === 'wechat' || target.platform === 'xiaohongshu';
+}
+
+export function publishingMaskSupportsBodyTitle(target: PublishingMaskTarget): boolean {
+  return target.platform === 'weibo' || target.platform === 'x';
 }
 
 /** Early drafts may contain a title that their platform never accepted. */

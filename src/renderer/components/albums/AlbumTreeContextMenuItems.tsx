@@ -1,4 +1,4 @@
-import { FolderIcon, ImagesIcon } from 'lucide-react';
+import { GalleryVerticalEndIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import type { AlbumDto } from '@/shared/contracts';
 import { buildAlbumTreeIndex } from '@/renderer/components/albums/albumTree';
@@ -34,7 +34,7 @@ function AlbumCascadeMenuItem({ album, currentAlbumLabel, index, onSelect }: Alb
     return (
       <ContextMenuItem title={album.title} onSelect={() => onSelect(album)}>
         <ContextMenuIcon className="text-muted-foreground">
-          <ImagesIcon />
+          <GalleryVerticalEndIcon />
         </ContextMenuIcon>
         <span className="max-w-64 truncate">{album.title}</span>
       </ContextMenuItem>
@@ -45,14 +45,14 @@ function AlbumCascadeMenuItem({ album, currentAlbumLabel, index, onSelect }: Alb
     <ContextMenuSub>
       <ContextMenuSubTrigger title={album.title}>
         <ContextMenuIcon className="text-muted-foreground">
-          <FolderIcon />
+          <GalleryVerticalEndIcon />
         </ContextMenuIcon>
         <span className="max-w-64 truncate">{album.title}</span>
       </ContextMenuSubTrigger>
       <ContextMenuSubContent className="max-h-80 min-w-52 overflow-y-auto">
         <ContextMenuItem title={album.title} onSelect={() => onSelect(album)}>
           <ContextMenuIcon className="text-muted-foreground">
-            <ImagesIcon />
+            <GalleryVerticalEndIcon />
           </ContextMenuIcon>
           {currentAlbumLabel}
         </ContextMenuItem>
@@ -78,7 +78,7 @@ export function AlbumTreeContextMenuItems({ albums, currentAlbumLabel, emptyLabe
     return (
       <ContextMenuItem disabled>
         <ContextMenuIcon className="text-muted-foreground">
-          <ImagesIcon />
+          <GalleryVerticalEndIcon />
         </ContextMenuIcon>
         {emptyLabel}
       </ContextMenuItem>

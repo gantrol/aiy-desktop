@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CreationDraftListResult } from '@/shared/contracts/creation-draft-list';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { useCreationDraftChanges } from '@/renderer/components/creator/CreationDraftChanges';
 
 interface Options {
   active: boolean;
@@ -18,6 +19,8 @@ export function useCreationDraftList({ active, spaceId, query, refreshKey, notif
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const changes = useCreationDraftChanges(spaceId);
+  const loaded = useRef<{ key: string; refreshKey: unknown; revision: number; changes: number } | null>(null);
   const generation = useRef(0);
   const pending = useRef(false);
   const reportError = useStableCallback(notify);
@@ -35,23 +38,31 @@ export function useCreationDraftList({ active, spaceId, query, refreshKey, notif
   });
 
   useEffect(() => {
-    if (!active) return;
-    return window.desktopApi.onCreationDraftsChanged((event) => {
-      if (event.spaceId === spaceId) refresh();
-    });
-  }, [active, refresh, spaceId]);
-
-  useEffect(() => {
     const request = ++generation.current;
-    pending.current = active;
-    setLoading(active);
+    pending.current = false;
+    setLoading(false);
     setFailed(false);
     if (!active) return;
+    const previous = loaded.current;
+    const fresh =
+      previous?.key === key &&
+      previous.refreshKey === refreshKey &&
+      previous.revision === revision &&
+      previous.changes === changes;
+    const cancel = () => {
+      generation.current += 1;
+      pending.current = false;
+    };
+    if (fresh) return cancel;
+    pending.current = true;
+    setLoading(true);
     const timer = window.setTimeout(() => {
       void window.desktopApi
         .creationDraftList({ spaceId, query: query.trim(), cursor: null, limit: 30 })
         .then((result) => {
-          if (request === generation.current) setState({ key, page: result });
+          if (request !== generation.current) return;
+          loaded.current = { key, refreshKey, revision, changes };
+          setState({ key, page: result });
         })
         .catch((reason) => {
           if (request !== generation.current) return;
@@ -65,10 +76,10 @@ export function useCreationDraftList({ active, spaceId, query, refreshKey, notif
         });
     }, 100);
     return () => {
-      generation.current += 1;
+      cancel();
       window.clearTimeout(timer);
     };
-  }, [active, key, query, refreshKey, reportError, revision, spaceId]);
+  }, [active, changes, key, query, refreshKey, reportError, revision, spaceId]);
 
   const loadMore = useStableCallback(async () => {
     if (!active || pending.current || !page.nextCursor) return;

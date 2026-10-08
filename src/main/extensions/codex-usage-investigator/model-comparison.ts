@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import modelComparisonEventsSql from '@/main/database/sql/codex-model-comparison-events.sql?raw';
+import ownedTurnsSql from '@/main/database/sql/codex-owned-user-turns.sql?raw';
 import {
   codexModelComparisonAnalysisSchema,
   type CodexModelComparisonRow,
@@ -63,7 +64,7 @@ function createSample(row: EventRow): TurnSample {
     reasoningEffort: row.reasoningEffort,
     serviceTier: row.serviceTier,
     terminalMs: row.terminalMs,
-    durationMs: row.durationMs && row.durationMs > 0 ? row.durationMs : null,
+    durationMs: row.durationMs,
     requests: 0,
     inputTokens: 0,
     cachedInputTokens: 0,
@@ -78,6 +79,7 @@ function addEvent(sample: TurnSample, row: EventRow) {
   if (row.totalTokens === 0 || !row.timestamp || !row.eventModel) return;
   const model = normalizeCodexUsageModel(row.eventModel);
   if (sample.model !== model) sample.model = null;
+  if (row.eventServiceTier !== sample.serviceTier) sample.serviceTier = 'UNKNOWN';
   const estimate = estimateCodexUsage(model, row, row.eventServiceTier ?? 'UNKNOWN', row.timestamp);
   sample.requests += 1;
   sample.inputTokens += row.inputTokens;
@@ -167,7 +169,7 @@ export async function readCodexModelComparison(
   toEpoch: number,
   signal?: AbortSignal,
 ) {
-  const statement = database.prepare(modelComparisonEventsSql);
+  const statement = database.prepare(`${ownedTurnsSql}${modelComparisonEventsSql}`);
   const samples: TurnSample[] = [];
   let current: TurnSample | null = null;
   let cursor = { terminalMs: -1, sessionId: '', turnId: '', eventOrder: -1 };
@@ -207,7 +209,7 @@ export async function readCodexModelComparison(
   const { analysis: outputThroughput } = await readCodexOutputThroughput(database, { fromEpoch, toEpoch, signal });
   return codexModelComparisonAnalysisSchema.parse({
     definition: 'OWNED_USER_COMPLETED_TURNS',
-    algorithmVersion: 3,
+    algorithmVersion: 4,
     outputThroughput,
     rangeAssignment: 'COMPLETION_TIMESTAMP',
     completedTurnCount: samples.length,

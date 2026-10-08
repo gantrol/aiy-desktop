@@ -37,16 +37,18 @@ export function StickyNoteFooter({
     <footer
       className={`flex shrink-0 items-center gap-0.5 pl-3 pr-8 py-1.5 ${fullWindow ? 'cursor-move [-webkit-app-region:drag] [&_button]:[-webkit-app-region:no-drag]' : ''}`}
     >
-      <ContentAlbumSelect
-        defaultWhenUnassigned={!state.note.persisted}
-        albumId={state.note.albumId}
-        disabled={state.frozen || closing}
-        onError={onError}
-        onChange={async (albumId) => {
-          if (!(await session.flush())) throw new Error(copy.note.unsaved);
-          session.receive(await window.desktopPetals.setAlbum({ id: state.note.id, albumId }));
-        }}
-      />
+      {!state.note.temporary && (
+        <ContentAlbumSelect
+          defaultWhenUnassigned={!state.note.persisted}
+          albumId={state.note.albumId}
+          disabled={state.frozen || closing}
+          onError={onError}
+          onChange={async (albumId) => {
+            if (!(await session.flush())) throw new Error(copy.note.unsaved);
+            session.receive(await window.desktopPetals.setAlbum({ id: state.note.id, albumId }));
+          }}
+        />
+      )}
       <Button
         variant="ghost"
         size="icon-sm"

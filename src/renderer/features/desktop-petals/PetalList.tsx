@@ -8,11 +8,27 @@ import { PetalManagerItem } from '@/renderer/features/desktop-petals/PetalManage
 import type { DesktopPetalSnapshot } from '@/shared/contracts/desktop-petals';
 import type { PetalWorkspaceCommand } from '@/shared/contracts/petal-workspace';
 import { usePetalWorkspace } from '@/renderer/features/desktop-petals/use-petal-workspace';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/renderer/components/ui/tabs';
+import { TemporaryFilesPanel } from '@/renderer/features/desktop-petals/TemporaryFilesPanel';
 
 /** Selection only selects. Desktop placement changes through explicit commands. */
 type Props = { snapshot: DesktopPetalSnapshot; onError(error: unknown): void };
 export function PetalList(props: Props) {
-  return <PetalManager key={props.snapshot.libraryId} {...props} />;
+  const copy = useI18n().messages.desktopPetals;
+  return (
+    <Tabs defaultValue="petals" className="flex min-h-0 flex-1 flex-col">
+      <TabsList>
+        <TabsTrigger value="petals">{copy.actions.myPetals}</TabsTrigger>
+        <TabsTrigger value="temporary">{copy.temporary.title}</TabsTrigger>
+      </TabsList>
+      <TabsContent value="petals" className="flex min-h-0 flex-1 flex-col">
+        <PetalManager key={props.snapshot.libraryId} {...props} />
+      </TabsContent>
+      <TabsContent value="temporary" className="flex min-h-0 flex-1 flex-col">
+        <TemporaryFilesPanel />
+      </TabsContent>
+    </Tabs>
+  );
 }
 function PetalManager({ snapshot, onError }: Props) {
   const { messages } = useI18n();

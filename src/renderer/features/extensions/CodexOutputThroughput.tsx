@@ -47,11 +47,11 @@ export function CodexOutputThroughputDetails({ throughput }: { throughput: Codex
     [l.invalidDuration, count(throughput?.invalidDurationTurnCount)],
   ];
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+    <dl className="grid max-w-3xl gap-x-8 gap-y-1 text-xs @xl/codex-usage:grid-cols-2">
       {rows.map(([label, value]) => (
         <div
           key={label}
-          className="flex flex-wrap justify-between gap-x-2"
+          className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4"
           title={label === l.generation ? l.generationNote : undefined}
         >
           <dt>{label}</dt>

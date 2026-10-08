@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LoaderCircleIcon } from 'lucide-react';
+import { FilePlus2Icon, LoaderCircleIcon } from 'lucide-react';
 import type { AssetDto, AssetFileRevealContext, TermListItem } from '@/shared/contracts';
 import {
   resolveLocalizedName,
@@ -13,6 +13,7 @@ import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileConte
 import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
 import { MediaPreviewDialog } from '@/renderer/components/media/MediaPreviewDialog';
 import { Button } from '@/renderer/components/ui/button';
+import { itemActionVisibilityClassName } from '@/renderer/components/ui/item-actions';
 import { Popover, PopoverAnchor, PopoverContent } from '@/renderer/components/ui/popover';
 import { TooltipProvider } from '@/renderer/components/ui/tooltip';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -26,6 +27,7 @@ interface Props {
   removeLabel: string;
   onAssetsChange(assets: AssetDto[]): void;
   onRemoveAsset(id: string): void;
+  onInsertAsset?(asset: AssetDto): void;
   onRemovePalette(id: string): void;
   onRemoveTerm(term: TermListItem): void;
   onOpenPalette(id: string): void;
@@ -231,6 +233,7 @@ export function CreationReferenceStrip({
   removeLabel,
   onAssetsChange,
   onRemoveAsset,
+  onInsertAsset,
   onRemovePalette,
   onRemoveTerm,
   onOpenPalette,
@@ -283,7 +286,7 @@ export function CreationReferenceStrip({
         {assets.map((asset, index) => (
           <span
             className={cn(
-              'group relative isolate size-12 rounded-md bg-surface-sunken',
+              'group/item relative isolate size-12 rounded-md bg-surface-sunken',
               dragTargetAssetId === asset.id && 'ring-2 ring-selected-border',
             )}
             key={asset.id}
@@ -339,8 +342,24 @@ export function CreationReferenceStrip({
                 />
               </Button>
             </AssetFileContextMenu>
+            {onInsertAsset && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon-sm"
+                className={cn(itemActionVisibilityClassName, 'absolute -bottom-1 -left-1 z-20 size-6 shadow-none')}
+                aria-label={messages.creator.starter.insertIntoBody}
+                title={messages.creator.starter.insertIntoBody}
+                onClick={() => onInsertAsset(asset)}
+              >
+                <FilePlus2Icon className="size-3" />
+              </Button>
+            )}
             <Button
-              className="absolute -top-1.5 -right-1.5 z-20 size-6 rounded-full bg-overlay text-foreground opacity-0 shadow-overlay group-focus-within:opacity-100 group-hover:opacity-100"
+              className={cn(
+                itemActionVisibilityClassName,
+                'absolute -top-1 -right-1 z-20 size-6 rounded-sm bg-overlay text-foreground shadow-none',
+              )}
               type="button"
               variant="outline"
               size="icon-sm"

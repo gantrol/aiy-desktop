@@ -223,36 +223,34 @@ export function ExtensionPluginScreen(props: Props) {
           collectionLabel={l.tabs.plugins}
           collectionWidth={280}
           selectionKey={props.requestedId}
-          collection={({ toggle, revealDetail }) => (
-            <>
-              <div className="flex items-center gap-2 border-b border-border p-3">
-                {toggle}
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="min-w-0 flex-1"
-                  disabled={busy}
-                  onClick={() =>
-                    void manager.install(l.notices.installed).then((installed) => {
-                      if (installed) revealDetail();
-                    })
-                  }
-                >
-                  <PackagePlusIcon className="size-4" />
-                  {l.actions.installLocal}
-                </Button>
-              </div>
-              <ScrollArea className="min-h-0 flex-1">
-                <ExtensionPluginList
-                  extensions={manager.extensions}
-                  selectedId={manager.selectedId}
-                  onSelect={(id) => {
-                    manager.select(id);
-                    revealDetail();
-                  }}
-                />
-              </ScrollArea>
-            </>
+          collectionHeader={({ revealDetail }) => (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="min-w-0 flex-1"
+              disabled={busy}
+              onClick={() =>
+                void manager.install(l.notices.installed).then((installed) => {
+                  if (installed) revealDetail();
+                })
+              }
+            >
+              <PackagePlusIcon className="size-4" />
+              {l.actions.installLocal}
+            </Button>
+          )}
+          collection={({ revealDetail }) => (
+            <ScrollArea className="min-h-0 flex-1">
+              <ExtensionPluginList
+                extensions={manager.extensions}
+                selectedId={manager.selectedId}
+                onSelect={(id) => {
+                  manager.select(id);
+                  revealDetail();
+                }}
+              />
+            </ScrollArea>
           )}
         >
           {({ toggle }) => (

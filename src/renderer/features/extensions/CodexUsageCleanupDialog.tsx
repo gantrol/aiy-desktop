@@ -57,7 +57,7 @@ export function CodexUsageCleanupControl({
         <TooltipTrigger asChild>
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             className="w-full @lg/codex-usage:w-auto"
             disabled={disabled || busy}
             aria-label={labels.action}

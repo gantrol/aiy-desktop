@@ -5,6 +5,7 @@ import {
   type CreationLibraryTreePlacementProps,
 } from '@/renderer/components/creator/CreationLibraryTreeItem';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
+import { ItemActions, itemActionButtonClassName } from '@/renderer/components/ui/item-actions';
 import { Button } from '@/renderer/components/ui/button';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/components/ui/context-menu';
 import {
@@ -36,9 +37,6 @@ interface DocumentItemProps {
   onDeleteDocument(document: DocumentEntry['document']): void;
 }
 
-const rowControlsClassName =
-  'pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100';
-const rowControlClassName = 'pointer-events-auto shrink-0 rounded-md bg-overlay/95 shadow-overlay';
 const compactItemClassName =
   'relative grid size-16 shrink-0 place-items-center overflow-visible rounded-xl bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-ring';
 const compactSelectedClassName =
@@ -69,7 +67,7 @@ export function CreationDocumentRow({
   onArchiveDocument,
   onDeleteDocument,
 }: DocumentItemProps & CreationLibraryTreePlacementProps) {
-  const { locale, messages } = useI18n();
+  const { messages } = useI18n();
   const labels = messages.videoDocuments.sidebar;
   const document = entry.document;
   const openDocument = () => onSelectDocument(document.id, entry.parentAlbumId);
@@ -96,7 +94,7 @@ export function CreationDocumentRow({
   actions.push(
     {
       id: 'archive-document',
-      label: locale === 'zh' ? '归档' : 'Archive',
+      label: messages.creator.album.archive,
       icon: ArchiveIcon,
       separatorBefore: true,
       disabled: busy,
@@ -104,7 +102,7 @@ export function CreationDocumentRow({
     },
     {
       id: 'delete-document',
-      label: locale === 'zh' ? '删除' : 'Delete',
+      label: messages.creator.album.delete,
       icon: Trash2Icon,
       destructive: true,
       disabled: busy,
@@ -127,13 +125,13 @@ export function CreationDocumentRow({
         </span>
       }
       controls={
-        <div data-result-library-row-control className={rowControlsClassName}>
+        <ItemActions data-result-library-row-control>
           <ActionMenuButton
             actions={actions}
             label={labels.moreActions(document.title)}
-            className={cn(rowControlClassName, 'size-6')}
+            className={itemActionButtonClassName}
           />
-        </div>
+        </ItemActions>
       }
       onOpen={openDocument}
     />
@@ -160,7 +158,7 @@ export function CreationDocumentCompactItem({
   onArchiveDocument,
   onDeleteDocument,
 }: DocumentItemProps) {
-  const { locale, messages } = useI18n();
+  const { messages } = useI18n();
   const labels = messages.videoDocuments.sidebar;
   const document = entry.document;
   const openDocument = () => onSelectDocument(document.id, entry.parentAlbumId);
@@ -187,7 +185,7 @@ export function CreationDocumentCompactItem({
   actions.push(
     {
       id: 'archive-document',
-      label: locale === 'zh' ? '归档' : 'Archive',
+      label: messages.creator.album.archive,
       icon: ArchiveIcon,
       separatorBefore: true,
       disabled: busy,
@@ -195,7 +193,7 @@ export function CreationDocumentCompactItem({
     },
     {
       id: 'delete-document',
-      label: locale === 'zh' ? '删除' : 'Delete',
+      label: messages.creator.album.delete,
       icon: Trash2Icon,
       destructive: true,
       disabled: busy,

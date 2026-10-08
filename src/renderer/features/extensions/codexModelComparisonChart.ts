@@ -87,9 +87,11 @@ export function displayCodexModelChartSamples(groups: readonly CodexModelChartGr
     ordered.length <= count
       ? ordered.map((_, index) => index)
       : Array.from({ length: count }, (_, index) => Math.round((index * (ordered.length - 1)) / (count - 1)));
+  const cumulativeRank = new Map<number, number>();
+  ordered.forEach((sample, index) => cumulativeRank.set(sample.value, index + 1));
   return indexes.map((index): CodexModelChartSample => ({
     ...ordered[index]!,
     percentile: ordered.length === 1 ? 50 : (index / (ordered.length - 1)) * 100,
-    cumulativePercent: ((index + 1) / ordered.length) * 100,
+    cumulativePercent: (cumulativeRank.get(ordered[index]!.value)! / ordered.length) * 100,
   }));
 }

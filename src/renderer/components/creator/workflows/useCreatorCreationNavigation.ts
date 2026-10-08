@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type {
   CreationDraftDto,
+  CreationDraftStartInput,
   CreatorAgentScope,
   Locale,
   PromptSeriesDto,
   PromptVersionDto,
 } from '@/shared/contracts';
 import { emptyCreationDictionaryScope } from '@/shared/album-creation-defaults';
+import type { CreationStartMode } from '@/shared/contracts/creation-draft';
 import type { AlbumTreeIndex } from '@/renderer/components/albums/albumTree';
 import {
   navigationLocationKey,
@@ -15,7 +17,7 @@ import {
 } from '@/renderer/components/app/app-navigation';
 import type { CreationSessionProjection } from '@/renderer/components/creator/creationSessionProjection';
 import { isCreationDraftSessionSupersededError } from '@/renderer/components/creator/workflows/creationDraftSessionErrors';
-import { isCreationDraftConflict } from '@/shared/creation-draft-errors';
+import { isCreationDraftConflict, isCreationDraftUnavailable } from '@/shared/creation-draft-errors';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import type { MessageCatalog } from '@/renderer/i18n/types';
 
@@ -31,9 +33,10 @@ interface Options {
   creationMode: CreationMode;
   creationSessions: readonly CreationSessionProjection[];
   defaultPromptLocale: Locale | null;
-  draftMessages: Pick<MessageCatalog['creator']['draftConflict'], 'movedToRoot' | 'moveFailed'>;
+  draftMessages: Pick<MessageCatalog['creator']['draftConflict'], 'movedToRoot' | 'moveFailed' | 'unavailable'>;
   detachDraftIdentity(): void;
   hasPendingInput(): boolean;
+  hydratedVersionId: string | null;
   getSavedDraft(): CreationDraftDto | null;
   isDraftInputSaved(): boolean;
   invalidateAutosaves(): void;
@@ -116,6 +119,24 @@ function replaceWithBlankSession(options: Options, albumId: string | null) {
   options.restoreAssistant(null);
 }
 
+function prepareResumedDraftWorkspace(options: Options, draftId: string, hasDraftState: boolean) {
+  const initializesEmptyEditor =
+    options.location.surface === 'creation-draft' &&
+    options.location.draftId === draftId &&
+    options.creationMode === 'new' &&
+    !options.selectedContent &&
+    !options.seriesId &&
+    !hasDraftState;
+  // A new tab already owns an empty editor. Hydrate it in place; only switching
+  // away from an existing input session needs a new editor and undo history.
+  if (initializesEmptyEditor) {
+    options.invalidateAutosaves();
+    prepareDraftWorkspace(options);
+  } else {
+    replaceWithBlankSession(options, null);
+  }
+}
+
 export function useCreatorCreationNavigation(options: Options) {
   const commandRevisionRef = useRef(0);
   const contextRef = useRef({
@@ -172,7 +193,13 @@ export function useCreatorCreationNavigation(options: Options) {
   }
 
   const startNewCreation = useStableCallback(
-    async (albumId: string | null = null, mode: NavigationMode | null = 'push', preserveCurrent = true) => {
+    async (
+      albumId: string | null = null,
+      mode: NavigationMode | null = 'push',
+      preserveCurrent = true,
+      startMode: CreationStartMode = 'manuscript',
+      materials: Pick<CreationDraftStartInput, 'referenceAssetIds' | 'videoMaterialIds' | 'creationSource'> = {},
+    ) => {
       const commandRevision = ++commandRevisionRef.current;
       if (!(await options.preserveWorkingInput())) return false;
       if (commandRevisionRef.current !== commandRevision) return false;
@@ -183,6 +210,8 @@ export function useCreatorCreationNavigation(options: Options) {
         draft = await window.desktopApi.creationDraftStart({
           albumId,
           termPromptLocale: options.defaultPromptLocale ?? options.locale,
+          startMode,
+          ...materials,
         });
       } catch (reason) {
         options.notify(reason instanceof Error ? reason.message : String(reason));
@@ -221,7 +250,7 @@ export function useCreatorCreationNavigation(options: Options) {
       const savedDraft = options.getSavedDraft();
       if (options.creationDraftId === draftId && savedDraft?.id === draftId && savedDraft.updatedAt > draft.updatedAt)
         draft = savedDraft;
-      replaceWithBlankSession(options, null);
+      prepareResumedDraftWorkspace(options, draftId, hasDraftState());
       if (mode) {
         const nextLocation = { surface: 'creation-draft' as const, draftId };
         options.commit(nextLocation, mode);
@@ -231,7 +260,13 @@ export function useCreatorCreationNavigation(options: Options) {
       return true;
     } catch (reason) {
       if (commandRevisionRef.current === commandRevision) {
-        options.notify(reason instanceof Error ? reason.message : String(reason));
+        options.notify(
+          isCreationDraftUnavailable(reason)
+            ? options.draftMessages.unavailable
+            : reason instanceof Error
+              ? reason.message
+              : String(reason),
+        );
       }
       return false;
     }
@@ -335,7 +370,9 @@ export function useCreatorCreationNavigation(options: Options) {
       options.setRequestedAssetId(assetId ?? null);
       if (assetId) options.setOutputCollapsed(false);
       options.setOutputGalleryOpen(false);
-      if (changed || requestedVersionId) {
+      // A route may name the current version just to select another result.
+      // Rehydrating it would replace the working input with its frozen references.
+      if (changed || (requestedVersionId && targetVersion?.id !== options.hydratedVersionId)) {
         options.setDictionaryScope(emptyCreationDictionaryScope());
         options.setVersionId(targetVersion?.id ?? '');
         options.resetInputs();

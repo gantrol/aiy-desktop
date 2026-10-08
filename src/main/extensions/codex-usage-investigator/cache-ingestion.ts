@@ -67,8 +67,8 @@ export function replaceCodexUsageSource(
       terminal_ms, terminal_at, terminal_state, duration_ms, model, reasoning_effort, service_tier
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(source_session_id, turn_id) DO UPDATE SET
-      started_ms = MIN(usage_chat_turns.started_ms, excluded.started_ms),
-      started_at = MIN(usage_chat_turns.started_at, excluded.started_at),
+      started_ms = COALESCE(MIN(usage_chat_turns.started_ms, excluded.started_ms), usage_chat_turns.started_ms, excluded.started_ms),
+      started_at = COALESCE(MIN(usage_chat_turns.started_at, excluded.started_at), usage_chat_turns.started_at, excluded.started_at),
       terminal_ms = COALESCE(excluded.terminal_ms, usage_chat_turns.terminal_ms),
       terminal_at = COALESCE(excluded.terminal_at, usage_chat_turns.terminal_at),
       terminal_state = COALESCE(excluded.terminal_state, usage_chat_turns.terminal_state),
@@ -110,7 +110,7 @@ export function replaceCodexUsageSource(
         file.sessionId,
         turnOffset + turn.turnOrder,
         turn.turnId,
-        Date.parse(turn.startedAt),
+        turn.startedAt === null ? null : Date.parse(turn.startedAt),
         turn.startedAt,
         turn.terminalAt ? Date.parse(turn.terminalAt) : null,
         turn.terminalAt,

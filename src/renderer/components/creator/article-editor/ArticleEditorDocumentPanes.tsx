@@ -31,9 +31,10 @@ import type { ComponentProps, ReactNode, RefObject } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import { articleTitleClassName } from '@/renderer/lib/articleTypography';
-import { MessageSquareIcon, XIcon } from 'lucide-react';
+import { XIcon } from 'lucide-react';
 import { useArticleEditorSession } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
-import { ContentWorkspace, ContentWorkspacePanels } from '@/renderer/features/content-editor/ContentWorkspacePanels';
+import { ContentWorkspace } from '@/renderer/features/content-editor/ContentWorkspacePanels';
+import { OutlineArticleSidebar } from '@/renderer/components/creator/article-editor/OutlineArticleSidebar';
 import { useArticleReferenceHeadings } from '@/renderer/components/creator/article-editor/useArticleReferenceHeadings';
 
 function firstArticleLocation(elements: readonly ArticleElementPlacementInput[]) {
@@ -227,6 +228,7 @@ function ArticleEditorDocumentPane({
 
 interface Props {
   outlineMode?: boolean;
+  createOutlinePage?: ComponentProps<typeof VideoDocumentWysiwygEditor>['createOutlinePage'];
   outlinePreferenceKey?: string;
   attachmentsPanel: ReactNode;
   attachmentCount: number;
@@ -280,6 +282,7 @@ interface Props {
   onImageImportError(): void;
   onImageImported(result: VideoDocumentEditorImageImport): void;
   onImageRemove(elementId: string): boolean;
+  onImageDescribe(elementId: string, expected: string, alt: string): boolean;
   onImageMove(elementId: string, targetId: string): boolean;
   onImageLocate(elementId: string): void;
   onImageUndo(): boolean;
@@ -294,6 +297,7 @@ interface Props {
 
 export function ArticleEditorDocumentPanes({
   outlineMode,
+  createOutlinePage,
   outlinePreferenceKey,
   attachmentsPanel,
   attachmentCount,
@@ -341,6 +345,7 @@ export function ArticleEditorDocumentPanes({
   onImageImportError,
   onImageImported,
   onImageRemove,
+  onImageDescribe,
   onImageMove,
   onImageLocate,
   onImageUndo,
@@ -361,6 +366,7 @@ export function ArticleEditorDocumentPanes({
       embedded={outlineMode}
       contentSource={{ kind: 'ARTICLE', id: session.capturePersistedArticle().id }}
       onTransferSaved={session.receiveTransferredArticle}
+      createOutlinePage={createOutlinePage}
       beforeReferenceCapture={async () => {
         if (!(await session.flush('manual'))) return null;
         const saved = session.capturePersistedArticle();
@@ -414,31 +420,17 @@ export function ArticleEditorDocumentPanes({
             </div>
             {primaryEditor}
           </div>
-          <ContentWorkspacePanels
-            preferenceKey="outline-comments"
-            active="COMMENTS"
-            open={leftSidebar.panelOpen('COMMENTS')}
-            onActiveChange={() => leftSidebar.showPanel('COMMENTS')}
-            onOpenChange={(open) => leftSidebar.setPanelOpen('COMMENTS', open)}
-            tabs={[
-              {
-                id: 'COMMENTS',
-                icon: MessageSquareIcon,
-                label: copy.comments,
-                count: comments.filter((comment) => comment.status === 'OPEN').length,
-                content: (
-                  <ContentCommentsPanel
-                    busy={commentMutationBusy}
-                    comments={comments}
-                    hoveredId={openCommentHoverId}
-                    selectedId={selectedCommentId}
-                    onHover={onCommentHover}
-                    onSelect={onCommentSelect}
-                    onStatusChange={onCommentStatusChange}
-                  />
-                ),
-              },
-            ]}
+          <OutlineArticleSidebar
+            controller={leftSidebar}
+            comments={{
+              busy: commentMutationBusy,
+              comments,
+              hoveredId: openCommentHoverId,
+              selectedId: selectedCommentId,
+              onHover: onCommentHover,
+              onSelect: onCommentSelect,
+              onStatusChange: onCommentStatusChange,
+            }}
           />
         </ContentWorkspace>
       </div>
@@ -451,6 +443,7 @@ export function ArticleEditorDocumentPanes({
       media={media}
       onMove={onImageMove}
       onRemove={onImageRemove}
+      onDescribe={onImageDescribe}
       onLocate={onImageLocate}
       onUndo={onImageUndo}
       onRedo={onImageRedo}

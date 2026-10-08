@@ -10,7 +10,6 @@ import type {
   CreatorAgentScope,
   CreatorPromptNodeInput,
   DerivedVisualDto,
-  InspirationStashDto,
   Locale,
   PromptSeriesDto,
   SocialPostDto,
@@ -70,6 +69,7 @@ interface Options {
   initialSeriesId: string | null;
   invalidateAutosaves(): void;
   hasPendingInput(): boolean;
+  hydratedVersionId: string | null;
   getSavedDraft(): CreationDraftDto | null;
   isDraftInputSaved(): boolean;
   locale: Locale;
@@ -99,7 +99,6 @@ interface Options {
   resetInputs(): void;
   restoreAssistant(scope: CreatorAgentScope | null): void;
   restoreDraft: Hydration['restoreDraft'];
-  restoreInspiration(stash: InspirationStashDto): void;
   restoreVersion: Hydration['restoreVersion'];
   saveDraft(albumId?: string | null, prompt?: CreationDraftPromptSnapshot): Promise<CreationDraftDto>;
   selected: {
@@ -134,7 +133,6 @@ interface Options {
   setSelectedEvaluationSuiteId(id: string | null): void;
   setSelectedIdeaCreationId(id: string | null): void;
   setSelectedImageBreakdownId(id: string | null): void;
-  setSelectedInspirationStashId(id: string | null): void;
   setSelectedSocialPostId(id: string | null): void;
   setSeriesId(id: string | null): void;
   setTargetAlbumId(id: string | null): void;
@@ -173,6 +171,7 @@ function usePrimaryNavigation(options: Options) {
     draftMessages,
     detachDraftIdentity: options.detachDraftIdentity,
     hasPendingInput: options.hasPendingInput,
+    hydratedVersionId: options.hydratedVersionId,
     getSavedDraft: options.getSavedDraft,
     isDraftInputSaved: options.isDraftInputSaved,
     invalidateAutosaves: options.invalidateAutosaves,
@@ -239,8 +238,10 @@ function usePrimaryNavigation(options: Options) {
     clearSavedInspiration: options.clearSavedInspiration,
     clearSelection: options.clearSelection,
     commit: options.commit,
+    creationDraftId: options.creationDraftId,
     data: options.data,
     editorDerivedVisual: options.editorDerivedVisual,
+    hydratedVersionId: options.hydratedVersionId,
     locale: options.locale,
     notify: options.notify,
     onComparisonFullWindowChange: options.onComparisonFullWindowChange,
@@ -316,19 +317,16 @@ function useSecondaryNavigation(options: Options, primary: ReturnType<typeof use
     openParentEditor,
     preserveBeforeNavigation: primary.creation.preserveBeforeNavigation,
     refresh: options.refresh,
-    restoreInspiration: options.restoreInspiration,
     resumeDerivedVisual: options.chooseDerivedVisual,
     selectAlbum: options.setSelectedAlbumId,
     selectArticle: options.setSelectedArticleId,
     selectEvaluationSuite: options.setSelectedEvaluationSuiteId,
     selectImageBreakdown: options.setSelectedImageBreakdownId,
-    selectInspirationStash: options.setSelectedInspirationStashId,
     selectSocialPost: options.setSelectedSocialPostId,
     setCompactPanel: options.panes.setCompactPanel,
     setOutputGalleryOpen: options.setOutputGalleryOpen,
     setOutputMode: (mode) => options.setOutputMode(mode),
     setRequestedAssetId: options.setRequestedAssetId,
-    startNewCreation: primary.creation.startNewCreation,
   });
   const idea = useCreatorIdeaNavigation({
     activeIdeaCreation: options.activeIdeaCreation,

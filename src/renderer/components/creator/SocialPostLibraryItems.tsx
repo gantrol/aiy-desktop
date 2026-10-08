@@ -10,6 +10,7 @@ import {
 } from '@/renderer/components/creator/CreationLibraryTreeItem';
 import { MediaStackPreview } from '@/renderer/components/media/MediaStackPreview';
 import { ActionContextMenuItems, ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
+import { ItemActions, itemActionButtonClassName } from '@/renderer/components/ui/item-actions';
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from '@/renderer/components/ui/context-menu';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
@@ -151,16 +152,13 @@ export function SocialPostLibraryRow(props: Props) {
         </span>
       }
       controls={
-        <div
-          data-item-drag-ignore
-          className="pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-        >
+        <ItemActions>
           <ActionMenuButton
             actions={menuActions}
             label={`${labels.moreActions}: ${title}`}
-            className="pointer-events-auto size-6 rounded-md bg-overlay/95 shadow-overlay"
+            className={itemActionButtonClassName}
           />
-        </div>
+        </ItemActions>
       }
       onGestureExpand={onGestureExpand}
       onPointerTrackStart={onPointerTrackStart}

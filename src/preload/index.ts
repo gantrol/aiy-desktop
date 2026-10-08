@@ -1,3 +1,4 @@
+import { codexUsageApi } from '@/preload/codex-usage-api';
 import { createBrowserCompanionPreloadApi } from '@/preload/browser-companion-api';
 import { createAppShellPreloadApi } from '@/preload/app-shell-api';
 import { createCalendarPreloadApi } from '@/preload/calendar-api';
@@ -44,18 +45,7 @@ import {
   assetFilesStartDragChannel,
 } from '@/shared/contracts/asset-file-drag';
 
-import {
-  codexUsageCleanupInputSchema,
-  codexUsageCleanupResultSchema,
-  codexUsageExportInputSchema,
-  codexUsageExportResultSchema,
-  codexUsageInvestigationGetInputSchema,
-  codexUsageInvestigationSchema,
-  codexUsageResumeInputSchema,
-  codexUsageScanInputSchema,
-  codexUsageStateSchema,
-  codexUsageTaskSchema,
-} from '@/shared/contracts/codex-usage';
+import {} from '@/shared/contracts/codex-usage';
 import { creationDraftDtoSchema } from '@/shared/contracts/creation-draft';
 import { creationDraftListResultSchema, creationDraftsChangedSchema } from '@/shared/contracts/creation-draft-list';
 import { creationDraftDeletionSchema } from '@/shared/contracts/creation-draft-deletion';
@@ -284,31 +274,7 @@ const api: DesktopApi = {
   ...createArticleDeliveryPreloadApi(ipcRenderer),
   ...createProviderConnectionPreloadApi(ipcRenderer),
   ...createCodexArtifactsPreloadApi(ipcRenderer),
-  codexUsageState: async () => codexUsageStateSchema.parse(await ipcRenderer.invoke('codex-usage:state')),
-  codexUsageInvestigation: async (input) =>
-    codexUsageInvestigationSchema.parse(
-      await ipcRenderer.invoke('codex-usage:investigation', codexUsageInvestigationGetInputSchema.parse(input)),
-    ),
-  codexUsageScan: async (input) =>
-    codexUsageTaskSchema.parse(await ipcRenderer.invoke('codex-usage:scan', codexUsageScanInputSchema.parse(input))),
-  codexUsageResume: async (input) =>
-    codexUsageTaskSchema.parse(
-      await ipcRenderer.invoke('codex-usage:resume', codexUsageResumeInputSchema.parse(input)),
-    ),
-  codexUsagePause: () => ipcRenderer.invoke('codex-usage:pause'),
-  codexUsageClear: async (input) =>
-    codexUsageCleanupResultSchema.parse(
-      await ipcRenderer.invoke('codex-usage:clear', codexUsageCleanupInputSchema.parse(input)),
-    ),
-  codexUsageExport: async (input) =>
-    codexUsageExportResultSchema.parse(
-      await ipcRenderer.invoke('codex-usage:export', codexUsageExportInputSchema.parse(input)),
-    ),
-  onCodexUsageTaskChanged: (callback) => {
-    const listener = (_event: Electron.IpcRendererEvent, value: unknown) => callback(codexUsageTaskSchema.parse(value));
-    ipcRenderer.on('codex-usage:task-changed', listener);
-    return () => ipcRenderer.removeListener('codex-usage:task-changed', listener);
-  },
+  ...codexUsageApi,
   localQwenAsrSidecarGet: async () =>
     localQwenAsrSidecarSchema.parse(await ipcRenderer.invoke('local-qwen-asr-sidecar:get')),
   assistantRoutingGet: () => ipcRenderer.invoke('assistant-routing:get'),
@@ -524,7 +490,7 @@ const api: DesktopApi = {
   },
   creationDraftLoad: async (input) =>
     creationDraftDtoSchema.parse(await ipcRenderer.invoke('creation-draft:load', input)),
-  creationDraftSave: (input) => ipcRenderer.invoke('creation-draft:save', input),
+  creationDraftSave: (input, spaceId) => ipcRenderer.invoke('creation-draft:save', input, spaceId),
   creationDraftCommit: (input) => ipcRenderer.invoke('creation-draft:commit', input),
   creationItemsList: async (input) =>
     creationItemListResultSchema.parse(

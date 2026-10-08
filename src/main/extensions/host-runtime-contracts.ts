@@ -8,6 +8,7 @@ import {
   FEATURE_DEMO_EXTENSION_ID,
   MAINTENANCE_GUIDE_EXTENSION_ID,
   WORK_TRACKING_EXTENSION_ID,
+  SCREEN_MAGNIFIER_EXTENSION_ID,
   NATURAL_WATERMARK_EXTENSION_ID,
   WEIBO_CHANNEL_EXTENSION_ID,
 } from '@/shared/extension-ids';
@@ -98,6 +99,12 @@ interface HostRuntimeContract {
 }
 
 const hostRuntimeContracts: Readonly<Record<string, HostRuntimeContract>> = {
+  'screen-magnifier': {
+    extensionId: SCREEN_MAGNIFIER_EXTENSION_ID,
+    permissions: [EXTENSION_PERMISSION.screenReadDesktopRegion],
+    optionalPermissions: [],
+    contributes: { commands: ['screenMagnifier.start', 'screenMagnifier.stop'] },
+  },
   'work-tracking': {
     extensionId: WORK_TRACKING_EXTENSION_ID,
     permissions: [EXTENSION_PERMISSION.libraryReadSelectedContent],

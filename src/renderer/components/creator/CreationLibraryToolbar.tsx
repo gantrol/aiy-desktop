@@ -1,7 +1,9 @@
 import { ArrowLeftIcon, SearchIcon, XIcon } from 'lucide-react';
+import { useEffect, useRef, type RefObject } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import { CreationLibraryFilterMenu } from '@/renderer/components/creator/CreationLibraryFilterMenu';
+import { CreationLibrarySearchButton } from '@/renderer/components/creator/CreationLibrarySearchButton';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type { CreationLibraryFilter } from '@/renderer/components/creator/creationLibraryFilter';
 import type { CreationLibraryAuthorOption } from '@/renderer/components/creator/creationLibraryAuthorFilter';
@@ -14,6 +16,7 @@ interface Props {
   onQueryChange(query: string): void;
   onFilterChange(filter: CreationLibraryFilter): void;
   authors?: readonly CreationLibraryAuthorOption[];
+  inputRef?: RefObject<HTMLInputElement | null>;
 }
 
 export function CreationLibraryToolbar({
@@ -24,13 +27,23 @@ export function CreationLibraryToolbar({
   onQueryChange,
   onFilterChange,
   authors,
+  inputRef,
 }: Props) {
   const { messages } = useI18n();
   const labels = messages.creator.results;
   const exitSearchLabel = labels.exitSearch;
   const searchVisible = searchOpen || Boolean(query);
+  const searchButton = useRef<HTMLButtonElement>(null);
+  const restoreSearchFocus = useRef(false);
+  useEffect(() => {
+    if (!searchVisible && restoreSearchFocus.current) {
+      restoreSearchFocus.current = false;
+      searchButton.current?.focus({ preventScroll: true });
+    }
+  }, [searchVisible]);
 
   function closeSearch() {
+    restoreSearchFocus.current = true;
     onQueryChange('');
     setSearchOpen(false);
   }
@@ -40,17 +53,7 @@ export function CreationLibraryToolbar({
   if (!searchVisible) {
     return (
       <>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="text-muted-foreground hover:text-foreground"
-          title={labels.search}
-          aria-label={labels.search}
-          onClick={() => setSearchOpen(true)}
-        >
-          <SearchIcon className="size-4" />
-        </Button>
+        <CreationLibrarySearchButton ref={searchButton} onClick={() => setSearchOpen(true)} />
         {filterMenu}
       </>
     );
@@ -72,6 +75,7 @@ export function CreationLibraryToolbar({
       <label className="relative min-w-0 flex-1">
         <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
         <Input
+          ref={inputRef}
           autoFocus
           value={query}
           className="h-8 pr-8 pl-8 text-xs focus-visible:border-ring"
@@ -79,10 +83,11 @@ export function CreationLibraryToolbar({
           aria-label={labels.search}
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key !== 'Escape') return;
+            if (event.key !== 'Escape' || event.nativeEvent.isComposing || event.defaultPrevented) return;
             event.preventDefault();
+            event.stopPropagation();
             if (query) onQueryChange('');
-            else setSearchOpen(false);
+            else closeSearch();
           }}
         />
         {query && (

@@ -3,7 +3,8 @@ import type {
   ArticleEditorSidebarPanel,
 } from '@/renderer/components/creator/article-editor/articleEditorOutlinePreferences';
 import { useArticleEditorOutlinePane } from '@/renderer/components/creator/article-editor/useArticleEditorOutlinePane';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { CreationWorkNavigationContext } from '@/renderer/components/creator/CreationWorkNavigation';
 
 const minimumDockedSidebarContainerWidth = 960;
 
@@ -17,9 +18,11 @@ export function useArticleEditorSidebar(
     preferenceScope = 'PRIMARY',
   }: { enabled?: boolean; preferenceScope?: ArticleEditorPanePreferenceScope } = {},
 ) {
-  const pane = useArticleEditorOutlinePane(preferenceScope);
+  const workNavigation = useContext(CreationWorkNavigationContext);
+  const pane = useArticleEditorOutlinePane(preferenceScope, workNavigation ? 'OUTPUTS' : 'OUTLINE');
   const { preferences, setActivePanel, setExpanded } = pane;
   const [mode, setMode] = useState<ArticleEditorSidebarMode>('SINGLE');
+  const [maximized, setMaximized] = useState(false);
   const commentIdsRef = useRef(new Set(comments.map((comment) => comment.id)));
 
   useLayoutEffect(() => {
@@ -67,6 +70,8 @@ export function useArticleEditorSidebar(
 
   return {
     ...pane,
+    maximized,
+    setMaximized,
     preferenceKey: preferenceScope === 'PRIMARY' ? 'article' : 'article-secondary',
     compact: mode === 'OVERLAY',
     mode,

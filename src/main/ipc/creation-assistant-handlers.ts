@@ -1,5 +1,10 @@
 import { shell, type OpenDialogOptions, type OpenDialogReturnValue } from 'electron';
 import { z } from 'zod';
+import {
+  articleInputHistoryQuerySchema,
+  articleInputRecordQuerySchema,
+  articleInputContinueQuerySchema,
+} from '@/shared/contracts/article-input-history';
 import { creationDraftListInputSchema } from '@/shared/contracts/creation-draft-list';
 import {
   creationDraftDeleteInputSchema,
@@ -137,9 +142,11 @@ export function registerCreationAssistantIpc({
   ipcMain.handle('creation-draft:load', (_event, raw) =>
     database.loadCreationDraft(creationDraftLoadSchema.parse(raw)),
   );
-  ipcMain.handle('creation-draft:save', (_event, raw) =>
-    database.saveCreationDraft(creationDraftSaveSchema.parse(raw)),
-  );
+  ipcMain.handle('creation-draft:save', (_event, raw, rawSpaceId) => {
+    const spaceId = z.string().min(1).max(200).optional().parse(rawSpaceId);
+    if (spaceId && database.getLocalSpace().id !== spaceId) throw new Error('CREATION_DRAFT_SPACE_MISMATCH');
+    return database.saveCreationDraft(creationDraftSaveSchema.parse(raw));
+  });
   ipcMain.handle('creation-draft:commit', (_event, raw) =>
     database.commitCreationDraft(creationDraftCommitSchema.parse(raw)),
   );
@@ -201,6 +208,21 @@ export function registerCreationAssistantIpc({
     const input = articleOpenInputSchema.parse(raw);
     if (database.getLocalSpace().id !== input.spaceId) throw new Error('Article belongs to a different local space');
     return articleOpenResultSchema.parse({ spaceId: input.spaceId, article: database.getArticle(input.articleId) });
+  });
+  ipcMain.handle('article:input-history', (_event, raw) => {
+    const input = articleInputHistoryQuerySchema.parse(raw);
+    if (database.getLocalSpace().id !== input.spaceId) throw new Error('ARTICLE_INPUT_UNAVAILABLE');
+    return database.getArticleInputHistory(input);
+  });
+  ipcMain.handle('article:input-record', (_event, raw) => {
+    const input = articleInputRecordQuerySchema.parse(raw);
+    if (database.getLocalSpace().id !== input.spaceId) throw new Error('ARTICLE_INPUT_UNAVAILABLE');
+    return database.getArticleInputRecord(input);
+  });
+  ipcMain.handle('article:input-continue', (_event, raw) => {
+    const input = articleInputContinueQuerySchema.parse(raw);
+    if (database.getLocalSpace().id !== input.spaceId) throw new Error('ARTICLE_INPUT_UNAVAILABLE');
+    return database.continueArticleInput(input);
   });
   ipcMain.handle('article:revision-history', (_event, raw) =>
     database.getArticleRevisionHistory(articleRevisionHistoryInputSchema.parse(raw)),
@@ -284,7 +306,7 @@ export function registerCreationAssistantIpc({
     if (imagePaths.length !== attachmentAssetIds.length) {
       throw new Error('One or more conversation image attachments are unavailable');
     }
-    const history = database.listRecentCreatorAgentChatTurns(request.scope, 20);
+    const history = request.documentTask ? [] : database.listRecentCreatorAgentChatTurns(request.scope, 20);
     const { scope: _scope, attachmentAssetIds: _attachmentAssetIds, ...input } = request;
     return codex.chat({ scope: request.scope, request, input, history, imagePaths });
   });

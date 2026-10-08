@@ -1,4 +1,5 @@
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
+import { continuationSource, draftCreationSource } from '@/main/database/creations/creation-continuation';
 import { GifDocumentRepository } from '@/main/database/creations/gif-document-repository';
 import {
   newGifManifest,
@@ -87,7 +88,15 @@ export function createGifMakingApi({
               manifest: { ...input.manifest, motionDocumentId: motion.id },
               motionDraft: null,
             },
-            { sourceDocumentId: input.sourceDocumentId, targetAlbumId: input.targetAlbumId },
+            {
+              sourceDocumentId: input.sourceDocumentId,
+              targetAlbumId: input.targetAlbumId,
+              creationSource: input.creationSource
+                ? continuationSource(storage, input.creationSource)
+                : input.consumeCreationDraft
+                  ? draftCreationSource(storage, input.consumeCreationDraft.id)
+                  : undefined,
+            },
           );
           if (input.consumeCreationDraft) {
             const draft = input.consumeCreationDraft;

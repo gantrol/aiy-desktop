@@ -8,7 +8,7 @@ interface HttpByteRange {
   end: number;
 }
 
-export const CONTEXT_INDEPENDENT_MEDIA_HOSTS = new Set(['space-preview', 'space-cover', 'codex-history']);
+export const CONTEXT_INDEPENDENT_MEDIA_HOSTS = new Set(['space-preview', 'space-cover', 'codex-history', 'temporary']);
 const immutableMediaHosts = new Set(['asset', 'asset-thumbnail', 'space-preview', 'space-cover', 'video-evidence']);
 const spaceCoverMimeTypeByExtension: Readonly<Record<string, string>> = {
   '.jpg': 'image/jpeg',

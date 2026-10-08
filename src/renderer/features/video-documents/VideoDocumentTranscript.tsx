@@ -8,6 +8,7 @@ import type {
   VideoDocumentTranscriptCue,
 } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
+import { ItemActions } from '@/renderer/components/ui/item-actions';
 import { Input } from '@/renderer/components/ui/input';
 import { Textarea } from '@/renderer/components/ui/textarea';
 import {
@@ -336,7 +337,7 @@ function TranscriptCueList({
             data-cue-source-index={cue.sourceIndex}
             data-focused={focused ? '' : undefined}
             data-video-current={active ? '' : undefined}
-            className={cn('group/cue scroll-mt-4 rounded-md py-3 transition-colors', focused && 'bg-selected/45')}
+            className={cn('scroll-mt-4 rounded-md py-3 transition-colors', focused && 'bg-selected/45')}
           >
             {editing ? (
               <div className="flex items-start gap-3">
@@ -423,7 +424,7 @@ function TranscriptCueList({
                 </div>
               </div>
             ) : (
-              <div className="flex items-start gap-3 px-3">
+              <div className="group/item flex items-start gap-3 px-3">
                 <button
                   type="button"
                   className={cn(
@@ -457,21 +458,22 @@ function TranscriptCueList({
                   )}
                 </button>
                 {canEdit && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="mt-0.5 shrink-0 opacity-0 transition-opacity group-hover/cue:opacity-100 focus-visible:opacity-100"
-                    disabled={saving || editingCueSourceIndex !== null}
-                    aria-label={messages.videoDocuments.editor.editCue(timestamp)}
-                    title={messages.videoDocuments.editor.edit}
-                    onClick={() => {
-                      onFocusCue(cue.sourceIndex);
-                      onStartCueEdit(cue);
-                    }}
-                  >
-                    <PencilIcon className="size-3.5" />
-                  </Button>
+                  <ItemActions className="mt-0.5">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={saving || editingCueSourceIndex !== null}
+                      aria-label={messages.videoDocuments.editor.editCue(timestamp)}
+                      title={messages.videoDocuments.editor.edit}
+                      onClick={() => {
+                        onFocusCue(cue.sourceIndex);
+                        onStartCueEdit(cue);
+                      }}
+                    >
+                      <PencilIcon className="size-3.5" />
+                    </Button>
+                  </ItemActions>
                 )}
               </div>
             )}

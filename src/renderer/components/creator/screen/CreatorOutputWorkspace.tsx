@@ -37,6 +37,7 @@ function OutputHeader({ model }: Pick<Props, 'model'>) {
         </Button>
       )}
       <CreationOutputTabs
+        collapsed={model.projection.panes.outputCollapsed}
         value={model.outputUi.mode}
         onValueChange={(value) => void model.navigation.idea.changeOutputMode(value)}
       />
@@ -58,7 +59,7 @@ export function CreatorOutputWorkspace({ model, sourceFormId }: Props) {
       <div
         className={
           app.comparisonFullWindow
-            ? 'block min-h-0 min-w-0 overflow-hidden [&>*]:size-full'
+            ? '@container/output block min-h-0 min-w-0 overflow-hidden [&>*]:size-full'
             : cn(
                 panes.multiPane || panes.compactPanel === 'output' ? 'block' : 'hidden',
                 '@container/output min-h-0 min-w-0 overflow-hidden [&>*]:size-full',

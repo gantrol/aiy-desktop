@@ -1,6 +1,5 @@
 import type { AssistantRunDto, BootstrapDto, CreationDraftDto } from '@/shared/contracts';
 import type { CreatorLocation } from '@/renderer/components/app/app-navigation';
-import { creationItemByFormEntity } from '@/renderer/components/creator/creationFormEntities';
 import type { CreationSessionProjection } from '@/renderer/components/creator/creationSessionProjection';
 import {
   derivedVisualForLocation,
@@ -11,7 +10,6 @@ import {
   defaultDerivedDraftParentLocation,
   defaultStandaloneCreationDraft,
   defaultStandaloneCreationSeriesId,
-  imageSeriesIdForCreationItem,
 } from '@/renderer/components/creator/screen/creatorScreenProjection';
 
 export type CreatorCreationMode = 'existing' | 'new';
@@ -21,8 +19,6 @@ export interface CreatorInitialSession {
   initialAssistantRun: AssistantRunDto | null;
   initialCreationMode: CreatorCreationMode;
   initialDraft: CreationDraftDto | null;
-  initialInspirationItemAlbumId: string | null;
-  initialInspirationStashAlbumId: string | null;
   initialSeriesId: string | null;
 }
 
@@ -30,15 +26,12 @@ function resolveCreationMode(input: {
   location: CreatorLocation;
   resumableDerivedSeriesId: string | null;
   hasInitialContent: boolean;
-  hasInspiration: boolean;
-  inspirationSeriesId: string | null;
   hasStandaloneDraft: boolean;
   standaloneSeriesId: string | null;
 }): CreatorCreationMode {
   if (input.location.surface === 'new-creation' || input.location.surface === 'creation-draft') return 'new';
   if (input.location.surface === 'existing-creation' || input.resumableDerivedSeriesId) return 'existing';
   if (input.hasInitialContent) return 'new';
-  if (input.hasInspiration) return input.inspirationSeriesId ? 'existing' : 'new';
   if (input.hasStandaloneDraft) return 'new';
   return input.standaloneSeriesId ? 'existing' : 'new';
 }
@@ -47,7 +40,6 @@ function resolveInitialSeriesId(input: {
   location: CreatorLocation;
   resumableDerivedSeriesId: string | null;
   hasInitialContent: boolean;
-  inspirationSeriesId: string | null;
   hasDraft: boolean;
   standaloneSeriesId: string | null;
 }) {
@@ -55,7 +47,6 @@ function resolveInitialSeriesId(input: {
   if (input.hasInitialContent) return null;
   if (input.location.surface === 'new-creation' || input.location.surface === 'creation-draft') return null;
   if (input.location.surface === 'existing-creation') return input.location.seriesId;
-  if (input.inspirationSeriesId) return input.inspirationSeriesId;
   return input.hasDraft ? null : input.standaloneSeriesId;
 }
 
@@ -100,8 +91,6 @@ function initialDerivedVisualSession(data: BootstrapDto, location: CreatorLocati
     initialCreationMode,
     initialDraft,
     initialSeriesId,
-    initialInspirationItemAlbumId: null,
-    initialInspirationStashAlbumId: null,
   };
 }
 
@@ -110,21 +99,15 @@ function standardCreatorInitialSession(
   location: CreatorLocation,
   creationSessions: readonly CreationSessionProjection[],
 ): CreatorInitialSession {
-  const initialInspirationStash =
-    location.surface === 'inspiration-stash'
-      ? (data.inspirationStashes ?? []).find((stash) => stash.id === location.stashId)
-      : undefined;
-  const initialInspirationItem = initialInspirationStash
-    ? creationItemByFormEntity(data.creationItems, 'ARTICLE', initialInspirationStash.id)
-    : null;
-  const initialInspirationSeriesId = imageSeriesIdForCreationItem(initialInspirationItem);
   const initialSocialPost =
     location.surface === 'social-post'
       ? (data.socialPosts ?? []).find((post) => post.id === location.postId)
       : undefined;
   const initialArticle =
-    location.surface === 'article'
-      ? (data.articles ?? []).find((article) => article.id === location.articleId)
+    location.surface === 'article' || location.surface === 'inspiration-stash'
+      ? (data.articles ?? []).find(
+          (article) => article.id === (location.surface === 'article' ? location.articleId : location.stashId),
+        )
       : undefined;
   const resumableDerivedVisual = (data.derivedVisuals ?? []).find(
     (visual) =>
@@ -151,8 +134,6 @@ function standardCreatorInitialSession(
     location,
     resumableDerivedSeriesId,
     hasInitialContent,
-    hasInspiration: Boolean(initialInspirationStash),
-    inspirationSeriesId: initialInspirationSeriesId,
     hasStandaloneDraft: Boolean(standaloneDraft),
     standaloneSeriesId,
   });
@@ -162,7 +143,6 @@ function standardCreatorInitialSession(
     location,
     resumableDerivedSeriesId,
     hasInitialContent,
-    inspirationSeriesId: initialInspirationSeriesId,
     hasDraft: Boolean(initialDraft),
     standaloneSeriesId,
   });
@@ -173,8 +153,6 @@ function standardCreatorInitialSession(
     initialAssistantRun,
     initialCreationMode,
     initialDraft,
-    initialInspirationItemAlbumId: initialInspirationItem?.albumId ?? null,
-    initialInspirationStashAlbumId: initialInspirationStash?.albumId ?? null,
     initialSeriesId,
   };
 }

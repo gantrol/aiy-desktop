@@ -3,7 +3,7 @@ import {
   writeImportedMaterialMetadata,
 } from '@/main/database/assets/external-material-import-metadata';
 import type { LibraryStorage } from '@/main/database/core/storage';
-import { CREATION_DRAFT_CONFLICT } from '@/shared/creation-draft-errors';
+import { CREATION_DRAFT_CONFLICT, CREATION_DRAFT_UNAVAILABLE } from '@/shared/creation-draft-errors';
 import { type JsonMap, mediaUrl, now, text } from '@/main/database/core/values';
 import {
   creationDraftReferenceAssetIds,
@@ -22,6 +22,8 @@ import {
   type StagedMedia,
 } from '@/main/database/creations/intake-media';
 import { emptyCreationDictionaryScope } from '@/shared/album-creation-defaults';
+import { plainTextBlockDocument } from '@/shared/block-document-codecs';
+import { createOutlineDocument } from '@/shared/outline-document';
 import type {
   AlbumCreationDefaultsDto,
   AssetDto,
@@ -40,7 +42,8 @@ import type {
   MaterialSelectionTargetInput,
   WordPaletteReferenceInput,
 } from '@/shared/contracts';
-import { readCreationPromptStorage } from '@/shared/creation-prompt-storage';
+import { readCreationPromptStorage, writeCreationPromptStorage } from '@/shared/creation-prompt-storage';
+import { continuationSource, creationSourceItemId } from '@/main/database/creations/creation-continuation';
 import { generationQualityValues } from '@/shared/generation-quality';
 import { createHash } from 'node:crypto';
 import { ulid } from 'ulid';
@@ -52,9 +55,15 @@ async function waitForE2eCommitDelay() {
   await new Promise<void>((resolve) => setTimeout(resolve, Math.min(10_000, Math.trunc(requested))));
 }
 
-function assertDraftDocumentCompatible(existing: JsonMap | undefined, input: CreationDraftSaveInput) {
-  if (existing && readCreationPromptStorage(text(existing.prompt_nodes_json)).document && !input.document)
-    throw new Error('BLOCK_DOCUMENT_REQUIRED');
+function compatibleDraftInput(existing: JsonMap | undefined, input: CreationDraftSaveInput) {
+  const stored = existing ? readCreationPromptStorage(text(existing.prompt_nodes_json)) : undefined;
+  if (stored?.document && !input.document) throw new Error('BLOCK_DOCUMENT_REQUIRED');
+  return {
+    ...input,
+    startMode: input.startMode ?? stored?.startMode,
+    writingInstruction: input.writingInstruction ?? stored?.writingInstruction,
+    creationSource: stored?.creationSource,
+  };
 }
 
 export class IntakeRepository {
@@ -247,11 +256,13 @@ export class IntakeRepository {
         WHERE id = ? AND consumed_at IS NULL AND deleted_at IS NULL`,
       )
       .get(draftId);
-    if (!active) throw new Error('Creation draft is unavailable');
+    if (!active) throw new Error(`${CREATION_DRAFT_UNAVAILABLE}: Creation draft is unavailable`);
     return this.getDraft(draftId);
   }
 
   startDraft(input: CreationDraftStartInput, defaults: AlbumCreationDefaultsDto): CreationDraftDto {
+    const startMode = input.startMode ?? (defaults.recipes.length ? 'image' : 'manuscript');
+    const recipes = startMode === 'image' ? defaults.recipes : [];
     return this.db
       .transaction(() => {
         if (input.albumId) {
@@ -264,7 +275,7 @@ export class IntakeRepository {
           if (!album) throw new Error('Album not found');
           if (album.archived_at) throw new Error('Archived albums cannot start a new creation');
         }
-        for (const reference of defaults.recipes) {
+        for (const reference of recipes) {
           if (
             !this.db
               .prepare(
@@ -280,14 +291,17 @@ export class IntakeRepository {
         }
         const draft = this.saveDraft({
           id: null,
+          startMode,
           expectedUpdatedAt: null,
+          ...(startMode === 'outline' ? { document: createOutlineDocument(plainTextBlockDocument('')) } : {}),
           targetAlbumId: input.albumId,
           title: '',
           text: '',
-          referenceAssetIds: [],
+          referenceAssetIds: input.referenceAssetIds ?? [],
+          videoMaterialIds: input.videoMaterialIds ?? [],
           termPromptLocale: input.termPromptLocale,
           termIds: [],
-          wordPaletteReferences: defaults.recipes,
+          wordPaletteReferences: recipes,
           dictionaryScope: defaults.dictionaryScope,
           canvasPresetKey: null,
           quality: 'low',
@@ -296,10 +310,16 @@ export class IntakeRepository {
           modelTargets: [],
         });
         const appliedAt = now();
+        if (input.creationSource) {
+          const creationSource = continuationSource(this.storage, input.creationSource);
+          this.db
+            .prepare('UPDATE creation_drafts SET prompt_nodes_json=? WHERE id=?')
+            .run(writeCreationPromptStorage({ ...draft, creationSource }), draft.id);
+        }
         this.db.prepare('UPDATE creation_drafts SET defaults_applied_at = ? WHERE id = ?').run(appliedAt, draft.id);
         this.storage.recordChange('CREATION_DRAFT', draft.id, 'APPLY_ALBUM_DEFAULTS', {
           albumId: input.albumId,
-          recipeCount: defaults.recipes.length,
+          recipeCount: recipes.length,
           dictionaryMode: defaults.dictionaryScope.mode,
         });
         return this.getDraft(draft.id);
@@ -319,7 +339,7 @@ export class IntakeRepository {
               .get(input.id) as JsonMap | undefined)
           : undefined;
         if (input.id && !existing) throw new Error('Creation draft is unavailable');
-        assertDraftDocumentCompatible(existing, input);
+        const compatibleInput = compatibleDraftInput(existing, input);
         const targetAlbumId =
           input.targetAlbumId === undefined
             ? existing?.target_album_id
@@ -340,7 +360,7 @@ export class IntakeRepository {
         }
         const draftId = existing ? text(existing.id) : ulid();
         const modelTargets = this.normalizeModelTargets(input);
-        const normalized = normalizeCreationDraftSave(input, targetAlbumId, dictionaryScope, modelTargets);
+        const normalized = normalizeCreationDraftSave(compatibleInput, targetAlbumId, dictionaryScope, modelTargets);
         const storedVideoIds = existing ? creationDraftVideoMaterialIds(this.db, draftId) : [];
         const videoIds = [...new Set(input.videoMaterialIds ?? storedVideoIds)];
         if (videoIds.length > 8 || creationVideoAttachments(this.db, videoIds).length !== videoIds.length) {
@@ -674,12 +694,14 @@ export class IntakeRepository {
     const repeatCount = Math.max(1, Number(draft.repeat_count) || 1);
     const storedModelTargets = this.modelTargets(draft.model_targets_json);
     const title = text(draft.title);
+    const prompt = readCreationPromptStorage(text(draft.prompt_nodes_json));
     return {
       id: draftId,
       targetAlbumId: draft.target_album_id ? text(draft.target_album_id) : null,
       title: title,
       text: text(draft.text_content),
-      ...readCreationPromptStorage(text(draft.prompt_nodes_json)),
+      ...prompt,
+      creationItemId: creationSourceItemId(this.storage, prompt.creationSource ?? { kind: 'DRAFT', id: draftId }),
       referenceAssets,
       videoAttachments: creationVideoAttachments(this.db, creationDraftVideoMaterialIds(this.db, draftId)),
       termPromptLocale: text(draft.term_prompt_locale) === 'zh' ? 'zh' : 'en',

@@ -1,5 +1,5 @@
 import { useEffect, type Dispatch, type SetStateAction } from 'react';
-import type { CodexUsageHistoryItem, CodexUsageTask } from '@/shared/contracts';
+import type { CodexUsageState, CodexUsageTask } from '@/shared/contracts';
 import type { CodexUsageTaskAction } from '@/renderer/features/extensions/CodexUsageTaskControls';
 
 /** Task completion updates the history, not the report the reader has explicitly chosen. */
@@ -10,7 +10,7 @@ export function useCodexUsageTaskState({
   loadInitialInvestigation,
   loadCompletedInvestigation,
   setTask,
-  setHistory,
+  setHistoryState,
   setTaskAction,
   setError,
 }: {
@@ -20,7 +20,7 @@ export function useCodexUsageTaskState({
   loadInitialInvestigation(id: string): Promise<void>;
   loadCompletedInvestigation(id: string): Promise<void>;
   setTask: Dispatch<SetStateAction<CodexUsageTask | null>>;
-  setHistory: Dispatch<SetStateAction<CodexUsageHistoryItem[]>>;
+  setHistoryState(state: CodexUsageState): void;
   setTaskAction: Dispatch<SetStateAction<CodexUsageTaskAction>>;
   setError: Dispatch<SetStateAction<string>>;
 }) {
@@ -38,7 +38,7 @@ export function useCodexUsageTaskState({
       const state = await window.desktopApi.codexUsageState();
       if (disposed || request !== sequence) return;
       if (requestedTaskRevision === taskRevision) setTask(state.task);
-      setHistory(state.history);
+      setHistoryState(state);
       const completed = preferred ?? (state.task?.status === 'COMPLETED' ? state.task.investigationId : null);
       if (requestedTaskRevision !== taskRevision) return;
       if (preferred) await loadCompletedInvestigation(preferred);
@@ -66,7 +66,7 @@ export function useCodexUsageTaskState({
     loadInitialInvestigation,
     loadCompletedInvestigation,
     setTask,
-    setHistory,
+    setHistoryState,
     setTaskAction,
     setError,
   ]);

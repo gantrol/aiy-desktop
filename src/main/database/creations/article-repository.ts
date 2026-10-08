@@ -36,6 +36,7 @@ import {
 } from '@/shared/contracts/article';
 import { assertBlockDocumentReady } from '@/shared/contracts/block-document';
 import { createHash } from 'node:crypto';
+import { draftCreationSource, registerCreationOutput } from '@/main/database/creations/creation-continuation';
 import { ulid } from 'ulid';
 import {
   articleWriteContext,
@@ -250,10 +251,16 @@ export class ArticleRepository {
       const form = { role: 'ARTICLE' as const, entity: { kind: 'ARTICLE' as const, id }, anchorKey: null };
       const registration = identity?.creationItemId
         ? this.creationItems.addForm({ ...form, creationItemId: identity.creationItemId })
-        : this.creationItems.createWithForm(
-            { albumId: input.albumId, form },
-            identity?.newCreationItemId ? { id: identity.newCreationItemId } : undefined,
-          );
+        : input.consumeCreationDraftId && !identity?.newCreationItemId
+          ? registerCreationOutput(
+              this.storage,
+              { albumId: input.albumId, form },
+              draftCreationSource(this.storage, input.consumeCreationDraftId),
+            )
+          : this.creationItems.createWithForm(
+              { albumId: input.albumId, form },
+              identity?.newCreationItemId ? { id: identity.newCreationItemId } : undefined,
+            );
       this.consumeCreationDraft(input.consumeCreationDraftId, timestamp, id);
       this.storage.recordChange(
         'ARTICLE',

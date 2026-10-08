@@ -3,7 +3,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import { Label } from '@/renderer/components/ui/label';
 import { ProfileAvatar } from '@/renderer/features/me/ProfileAvatar';
-import { prepareProfileAvatar } from '@/renderer/features/me/profile-avatar';
+import { prepareProfileAvatar, profileAvatarAccept } from '@/renderer/features/me/profile-avatar';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type { AuthorFields } from '@/shared/contracts/me';
 
@@ -60,7 +60,7 @@ export function AuthorProfileForm({
         <Input
           ref={fileRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp"
+          accept={profileAvatarAccept}
           className="hidden"
           aria-label={copy.changeAvatar}
           disabled={busy || reading}

@@ -20,6 +20,8 @@ files:
   # code is already present in the Vite bundles.
   - '!node_modules/**'
   - package.json
+  - LICENSE
+  - LICENSE-PLUGIN-EXCEPTION
   # better-sqlite3 is the only external main-process dependency. Package only
   # its JavaScript loader and the native binary for the Store target.
   - from: node_modules/better-sqlite3
@@ -47,6 +49,10 @@ asarUnpack:
   - node_modules/better-sqlite3/prebuilds/win32-x64.node
 npmRebuild: false
 extraResources:
+  - from: LICENSE
+    to: LICENSE
+  - from: LICENSE-PLUGIN-EXCEPTION
+    to: LICENSE-PLUGIN-EXCEPTION
   - from: THIRD_PARTY_NOTICES.md
     to: THIRD_PARTY_NOTICES.md
   - from: extensions

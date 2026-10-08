@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AssetDto, GalleryDictionaryFilter, GalleryListInput, MaterialAlbumDto } from '@/shared/contracts';
+import type {
+  AssetDto,
+  GalleryDictionaryFilter,
+  GalleryItemDto,
+  GalleryListInput,
+  MaterialAlbumDto,
+} from '@/shared/contracts';
 import { OTHER_DOMAIN, OTHER_TYPE } from '@/renderer/components/dictionary/dictionary-navigation';
 import type {
   MaterialImagePickerCollection,
@@ -9,6 +15,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 
 export interface MaterialImagePickerMaterialImage {
   asset: AssetDto;
+  item: GalleryItemDto;
 }
 
 interface MaterialImagePickerMaterialState {
@@ -71,11 +78,13 @@ function dictionaryFilter(collection: MaterialImagePickerCollection): GalleryDic
 function listInput(
   collection: MaterialImagePickerCollection,
   locale: GalleryListInput['locale'],
+  query: string,
   cursor: string | null,
   knownTotal?: number,
 ): GalleryListInput {
   return {
     locale,
+    query: query || undefined,
     source: collection.kind === 'dictionary' ? 'DICTIONARY' : 'LIBRARY',
     dictionary: dictionaryFilter(collection),
     albumId: collection.kind === 'album' ? collection.albumId : undefined,
@@ -86,10 +95,14 @@ function listInput(
   };
 }
 
-function imageItems(items: Awaited<ReturnType<typeof window.desktopApi.galleryList>>['items']) {
+function imageItems(items: GalleryItemDto[], includeVideos: boolean) {
   return items
-    .filter((item) => item.materialKind !== 'VIDEO' && item.asset.mimeType.startsWith('image/'))
-    .map((item) => ({ asset: item.asset }));
+    .filter((item) =>
+      item.asset.mimeType.startsWith('video/')
+        ? includeVideos
+        : item.materialKind !== 'VIDEO' && item.asset.mimeType.startsWith('image/'),
+    )
+    .map((item) => ({ asset: item.asset, item }));
 }
 
 function collectionIdentity(collection: MaterialImagePickerCollection) {
@@ -113,12 +126,16 @@ export function useMaterialImagePickerMaterials({
   libraryKey,
   dataRevision,
   collection,
+  query = '',
+  includeVideos = false,
   diagnostics,
 }: {
   active: boolean;
   libraryKey: string;
   dataRevision: number;
   collection: MaterialImagePickerCollection;
+  query?: string;
+  includeVideos?: boolean;
   diagnostics?: MaterialImagePickerDiagnosticSink;
 }) {
   const { locale } = useI18n();
@@ -140,8 +157,16 @@ export function useMaterialImagePickerMaterials({
     }
     return { kind: 'all' };
   }, [albumId, collectionKind, domainId, termId, typeId]);
-  const queryIdentity = JSON.stringify([libraryKey, locale, collectionIdentity(queryCollection)]);
-  const requestKey = JSON.stringify([queryIdentity, dataRevision]);
+  const search = query.trim();
+  const queryIdentity = JSON.stringify([
+    libraryKey,
+    locale,
+    collectionIdentity(queryCollection),
+    search,
+    includeVideos,
+  ]);
+  const [retryRevision, setRetryRevision] = useState(0);
+  const requestKey = JSON.stringify([queryIdentity, dataRevision, retryRevision]);
   const requestIdRef = useRef(0);
   const loadingMoreRef = useRef(false);
   const loadedRequestKeyRef = useRef<string | null>(null);
@@ -189,59 +214,64 @@ export function useMaterialImagePickerMaterials({
       loadingMore: false,
       failed: false,
     }));
-    void window.desktopApi
-      .galleryList(listInput(queryCollection, locale, null))
-      .then((page) => {
-        if (requestIdRef.current !== requestId) return;
-        settled = true;
-        const images = imageItems(page.items);
-        diagnostics?.('materials.request.succeeded', {
-          durationMs: performance.now() - startedAt,
-          imageCount: images.length,
-          itemCount: page.items.length,
-          requestId,
-        });
-        loadedRequestKeyRef.current = requestKey;
-        setState((current) =>
-          current.requestKey === requestKey
-            ? {
-                images,
-                total: page.total,
-                nextCursor: page.nextCursor,
-                identity: queryIdentity,
-                requestKey,
-                stale: false,
-                loaded: true,
-                loading: false,
-                loadingMore: false,
-                failed: false,
-              }
-            : current,
-        );
-      })
-      .catch((error: unknown) => {
-        if (requestIdRef.current === requestId) {
-          settled = true;
-          diagnostics?.('materials.request.failed', {
-            durationMs: performance.now() - startedAt,
-            errorName: error instanceof Error ? error.name : 'unknown',
-            requestId,
-          });
-          setState((current) =>
-            current.requestKey === requestKey
-              ? {
-                  ...current,
-                  stale: current.identity !== queryIdentity,
-                  loaded: true,
-                  loading: false,
-                  loadingMore: false,
-                  failed: true,
-                }
-              : current,
-          );
-        }
-      });
+    const timeout = window.setTimeout(
+      () =>
+        void window.desktopApi
+          .galleryList(listInput(queryCollection, locale, search, null))
+          .then((page) => {
+            if (requestIdRef.current !== requestId) return;
+            settled = true;
+            const images = imageItems(page.items, includeVideos);
+            diagnostics?.('materials.request.succeeded', {
+              durationMs: performance.now() - startedAt,
+              imageCount: images.length,
+              itemCount: page.items.length,
+              requestId,
+            });
+            loadedRequestKeyRef.current = requestKey;
+            setState((current) =>
+              current.requestKey === requestKey
+                ? {
+                    images,
+                    total: page.total,
+                    nextCursor: page.nextCursor,
+                    identity: queryIdentity,
+                    requestKey,
+                    stale: false,
+                    loaded: true,
+                    loading: false,
+                    loadingMore: false,
+                    failed: false,
+                  }
+                : current,
+            );
+          })
+          .catch((error: unknown) => {
+            if (requestIdRef.current === requestId) {
+              settled = true;
+              diagnostics?.('materials.request.failed', {
+                durationMs: performance.now() - startedAt,
+                errorName: error instanceof Error ? error.name : 'unknown',
+                requestId,
+              });
+              setState((current) =>
+                current.requestKey === requestKey
+                  ? {
+                      ...current,
+                      stale: current.identity !== queryIdentity,
+                      loaded: true,
+                      loading: false,
+                      loadingMore: false,
+                      failed: true,
+                    }
+                  : current,
+              );
+            }
+          }),
+      search ? 200 : 0,
+    );
     return () => {
+      window.clearTimeout(timeout);
       if (requestIdRef.current === requestId) {
         requestIdRef.current += 1;
         if (!settled) {
@@ -252,7 +282,7 @@ export function useMaterialImagePickerMaterials({
         }
       }
     };
-  }, [active, diagnostics, locale, queryCollection, queryIdentity, requestKey]);
+  }, [active, diagnostics, includeVideos, locale, queryCollection, queryIdentity, requestKey, search]);
 
   const loadMore = useCallback(async () => {
     if (!active || state.identity !== queryIdentity || !state.nextCursor || state.loading || loadingMoreRef.current) {
@@ -265,7 +295,7 @@ export function useMaterialImagePickerMaterials({
     setState((current) => ({ ...current, loadingMore: true, failed: false }));
     try {
       const page = await window.desktopApi.galleryList(
-        listInput(queryCollection, locale, state.nextCursor, state.total),
+        listInput(queryCollection, locale, search, state.nextCursor, state.total),
       );
       if (requestIdRef.current !== requestId) return;
       diagnostics?.('materials.load-more.succeeded', {
@@ -276,7 +306,7 @@ export function useMaterialImagePickerMaterials({
       setState((current) => {
         if (current.identity !== queryIdentity) return current;
         const seen = new Set(current.images.map(({ asset }) => asset.id));
-        const nextImages = imageItems(page.items).filter(({ asset }) => !seen.has(asset.id));
+        const nextImages = imageItems(page.items, includeVideos).filter(({ asset }) => !seen.has(asset.id));
         return {
           ...current,
           images: [...current.images, ...nextImages],
@@ -299,9 +329,11 @@ export function useMaterialImagePickerMaterials({
   }, [
     active,
     diagnostics,
+    includeVideos,
     locale,
     queryCollection,
     queryIdentity,
+    search,
     state.identity,
     state.loading,
     state.nextCursor,
@@ -312,10 +344,13 @@ export function useMaterialImagePickerMaterials({
   const stale = state.identity !== queryIdentity;
   return {
     ...state,
+    images: stale ? [] : state.images,
+    nextCursor: stale ? null : state.nextCursor,
     stale,
     failed: waitingForEffect ? false : state.failed,
     loading: state.loading || waitingForEffect,
     loadMore,
+    retry: () => setRetryRevision((revision) => revision + 1),
   };
 }
 

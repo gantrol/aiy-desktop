@@ -754,14 +754,13 @@ export function DictionaryScreen({
           layoutKey="dictionary"
           collectionLabel={messages.dictionary.overview.words}
           selectionKey={selectedId || null}
-          collection={({ toggle, visible, revealDetail }) => (
+          collection={({ visible, revealDetail }) => (
             <DictionaryBrowsePane
               active={active && visible}
               context={browseContext}
               locale={locale}
               origin={browseOrigin?.some((term) => term.id === selectedId) ? browseOrigin : null}
               detail={detail}
-              toggle={toggle}
               breadcrumb={{
                 overview: messages.dictionary.overview.words,
                 path: browseOrigin?.some((term) => term.id === selectedId)

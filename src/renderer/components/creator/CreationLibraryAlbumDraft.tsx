@@ -1,4 +1,5 @@
-import { FolderIcon, LoaderCircleIcon } from 'lucide-react';
+import { LoaderCircleIcon } from 'lucide-react';
+import { AlbumContentCover } from '@/renderer/components/albums/AlbumContentCover';
 import { useEffect, useRef, useState } from 'react';
 import type { AlbumDto } from '@/shared/contracts';
 import { Input } from '@/renderer/components/ui/input';
@@ -89,7 +90,7 @@ export function CreationLibraryAlbumDraft({ request, siblings, branchTopology, b
         style={{ width: CREATION_TREE_COMPACT_NODE_METRICS.width }}
       >
         <span className="ml-7 grid size-7 place-items-center text-muted-foreground">
-          <FolderIcon className="size-5" aria-hidden="true" />
+          <AlbumContentCover />
         </span>
       </CreationTreeNodeFrame>
       <Input

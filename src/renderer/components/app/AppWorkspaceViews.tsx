@@ -2,6 +2,7 @@ import { ReturnToMaterialsBar } from '@/renderer/components/app/ReturnToMaterial
 import type { AppLocation, AppView, MaterialsReturnContext } from '@/renderer/components/app/app-navigation';
 import { CreatorScreen } from '@/renderer/features/creator/lazyCreatorScreen';
 import { AppContentSearchEditor, type ContentSearchEditorHost } from '@/renderer/components/app/AppContentSearchEditor';
+import { ContentSearchTargetContext } from '@/renderer/features/content-search/ContentSearchTargetContext';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type {
   BootstrapDto,
@@ -150,20 +151,16 @@ function shouldMountCreationWorkspace(
 ) {
   const libraryStartVisible = data.libraryEmpty && view === 'creator' && location.creator.surface === 'default';
   const currentViewIsCreationWorkspace = surfaceVisible && creationLibraryViews.includes(view);
-  const retainEditorInVisibleTab =
-    surfaceVisible && !data.libraryEmpty && (retainedViews.has('creator') || retainedViews.has('documents'));
-  return !libraryStartVisible && (currentViewIsCreationWorkspace || retainEditorInVisibleTab);
+  const retainCreationWorkspace =
+    !data.libraryEmpty && (retainedViews.has('creator') || retainedViews.has('documents'));
+  return !libraryStartVisible && (currentViewIsCreationWorkspace || retainCreationWorkspace);
 }
 
 function useRetainedCreationViews(surfaceVisible: boolean, view: AppView) {
-  // Navigation history must not recreate every previously visited workspace after a renderer restart.
+  // Only retain visited workspaces within the group's existing mounted-tab limit.
   const retainedViews = useRef(new Set<AppView>());
   useEffect(() => {
-    if (!surfaceVisible) {
-      retainedViews.current.clear();
-      return;
-    }
-    if (creationLibraryViews.includes(view)) retainedViews.current.add(view);
+    if (surfaceVisible && creationLibraryViews.includes(view)) retainedViews.current.add(view);
   }, [surfaceVisible, view]);
   return retainedViews.current;
 }
@@ -345,9 +342,13 @@ export function AppWorkspaceViews(props: Props) {
     onVideoDocumentsNavigate,
   });
   return (
-    <>
+    <ContentSearchTargetContext.Provider
+      value={surfaceVisible && (view === 'creator' || view === 'documents') ? location.contentSearchTarget : undefined}
+    >
       {shouldMountCreationWorkspace(props, retainedCreationViews) && (
-        <Activity mode={workspaceActivityMode(surfaceVisible, view, creationLibraryViews)}>
+        // The tab surface already hides/inerts retained tabs. Activity's hidden mode tears down
+        // editor effects and sessions, rebuilding long documents and images on every tab return.
+        <Activity mode={creationLibraryViews.includes(view) ? 'visible' : 'hidden'}>
           <div className="flex size-full min-h-0 flex-col">
             {materialsReturnContext?.destination === view && !comparisonFullWindow && !creationPromptFullWindow && (
               <ReturnToMaterialsBar
@@ -444,7 +445,7 @@ export function AppWorkspaceViews(props: Props) {
           </div>
         </Activity>
       )}
-      {surfaceVisible && view === 'gallery' && (
+      {view === 'gallery' && (
         <Activity mode={workspaceActivityMode(surfaceVisible, view, galleryViews)}>
           <div className="size-full">
             {loadingBoundaries.gallery(
@@ -534,6 +535,6 @@ export function AppWorkspaceViews(props: Props) {
           </div>
         </Activity>
       )}
-    </>
+    </ContentSearchTargetContext.Provider>
   );
 }

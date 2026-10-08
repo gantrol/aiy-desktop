@@ -1,10 +1,9 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { ArticleEditorOutlineDepthLimit } from '@/renderer/components/creator/article-editor/articleEditorOutlineModel';
 import {
   clampArticleEditorOutlineWidth,
   loadArticleEditorOutlinePreferences,
   maximumArticleEditorOutlineWidth,
-  maximumArticleEditorMediaWidth,
   minimumArticleEditorOutlineWidth,
   saveArticleEditorOutlinePreferences,
   type ArticleEditorOutlinePreferences,
@@ -14,23 +13,16 @@ import {
 } from '@/renderer/components/creator/article-editor/articleEditorOutlinePreferences';
 import type { ArticleDocumentWidth } from '@/renderer/lib/articleTypography';
 
-function panelWidth(preferences: ArticleEditorOutlinePreferences, panel: ArticleEditorSidebarPanel) {
-  return panel === 'MEDIA' || panel === 'FILES'
-    ? preferences.mediaWidth
-    : panel === 'OUTLINE'
-      ? preferences.outlineWidth
-      : preferences.commentsWidth;
-}
-
-export function useArticleEditorOutlinePane(scope: ArticleEditorPanePreferenceScope = 'PRIMARY') {
-  const [preferences, setPreferences] = useState(() => loadArticleEditorOutlinePreferences(scope));
-  const preferencesRef = useRef(preferences);
+export function useArticleEditorOutlinePane(
+  scope: ArticleEditorPanePreferenceScope = 'PRIMARY',
+  initialPanel: ArticleEditorSidebarPanel = 'OUTLINE',
+) {
+  const [preferences, setPreferences] = useState(() => loadArticleEditorOutlinePreferences(scope, initialPanel));
 
   const updatePreferences = useCallback(
     (update: Partial<ArticleEditorOutlinePreferences>) => {
       setPreferences((current) => {
         const next = { ...current, ...update };
-        preferencesRef.current = next;
         saveArticleEditorOutlinePreferences(next, scope);
         return next;
       });
@@ -40,7 +32,6 @@ export function useArticleEditorOutlinePane(scope: ArticleEditorPanePreferenceSc
   const replacePreferences = useCallback(
     (next: ArticleEditorOutlinePreferences) => {
       const snapshot = { ...next };
-      preferencesRef.current = snapshot;
       setPreferences(snapshot);
       saveArticleEditorOutlinePreferences(snapshot, scope);
     },
@@ -77,33 +68,13 @@ export function useArticleEditorOutlinePane(scope: ArticleEditorPanePreferenceSc
     [updatePreferences],
   );
   const setPanelWidth = useCallback(
-    (panel: ArticleEditorSidebarPanel, width: number) => {
-      const nextWidth =
-        panel === 'MEDIA' || panel === 'FILES'
-          ? Math.min(maximumArticleEditorMediaWidth, Math.max(minimumArticleEditorOutlineWidth, Math.round(width)))
-          : clampArticleEditorOutlineWidth(width);
-      updatePreferences(
-        panel === 'MEDIA' || panel === 'FILES'
-          ? { mediaWidth: nextWidth }
-          : panel === 'OUTLINE'
-            ? { outlineWidth: nextWidth, width: nextWidth }
-            : { commentsWidth: nextWidth, width: nextWidth },
-      );
-    },
+    (width: number) => updatePreferences({ width: clampArticleEditorOutlineWidth(width) }),
     [updatePreferences],
   );
-  const getPanelWidth = useCallback(
-    (panel: ArticleEditorSidebarPanel) => panelWidth(preferencesRef.current, panel),
-    [],
-  );
-
   return {
     preferences,
     minimumWidth: minimumArticleEditorOutlineWidth,
-    maximumWidth:
-      preferences.activePanel === 'MEDIA' || preferences.activePanel === 'FILES'
-        ? maximumArticleEditorMediaWidth
-        : maximumArticleEditorOutlineWidth,
+    maximumWidth: maximumArticleEditorOutlineWidth,
     setExpanded,
     setDepthLimit,
     setFollowCursor,
@@ -112,7 +83,6 @@ export function useArticleEditorOutlinePane(scope: ArticleEditorPanePreferenceSc
     setDocumentWidth,
     setPanelExpanded,
     setPanelWidth,
-    getPanelWidth,
     replacePreferences,
   };
 }

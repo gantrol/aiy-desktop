@@ -29,10 +29,14 @@ export function CodexUsageTaskControls({
           type="button"
           variant="outline"
           className="w-full @lg/codex-usage:w-auto"
-          disabled={action !== null}
+          disabled={!authorized || action !== null}
           onClick={onPause}
         >
-          {action === 'PAUSE' ? <LoaderCircleIcon className="size-4 animate-spin" /> : <PauseIcon className="size-4" />}
+          {action === 'PAUSE' ? (
+            <LoaderCircleIcon className="size-4 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <PauseIcon className="size-4" />
+          )}
           {labels.pause}
         </Button>
       ) : resumable ? (
@@ -40,10 +44,14 @@ export function CodexUsageTaskControls({
           type="button"
           variant="outline"
           className="w-full @lg/codex-usage:w-auto"
-          disabled={action !== null}
+          disabled={!authorized || action !== null}
           onClick={onResume}
         >
-          {action === 'RESUME' ? <LoaderCircleIcon className="size-4 animate-spin" /> : <PlayIcon className="size-4" />}
+          {action === 'RESUME' ? (
+            <LoaderCircleIcon className="size-4 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <PlayIcon className="size-4" />
+          )}
           {labels.resume}
         </Button>
       ) : null}
@@ -55,7 +63,7 @@ export function CodexUsageTaskControls({
           onClick={onScan}
         >
           {action === 'SCAN' ? (
-            <LoaderCircleIcon className="size-4 animate-spin" />
+            <LoaderCircleIcon className="size-4 animate-spin motion-reduce:animate-none" />
           ) : (
             <ScanLineIcon className="size-4" />
           )}

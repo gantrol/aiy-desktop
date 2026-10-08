@@ -18,9 +18,11 @@ import type {
   ExtensionDto,
 } from '@/shared/contracts';
 import { Badge } from '@/renderer/components/ui/badge';
+import { ItemActions } from '@/renderer/components/ui/item-actions';
 import { Button } from '@/renderer/components/ui/button';
 import { CollectionDetailLayout } from '@/renderer/components/workbench/CollectionDetailLayout';
 import { WorkbenchNavigationPane } from '@/renderer/components/workbench/WorkbenchNavigationPane';
+import { WorkspaceSidebarContent } from '@/renderer/components/workspace/WorkspaceHeader';
 import { CodexHistoryAutoPager } from '@/renderer/features/extensions/CodexHistoryAutoPager';
 import { CodexHistoryNavigation } from '@/renderer/features/extensions/CodexHistoryNavigation';
 import { CodexHistorySearchFilters } from '@/renderer/features/extensions/CodexHistorySearchFilters';
@@ -113,43 +115,46 @@ export function CodexHistorySearchConfiguration({
       minimumDetailWidth={500}
       selectionKey={selectedResultId || null}
       className={standalone ? undefined : 'h-[32rem]'}
-      collection={({ toggle, revealDetail }) => (
+      collectionHeader={() => (
+        <>
+          <span
+            className="min-w-0 truncate text-xs"
+            title={l.indexed(state.index.indexedThreads, state.index.indexedMessages)}
+          >
+            {snapshot?.truncated ? `${l.matches(snapshot.total)}+` : l.matches(snapshot?.total ?? 0)}
+          </span>
+          <div className="ml-auto flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={l.actions.refresh}
+              title={l.actions.refresh}
+              disabled={state.refreshing}
+              onClick={() => void state.refresh(false)}
+            >
+              {state.refreshing ? (
+                <LoaderCircleIcon className="size-4 animate-spin" />
+              ) : (
+                <RefreshCwIcon className="size-4" />
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={l.actions.rebuild}
+              title={l.actions.rebuild}
+              disabled={state.refreshing}
+              onClick={() => void state.refresh(true)}
+            >
+              <RotateCcwIcon className="size-4" />
+            </Button>
+          </div>
+        </>
+      )}
+      collection={({ revealDetail }) => (
         <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-          <header className="flex min-h-11 items-center gap-2 border-b px-3 text-xs text-muted-foreground">
-            {toggle}
-            <span>{snapshot?.truncated ? `${l.matches(snapshot.total)}+` : l.matches(snapshot?.total ?? 0)}</span>
-            <span className="hidden sm:inline">
-              {l.indexed(state.index.indexedThreads, state.index.indexedMessages)}
-            </span>
-            <div className="ml-auto flex items-center gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={l.actions.refresh}
-                title={l.actions.refresh}
-                disabled={state.refreshing}
-                onClick={() => void state.refresh(false)}
-              >
-                {state.refreshing ? (
-                  <LoaderCircleIcon className="size-4 animate-spin" />
-                ) : (
-                  <RefreshCwIcon className="size-4" />
-                )}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={l.actions.rebuild}
-                title={l.actions.rebuild}
-                disabled={state.refreshing}
-                onClick={() => void state.refresh(true)}
-              >
-                <RotateCcwIcon className="size-4" />
-              </Button>
-            </div>
-          </header>
           <div className="min-h-0 flex-1 overflow-y-auto" aria-busy={state.loading}>
             {snapshot?.items.length ? (
               <div className="divide-y">
@@ -159,7 +164,7 @@ export function CodexHistorySearchConfiguration({
                     <article
                       key={item.threadId}
                       data-current={selected || undefined}
-                      className="group flex data-[current]:bg-selected/70 hover:bg-hover"
+                      className="group/item flex data-[current]:bg-selected/70 hover:bg-hover"
                     >
                       <Button
                         type="button"
@@ -215,17 +220,18 @@ export function CodexHistorySearchConfiguration({
                           </span>
                         </span>
                       </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="mr-2 mt-2 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                        aria-label={l.preview.open}
-                        title={l.preview.open}
-                        onClick={() => void state.openThread(item.threadId)}
-                      >
-                        <ExternalLinkIcon className="size-4" />
-                      </Button>
+                      <ItemActions className="mr-2 mt-2 self-start">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={l.preview.open}
+                          title={l.preview.open}
+                          onClick={() => void state.openThread(item.threadId)}
+                        >
+                          <ExternalLinkIcon className="size-4" />
+                        </Button>
+                      </ItemActions>
                     </article>
                   );
                 })}
@@ -309,7 +315,9 @@ export function CodexHistorySearchConfiguration({
           {!authorized || state.index.status === 'UNAVAILABLE' ? (
             <div className="grid min-h-0 flex-1 place-items-center text-sm text-muted-foreground">{l.unavailable}</div>
           ) : (
-            <div className="min-h-0 min-w-0 flex-1">{results}</div>
+            <div className="min-h-0 min-w-0 flex-1">
+              <WorkspaceSidebarContent>{results}</WorkspaceSidebarContent>
+            </div>
           )}
         </div>
       </div>

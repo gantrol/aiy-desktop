@@ -159,10 +159,10 @@ function outlineItemSummaries(doc: ProseMirrorNode): OutlineItemSummary[] {
   return summaries;
 }
 
-export function outlineParentIds(doc: ProseMirrorNode, focus: string | null = null): string[] {
+export function outlineScopeRootIds(doc: ProseMirrorNode, focus: string | null = null): string[] {
   const summaries = outlineItemSummaries(doc);
   return summaries
-    .filter((item) => item.hasChildren && (!focus || item.id === focus || item.ancestors.includes(focus)))
+    .filter((item) => item.hasChildren && (focus ? item.id === focus : item.ancestors.length === 0))
     .map((item) => item.id);
 }
 
@@ -433,10 +433,10 @@ export function toggleOutlineChildBranches(editor: Editor, id: string) {
   );
 }
 
-export function toggleOutlineAllParents(editor: Editor) {
+export function toggleOutlineScopeRoots(editor: Editor) {
   if (editor.isDestroyed || activeOutlineView(editor).composing) return false;
   const current = outlineViewState(editor.state);
-  const ids = outlineParentIds(editor.state.doc, current.focus);
+  const ids = outlineScopeRootIds(editor.state.doc, current.focus);
   if (!ids.length) return false;
   return setOutlineItemsFolded(
     editor,

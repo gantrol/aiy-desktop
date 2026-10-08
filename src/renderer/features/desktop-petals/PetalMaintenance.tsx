@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { petalErrorText } from '@/shared/petal-errors';
+import { TemporaryFilesPanel } from '@/renderer/features/desktop-petals/TemporaryFilesPanel';
 
 export function PetalMaintenance() {
   const copy = useI18n().messages.desktopPetals;
@@ -20,6 +21,7 @@ export function PetalMaintenance() {
   };
   return (
     <div className="space-y-2">
+      <TemporaryFilesPanel settings />
       <Button variant="outline" size="sm" disabled={busy} onClick={() => void reload()}>
         {copy.menu.reload}
       </Button>

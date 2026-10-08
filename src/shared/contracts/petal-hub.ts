@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { petalError } from '@/shared/petal-errors';
+import { SCREEN_MAGNIFIER_CENTER_ID, screenMagnifierSettingsSchema } from '@/shared/contracts/screen-magnifier';
 
 export const petalHubViewSchema = z.enum(['flower', 'notes', 'settings', 'layers', 'sources']);
 export type PetalHubView = z.infer<typeof petalHubViewSchema>;
@@ -7,7 +8,7 @@ export type PetalHubView = z.infer<typeof petalHubViewSchema>;
 export const BUILTIN_PETAL_CENTER_PROVIDER_IDS = ['none', 'clock', 'pomodoro'] as const;
 export const CODEX_PETAL_CENTER_PROVIDER_ID = 'codex';
 export function isPetalCenterMetricProvider(id: string) {
-  return !BUILTIN_PETAL_CENTER_PROVIDER_IDS.some((builtIn) => builtIn === id);
+  return id !== SCREEN_MAGNIFIER_CENTER_ID && !BUILTIN_PETAL_CENTER_PROVIDER_IDS.some((builtIn) => builtIn === id);
 }
 export const petalCenterProviderIdSchema = z
   .string()
@@ -31,7 +32,11 @@ const timeZone = z
 
 export const petalHubSettingsSchema = z
   .object({
-    mode: petalCenterProviderIdSchema.default('none'),
+    // The earlier magnifier mode overwrote its return target. Retain timer data
+    // and use Pomodoro as the explicit fallback for that pre-release value.
+    mode: petalCenterProviderIdSchema
+      .transform((value) => (value === SCREEN_MAGNIFIER_CENTER_ID ? 'pomodoro' : value))
+      .default('none'),
     title: z.string().max(200).default(''),
     timeZone: timeZone.default('UTC'),
     focusMinutes: z.number().int().min(1).max(180).default(25),
@@ -39,6 +44,7 @@ export const petalHubSettingsSchema = z
     codexLimitId: z.string().max(512).nullable().default(null),
     flowerSize: z.number().int().min(128).max(184).default(144),
     timerNotification: z.boolean().default(true),
+    magnifier: screenMagnifierSettingsSchema.optional(),
   })
   .strict();
 export type PetalHubSettings = z.infer<typeof petalHubSettingsSchema>;
@@ -98,7 +104,7 @@ export const PETAL_WINDOW_SIZES = {
   note: { width: 328, height: 362 },
   flower: { width: 224, height: 224 },
   notes: { width: 520, height: 580 },
-  settings: { width: 328, height: 470 },
+  settings: { width: 592, height: 448 },
   layers: { width: 300, height: 360 },
   sources: { width: 328, height: 410 },
 } as const;

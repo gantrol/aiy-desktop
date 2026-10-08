@@ -1,6 +1,7 @@
 import { useI18n } from '@/renderer/i18n/useI18n';
-import type { AssetDto, BrowserCompanionStageInput } from '@/shared/contracts';
+import type { AssetDto, BrowserCompanionStageInput, BrowserCompanionTarget } from '@/shared/contracts';
 import { contentImageNumber } from '@/shared/content-image-number';
+import { xPostThread } from '@/shared/x-post-text';
 
 function attribute(value: string) {
   return value.replace(/&/gu, '&amp;').replace(/"/gu, '&quot;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;');
@@ -9,13 +10,16 @@ function attribute(value: string) {
 export function PublicationPreview({
   prepared,
   assets,
+  target,
 }: {
   prepared: Omit<BrowserCompanionStageInput, 'target' | 'watermark'>;
   assets: readonly AssetDto[];
+  target: BrowserCompanionTarget;
 }) {
   const { messages } = useI18n();
   const copy = messages.publishing;
   const ids = prepared.mediaAssetIds ?? [];
+  const posts = target === 'x' ? xPostThread(prepared.text) : null;
   const imageUrl = (id: string) =>
     assets.find((asset) => asset.id === id)?.mediaUrl ?? `aiy-media://asset/${encodeURIComponent(id)}`;
   const html = prepared.articleHtml?.replace(
@@ -25,7 +29,9 @@ export function PublicationPreview({
   );
   return (
     <div className="grid min-w-0 gap-3">
-      {prepared.title && <p className="break-words font-medium">{prepared.title}</p>}
+      {prepared.title && target !== 'x' && target !== 'weibo' && (
+        <p className="break-words font-medium">{prepared.title}</p>
+      )}
       {html ? (
         <iframe
           title={copy.articlePreview}
@@ -34,6 +40,14 @@ export function PublicationPreview({
           className="h-80 w-full rounded-md border bg-white"
           srcDoc={`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src aiy-media: data:; style-src 'unsafe-inline';"></head><body>${html}</body></html>`}
         />
+      ) : posts && posts.length > 1 ? (
+        <ol className="grid max-h-64 list-decimal gap-3 overflow-y-auto pl-6 text-sm leading-relaxed">
+          {posts.map((post, index) => (
+            <li key={index} className="whitespace-pre-wrap break-words" data-publication-text>
+              {post}
+            </li>
+          ))}
+        </ol>
       ) : (
         <p
           data-publication-text

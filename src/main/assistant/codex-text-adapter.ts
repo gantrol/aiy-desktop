@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { planGifMotion } from '@/main/media/gif-planning';
 import type { GifPlanRequest } from '@/shared/contracts/gif-motion-plan';
 import { existsSync, writeFileSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type {
   ArticleCheckInput,
@@ -237,7 +238,11 @@ export class CodexTextAdapter extends CodexAdapterCore {
       try {
         const schemaPath = path.join(jobDir, 'assist.schema.json');
         const outputPath = path.join(jobDir, 'last-message.json');
-        writeFileSync(schemaPath, JSON.stringify(assistSchemaForMode(input.mode)), 'utf8');
+        await writeFile(
+          schemaPath,
+          JSON.stringify(assistSchemaForMode(input.mode, Boolean(input.documentTask))),
+          'utf8',
+        );
         const prompt = buildCodexAssistPrompt(input, history);
         await this.runTrackedStatelessProcess(
           this.binary,
@@ -410,7 +415,7 @@ export class CodexTextAdapter extends CodexAdapterCore {
               model: context.model,
               effort: context.effort,
               localImages: imagePaths.slice(0, 8),
-              outputSchema: assistSchemaForMode(input.mode),
+              outputSchema: assistSchemaForMode(input.mode, Boolean(input.documentTask)),
               timeoutMs: 240_000,
               onStarted: (nextCancel, turnId) => {
                 cancel = nextCancel;

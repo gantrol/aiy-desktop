@@ -227,6 +227,7 @@ export default defineConfig(({ command }) => {
             index: path.resolve(__dirname, 'src/main/index.ts'),
             'agent-cli': path.resolve(__dirname, 'src/main/agent-cli-entry.ts'),
             'model-worker': path.resolve(__dirname, 'src/main/model-worker-entry.ts'),
+            'codex-usage-worker': path.resolve(__dirname, 'src/main/codex-usage-worker-entry.ts'),
           },
           output: { entryFileNames: '[name].js' },
         },

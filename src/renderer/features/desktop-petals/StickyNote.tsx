@@ -1,4 +1,5 @@
 import { StickyNoteFooter } from '@/renderer/features/desktop-petals/StickyNoteFooter';
+import { useTemporaryNotePromotion } from '@/renderer/features/desktop-petals/use-temporary-note-promotion';
 import { useNoteEditorFlush } from '@/renderer/features/desktop-petals/use-note-editor-flush';
 import { ModalOverlayScope } from '@/renderer/components/ui/overlay-layer';
 import { NoteAttachmentStrip } from '@/renderer/features/content-editor/NoteAttachmentStrip';
@@ -55,6 +56,7 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
   const [closing, setClosing] = useState(false);
   const finishingCollapse = useRef(false);
   const editorHandle = useRef<VideoDocumentWysiwygEditorHandle | null>(null);
+  const scrollRoot = useRef<HTMLDivElement | null>(null);
   const onError = useCallback((reason: unknown) => setAppearanceError(String(reason)), []);
   const references = usePetalReferences(session, onError);
   const { settle } = references;
@@ -75,6 +77,7 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
     if (!(await session.flush())) return null;
     return session.getSnapshot().note;
   };
+  const promotion = useTemporaryNotePromotion({ session, editor: editorHandle, scrollRoot, prepare });
   useEffect(() => {
     session.receive(initialNote);
   }, [initialNote, session]);
@@ -125,6 +128,9 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
     else setClosing(true);
   };
   const noteActions: PetalNoteMenuActions = {
+    temporary: state.note.temporary,
+    promotionTarget: snapshot.temporaryTargetSpace,
+    onPromote: state.note.temporary ? promotion.promote : undefined,
     home: snapshot.home,
     alwaysOnTop: snapshot.alwaysOnTop,
     note: state.note,
@@ -156,6 +162,9 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
   return (
     <ModalOverlayScope>
       <StickyNoteSurface
+        className={
+          state.note.temporary ? 'outline outline-1 outline-dashed -outline-offset-2 outline-current' : undefined
+        }
         libraryName={snapshot.libraryName}
         color={state.note.color}
         icon={state.note.icon}
@@ -176,7 +185,7 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
           compact
           readOnly={state.frozen || closing || !state.note.editable}
         />
-        <div className="min-h-0 flex-1 overflow-y-auto" style={{ zoom: snapshot.contentScale ?? 1 }}>
+        <div ref={scrollRoot} className="min-h-0 flex-1 overflow-y-auto" style={{ zoom: snapshot.contentScale ?? 1 }}>
           <NoteDocumentInput
             session={session}
             state={state}
@@ -187,6 +196,7 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
             }}
             onHandleChange={(handle) => {
               editorHandle.current = handle;
+              promotion.restore(handle);
             }}
             onError={() => onError(copy.document.failure)}
             compact

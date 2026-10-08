@@ -52,7 +52,8 @@ export function AssetMedia({
   const visible = useMediaActivity(mediaRef, src ?? asset.mediaUrl);
   const reducedMotion = useMediaReducedMotion();
   const [loadedVideoSource, setLoadedVideoSource] = useState<string | null>(null);
-  const requested = src ?? (previewSize && asset.id ? mediaPosterUrl(asset.id, previewSize) : asset.mediaUrl);
+  const requested =
+    src ?? (previewSize && asset.id ? mediaPosterUrl(asset.id, previewSize, asset.mediaUrl) : asset.mediaUrl);
   const preview = previewSize !== undefined;
   const imageSrc = preview ? imagePreviewSource(asset, requested, { visible, reducedMotion, motion }) : requested;
   const videoSource = src ?? asset.mediaUrl;

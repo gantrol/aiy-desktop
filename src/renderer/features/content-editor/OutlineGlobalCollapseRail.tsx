@@ -3,19 +3,19 @@ import { useEditorState } from '@tiptap/react';
 import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import {
-  outlineParentIds,
+  outlineScopeRootIds,
   outlineViewState,
-  toggleOutlineAllParents,
+  toggleOutlineScopeRoots,
 } from '@/renderer/features/content-editor/outlineViewState';
 
-/** The outer rail is a quiet, full-tree shortcut; individual branch rails remain local. */
+/** The outer rail toggles only the scope roots, preserving deeper fold choices. */
 export function OutlineGlobalCollapseRail({ editor }: { editor: Editor }) {
   const copy = useI18n().messages.referenceOutline;
   const { canCollapse, hasParents } = useEditorState({
     editor,
     selector: ({ editor: current }) => {
       const view = outlineViewState(current.state);
-      const parentIds = outlineParentIds(current.state.doc, view.focus);
+      const parentIds = outlineScopeRootIds(current.state.doc, view.focus);
       return {
         canCollapse: parentIds.some((id) => !view.folded.has(id)),
         hasParents: parentIds.length > 0,
@@ -23,7 +23,7 @@ export function OutlineGlobalCollapseRail({ editor }: { editor: Editor }) {
     },
   });
   if (!hasParents) return null;
-  const label = canCollapse ? copy.collapseAllParents : copy.expandAllParents;
+  const label = canCollapse ? copy.collapseCurrentLevel : copy.expandCurrentLevel;
   return (
     <Button
       type="button"
@@ -40,7 +40,7 @@ export function OutlineGlobalCollapseRail({ editor }: { editor: Editor }) {
       onMouseDown={(event) => event.preventDefault()}
       onClick={(event) => {
         event.stopPropagation();
-        toggleOutlineAllParents(editor);
+        toggleOutlineScopeRoots(editor);
       }}
     >
       <span

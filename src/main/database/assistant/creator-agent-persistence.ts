@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { documentWritingTaskSchema } from '@/shared/contracts/document-assistant';
 import type { CodexAssistResult, CreatorAgentChatInput } from '@/shared/contracts';
 
 export const MAX_CREATOR_AGENT_REQUEST_BYTES = 8 * 1024 * 1024;
@@ -8,6 +9,7 @@ export const MAX_CREATOR_AGENT_PAGE_BYTES = 16 * 1024 * 1024;
 const identifier = z.string().min(1).max(200);
 
 const storedRequestSchema = z.object({
+  documentTask: documentWritingTaskSchema.optional(),
   mode: z.literal('chat'),
   prompt: z.string().max(30_000),
   message: z.string().max(8_000).optional().default(''),
@@ -146,6 +148,7 @@ function encodedJson(value: unknown, turnId: string, kind: 'REQUEST' | 'RESULT')
 
 export function encodeCreatorAgentRequest(input: CreatorAgentChatInput, turnId: string) {
   const parsed = storedRequestSchema.safeParse({
+    documentTask: input.documentTask,
     mode: input.mode,
     prompt: input.prompt,
     message: input.message,

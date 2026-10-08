@@ -69,6 +69,13 @@ export function CodexModelComparisonOverall({
         value === null ? '—' : `${numbers.format(value)}${throughputs[index]?.partial ? ' *' : ''}`,
       ),
       comparison: formatRatio(ratio(rates[0], rates[1]), numbers),
+      note: speed.note,
+    },
+    {
+      label: `${speed.generation} (${speed.unit})`,
+      values: [speed.unmeasured, speed.unmeasured],
+      comparison: '—',
+      note: speed.generationNote,
     },
     {
       label: speed.coverage,
@@ -79,7 +86,16 @@ export function CodexModelComparisonOverall({
       ),
       comparison: '—',
     },
-    { label: speed.generation, values: [speed.unmeasured, speed.unmeasured], comparison: '—' },
+    ...(['missingUsageTurnCount', 'invalidDurationTurnCount', 'abortedTurnCount'] as const).map((key) => ({
+      label:
+        key === 'missingUsageTurnCount'
+          ? speed.missingUsage
+          : key === 'invalidDurationTurnCount'
+            ? speed.invalidDuration
+            : speed.aborted,
+      values: throughputs.map((value) => (value === null ? '—' : numbers.format(value[key]))),
+      comparison: '—',
+    })),
     {
       label: labels.overall.inputCacheShare,
       values: summaries.map((summary) =>
@@ -158,16 +174,7 @@ export function CodexModelComparisonOverall({
           <TableBody>
             {rows.map((row) => (
               <TableRow key={row.label}>
-                <TableHead
-                  scope="row"
-                  title={
-                    row.label === speed.generation
-                      ? speed.generationNote
-                      : row.label.startsWith(speed.turn)
-                        ? speed.note
-                        : undefined
-                  }
-                >
+                <TableHead scope="row" title={row.note}>
                   {row.label}
                 </TableHead>
                 <TableCell numeric>{row.values[0]}</TableCell>

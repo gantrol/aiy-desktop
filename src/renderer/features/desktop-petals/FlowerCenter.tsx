@@ -1,4 +1,6 @@
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { MagnifierCenter } from '@/renderer/features/desktop-petals/MagnifierCenter';
+import { screenMagnifierRunning, type ScreenMagnifierState } from '@/shared/contracts/screen-magnifier';
 import { petalQuotaText } from '@/renderer/features/desktop-petals/petal-copy';
 import {
   isPetalCenterMetricProvider,
@@ -25,11 +27,13 @@ export function flowerCenterProgress(
 }
 
 export function FlowerCenter({
+  magnifier,
   settings,
   timer,
   quota,
   now,
 }: {
+  magnifier?: ScreenMagnifierState;
   settings: PetalHubSettings;
   timer: PetalTimer;
   quota: PetalQuota | null;
@@ -37,6 +41,8 @@ export function FlowerCenter({
 }) {
   const { locale, messages } = useI18n();
   const copy = messages.desktopPetals;
+  if (screenMagnifierRunning(magnifier))
+    return <MagnifierCenter state={magnifier} scale={settings.magnifier?.scale ?? 2} />;
   if (settings.mode === 'none') return null;
   if (settings.mode === 'clock')
     return (

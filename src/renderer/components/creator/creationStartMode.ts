@@ -1,21 +1,13 @@
-export type CreationStartMode = 'image' | 'video-document';
+import type { CreationDraftDto } from '@/shared/contracts';
+import type { CreationStartMode } from '@/shared/contracts/creation-draft';
 
-const CREATION_START_MODE_STORAGE_KEY = 'aiy.creation-start-mode.v1';
+export type { CreationStartMode } from '@/shared/contracts/creation-draft';
 
-export function readCreationStartMode(): CreationStartMode {
-  try {
-    return globalThis.localStorage?.getItem(CREATION_START_MODE_STORAGE_KEY) === 'video-document'
-      ? 'video-document'
-      : 'image';
-  } catch {
-    return 'image';
-  }
+export function isDocumentCreationStartMode(mode: CreationStartMode | undefined) {
+  return mode === 'manuscript' || mode === 'outline';
 }
 
-export function writeCreationStartMode(mode: CreationStartMode) {
-  try {
-    globalThis.localStorage?.setItem(CREATION_START_MODE_STORAGE_KEY, mode);
-  } catch {
-    // Storage can be unavailable in restricted renderer contexts; the in-memory selection still applies.
-  }
+/** Existing drafts without a mode retain their original prompt workspace. */
+export function creationStartModeForDraft(draft: CreationDraftDto | null | undefined): CreationStartMode {
+  return draft ? (draft.startMode ?? 'image') : 'manuscript';
 }

@@ -18,6 +18,8 @@ import type {
 } from '@/shared/contracts';
 
 interface Options {
+  writingInstruction?: string;
+  startMode?: CreationDraftSaveSnapshot['startMode'];
   appliedPalettes: CreationDraftPromptSnapshot['appliedPalettes'];
   canvasPresetKey: string | null;
   capturePrompt(): CreationDraftPromptSnapshot;
@@ -49,6 +51,8 @@ export function useCreatorDraftProjection(options: Options) {
     targetAlbumOverride: string | null | undefined = undefined,
   ) =>
     creationDraftSaveSnapshot({
+      startMode: options.startMode,
+      writingInstruction: options.writingInstruction,
       targetAlbumId: targetAlbumOverride === undefined ? options.targetAlbumId : targetAlbumOverride,
       title: options.title,
       prompt,

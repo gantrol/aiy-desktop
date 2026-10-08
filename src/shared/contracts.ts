@@ -1723,6 +1723,8 @@ export interface GalleryItemDto {
   materialId: string | null;
   /** Present on current gallery reads; older cached rows can infer it from MIME. */
   materialKind?: 'IMAGE' | 'VIDEO';
+  /** Video duration when metadata is available; image rows omit it. */
+  durationMs?: number;
   source: GalleryItemSource;
   createdAt: string;
   asset: AssetDto;
@@ -2912,7 +2914,9 @@ export interface GenerationProjectionDto {
 }
 
 export interface CreationDraftSaveInput {
+  writingInstruction?: string;
   id: string | null;
+  startMode?: import('@/shared/contracts/creation-draft').CreationStartMode;
   /** Last observed persisted revision. Existing drafts fail closed when it no longer matches. */
   expectedUpdatedAt?: string | null;
   targetAlbumId?: string | null;
@@ -2935,8 +2939,12 @@ export interface CreationDraftSaveInput {
 }
 
 export interface CreationDraftStartInput {
+  creationSource?: import('@/shared/contracts/creation-source').CreationSource;
   albumId: string | null;
   termPromptLocale: Locale;
+  startMode?: import('@/shared/contracts/creation-draft').CreationStartMode;
+  referenceAssetIds?: string[];
+  videoMaterialIds?: string[];
 }
 
 export interface CreationInputSnapshotInput {
@@ -3391,6 +3399,7 @@ export type CodexAssistPromptNodeInput =
   | { kind: 'RECIPE'; paletteId: string; paletteRevisionId: string };
 
 export interface CodexAssistInput {
+  documentTask?: import('@/shared/contracts/document-assistant').DocumentWritingTask;
   mode: 'optimize' | 'directions' | 'chat';
   /** Request-level grounding intent. Each provider maps this to its own search mechanism. */
   webSearchMode?: AssistantWebSearchMode;
@@ -3651,6 +3660,7 @@ export interface AssistantRunDto {
 }
 
 export interface CreatorAgentTurnDto {
+  documentTask?: import('@/shared/contracts/document-assistant').DocumentWritingTask;
   id: string;
   scope: CreatorAgentScope;
   mode: CodexAssistInput['mode'];
@@ -4330,7 +4340,7 @@ export interface DesktopApi
   codexVisualizationExport(input: CodexVisualizationArtifactActionInput): Promise<CodexVisualizationExportResult>;
   codexVisualizationExportSession(input: CodexVisualizationSessionActionInput): Promise<CodexVisualizationExportResult>;
   onCodexVisualizationsChanged(callback: () => void): () => void;
-  codexUsageState(): Promise<CodexUsageState>;
+  codexUsageState(input?: { beforeInvestigationId?: string }): Promise<CodexUsageState>;
   codexUsageInvestigation(input: CodexUsageInvestigationGetInput): Promise<CodexUsageInvestigation>;
   codexUsageScan(input: CodexUsageScanInput): Promise<CodexUsageTask>;
   codexUsageResume(input: CodexUsageResumeInput): Promise<CodexUsageTask>;
@@ -4442,7 +4452,7 @@ export interface DesktopApi
     callback: (event: import('@/shared/contracts/creation-draft-list').CreationDraftsChanged) => void,
   ): () => void;
   creationDraftLoad(input: CreationDraftLoadInput): Promise<CreationDraftDto>;
-  creationDraftSave(input: CreationDraftSaveInput): Promise<CreationDraftDto>;
+  creationDraftSave(input: CreationDraftSaveInput, spaceId?: string): Promise<CreationDraftDto>;
   creationDraftCommit(input: CreationDraftCommitInput): Promise<CreationDraftCommitResult>;
   creationItemsList(input?: CreationItemListInput): Promise<CreationItemListResult>;
   creationItemGet(input: CreationItemGetInput): Promise<CreationItemGetResult>;
@@ -4490,6 +4500,15 @@ export interface DesktopApi
   articleSave(input: ArticleSaveInput): Promise<ArticleDto>;
   articleOpen(input: ArticleOpenInput): Promise<ArticleOpenResult>;
   articleRevisionHistory(input: ArticleRevisionHistoryInput): Promise<ArticleRevisionHistoryResult>;
+  articleInputHistory(
+    input: import('@/shared/contracts/article-input-history').ArticleInputHistoryQuery,
+  ): Promise<import('@/shared/contracts/article-input-history').ArticleInputHistoryPage>;
+  articleInputRecord(
+    input: import('@/shared/contracts/article-input-history').ArticleInputRecordQuery,
+  ): Promise<import('@/shared/contracts/article-input-history').ArticleInputRecord>;
+  articleInputContinue(
+    input: import('@/shared/contracts/article-input-history').ArticleInputContinueQuery,
+  ): Promise<CreationDraftDto>;
   articleRevisionGet(input: ArticleRevisionGetInput): Promise<ArticleRevisionDto>;
   articleRevisionSave(input: ArticleRevisionSaveInput): Promise<ArticleRevisionSaveResult>;
   articleCommentMutate(input: ArticleCommentMutationInput): Promise<ArticleCommentMutationResult>;

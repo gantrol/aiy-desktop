@@ -1,4 +1,5 @@
 import type { AssistantTitleExecution } from '@/main/assistant/assistant-service';
+import { documentWritingTaskSchema } from '@/shared/contracts/document-assistant';
 import { generationQualitySchema } from '@/shared/generation-quality';
 import { gifPlanRequestSchema, type GifPlanRequest } from '@/shared/contracts/gif-motion-plan';
 import type {
@@ -342,6 +343,7 @@ const assistPromptNode = z.discriminatedUnion('kind', [
 ]);
 const assistInput = z
   .object({
+    documentTask: documentWritingTaskSchema.optional(),
     mode: z.enum(['optimize', 'directions', 'chat']),
     webSearchMode: z.enum(['DISABLED', 'REQUIRED']).optional().default('DISABLED'),
     prompt: z.string().max(30_000),
@@ -460,6 +462,7 @@ const historyAsset = z
   .strict();
 const historyTurn = z
   .object({
+    documentTask: documentWritingTaskSchema.optional(),
     id: identifier,
     scope,
     mode: z.enum(['optimize', 'directions', 'chat']),
@@ -479,7 +482,7 @@ const chatRequest = assistInput
   })
   .strict()
   .superRefine((value, context) => {
-    if (!value.message.trim() && value.attachmentAssetIds.length === 0) {
+    if (!value.message.trim() && value.attachmentAssetIds.length === 0 && !value.documentTask) {
       context.addIssue({ code: 'custom', message: 'A conversation turn requires a message or image attachment' });
     }
   });

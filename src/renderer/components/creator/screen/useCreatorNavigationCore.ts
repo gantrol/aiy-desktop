@@ -2,7 +2,6 @@ import { useRef } from 'react';
 import type { CreatorLocation, NavigationMode } from '@/renderer/components/app/app-navigation';
 import { navigationLocationKey } from '@/renderer/components/app/app-navigation';
 import type { CreationStartMode } from '@/renderer/components/creator/creationStartMode';
-import { writeCreationStartMode } from '@/renderer/components/creator/creationStartMode';
 import type { VideoDocumentCreationRequest } from '@/renderer/features/video-documents/VideoDocumentCreationStarter';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import { isDerivedVisualLocation } from '@/renderer/components/creator/derivedVisualWorkspace';
@@ -121,9 +120,8 @@ export function useCreatorNavigationCore(options: Options) {
   });
   const selectCreationStartMode = useStableCallback((mode: CreationStartMode) => {
     options.setCreationStartMode(mode);
-    writeCreationStartMode(mode);
-    if (mode === 'image') options.setVideoCreationRequest(null);
-    else options.onPromptFullWindowChange(false);
+    if (mode !== 'video-document') options.setVideoCreationRequest(null);
+    options.onPromptFullWindowChange(false);
   });
   const changePromptFullWindow = useStableCallback((open: boolean) => {
     options.onPromptFullWindowChange(open);

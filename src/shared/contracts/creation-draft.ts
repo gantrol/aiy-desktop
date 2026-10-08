@@ -1,9 +1,12 @@
 import { blockDocumentSchema } from '@/shared/contracts/block-document';
 import { z } from 'zod';
 import { generationQualitySchema } from '@/shared/generation-quality';
+import { creationSourceSchema } from '@/shared/contracts/creation-source';
 
 const idSchema = z.string().min(1).max(200);
 const localeSchema = z.enum(['zh', 'en']);
+export const creationStartModeSchema = z.enum(['manuscript', 'outline', 'image', 'video-document']);
+export type CreationStartMode = z.infer<typeof creationStartModeSchema>;
 const promptNodeSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('TEXT'), text: z.string().max(30_000) }).strict(),
   z.object({ kind: z.literal('TERM'), termId: idSchema, promptLocale: localeSchema.optional() }).strict(),
@@ -63,6 +66,10 @@ export const creationDraftDtoSchema = z
     targetAlbumId: idSchema.nullable(),
     title: z.string().max(300),
     text: z.string().max(30_000),
+    startMode: creationStartModeSchema.optional(),
+    writingInstruction: z.string().max(8_000).optional(),
+    creationSource: creationSourceSchema.optional(),
+    creationItemId: idSchema.optional(),
     document: blockDocumentSchema.optional(),
     promptNodes: z.array(promptNodeSchema).max(2_000).optional(),
     referenceAssets: z.array(assetSchema).max(100),

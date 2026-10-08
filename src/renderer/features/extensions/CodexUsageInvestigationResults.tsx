@@ -13,7 +13,6 @@ import {
 import { CodexUsageEvidenceDetails } from '@/renderer/features/extensions/CodexUsageEvidenceDetails';
 import { CodexUsageQuotaSampling } from '@/renderer/features/extensions/CodexUsageQuotaSampling';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import { CodexOutputThroughputComparison } from '@/renderer/features/extensions/CodexOutputThroughputComparison';
 
 type UsageLabels = ReturnType<typeof useI18n>['messages']['extensions']['codexUsageInvestigator'];
 type View = 'glance' | 'details' | 'compare';
@@ -27,6 +26,7 @@ export const CodexUsageInvestigationResults = memo(function CodexUsageInvestigat
   quotaSamplingBusy,
   quotaSamplingDisabled,
   onQuotaSamplingChange,
+  onRescan,
 }: {
   investigation: CodexUsageInvestigation;
   labels: UsageLabels;
@@ -35,6 +35,7 @@ export const CodexUsageInvestigationResults = memo(function CodexUsageInvestigat
   quotaSamplingBusy: boolean;
   quotaSamplingDisabled: boolean;
   onQuotaSamplingChange(value: number): void;
+  onRescan(): void;
 }) {
   const text = useI18n().messages.extensions.codexUsageInvestigator.evidence;
   const [view, setView] = useState<View>('glance');
@@ -67,13 +68,16 @@ export const CodexUsageInvestigationResults = memo(function CodexUsageInvestigat
     (view === 'details' ? detailsRef : glanceRef).current?.focus();
   }, [view]);
   const { date, numbers } = formatters;
+  const missingMetrics =
+    !investigation.modelComparison?.outputThroughput ||
+    investigation.modelComparison.algorithmVersion < 4 ||
+    investigation.pricing.apiRateMode !== 'RECORDED_SERVICE_TIER';
   const icons = { glance: ActivityIcon, details: SearchIcon, compare: SlidersHorizontalIcon };
   const quotaSamplingControl = (
     <CodexUsageQuotaSampling
       value={investigation.quotaPurity?.minimumQuotaPercent ?? CODEX_USAGE_DEFAULT_QUOTA_SAMPLE_PERCENT}
       busy={quotaSamplingBusy}
       disabled={quotaSamplingDisabled}
-      empty={investigation.quotaPurity?.samples.length === 0 && !investigation.quotaPurityIssue}
       onChange={onQuotaSamplingChange}
     />
   );
@@ -87,7 +91,21 @@ export const CodexUsageInvestigationResults = memo(function CodexUsageInvestigat
         <p>
           {text.generated}: {date.format(new Date(investigation.generatedAt))}
         </p>
+        <span>{labels.workspace.snapshot}</span>
+        {investigation.quotaCalculatedAt && (
+          <span>
+            {labels.workspace.recalculated}: {date.format(new Date(investigation.quotaCalculatedAt))}
+          </span>
+        )}
       </header>
+      {missingMetrics && (
+        <div role="status" className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">{labels.workspace.missingMetrics}</Badge>
+          <Button variant="outline" size="sm" disabled={quotaSamplingDisabled} onClick={onRescan}>
+            {labels.workspace.rescan}
+          </Button>
+        </div>
+      )}
       <Tabs
         value={view}
         onValueChange={(value) => {
@@ -124,11 +142,6 @@ export const CodexUsageInvestigationResults = memo(function CodexUsageInvestigat
               navigate('details', true);
             }}
           />
-          <p className="mt-3 text-xs text-muted-foreground">
-            {labels.metrics.requests}: {numbers.format(investigation.requestCount)} · {labels.metrics.sessions}:{' '}
-            {numbers.format(investigation.sessionCount)} · {labels.overview.completedTurns}:{' '}
-            {investigation.turnSpeed ? numbers.format(investigation.turnSpeed.completedTurnCount) : '—'}
-          </p>
         </TabsContent>
         <TabsContent value="details" forceMount className="grid min-w-0 gap-3 pt-3 data-[state=inactive]:hidden">
           {visited.includes('details') && (
@@ -149,7 +162,9 @@ export const CodexUsageInvestigationResults = memo(function CodexUsageInvestigat
           {visited.includes('compare') &&
             (investigation.modelComparison ? (
               <>
-                <CodexOutputThroughputComparison analysis={investigation.modelComparison.outputThroughput} />
+                {investigation.sourceMode === 'FILESYSTEM_FALLBACK' && (
+                  <Badge variant="outline">{labels.workspace.sourceUnknown}</Badge>
+                )}
                 {investigation.modelComparison.samplesTruncated && (
                   <Badge variant="outline">{labels.modelComparison.truncated}</Badge>
                 )}

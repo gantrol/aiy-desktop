@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react';
-import { ExternalLink, Images, RotateCcw } from 'lucide-react';
+import { ExternalLink, Images, RotateCcw, Pencil, EyeOff } from 'lucide-react';
+import { PetalIconButton } from '@/renderer/features/desktop-petals/PetalControls';
+import { ImageEditor } from '@/renderer/features/image-editing/ImageEditor';
 import { Button } from '@/renderer/components/ui/button';
 import { ContentSurface } from '@/renderer/components/ui/content-surface';
 import { AssetMedia } from '@/renderer/components/media/AssetMedia';
@@ -125,18 +127,39 @@ export function ContentPin({ pin, snapshot }: { pin: DesktopPin; snapshot: Deskt
   const mediaCopy = copy.media;
   const [error, setError] = useState('');
   const [motion, setMotion] = useState<'auto' | 'play' | 'still'>('auto');
+  const [editing, setEditing] = useState(false);
   const onError = useCallback((reason: unknown) => setError(String(reason)), []);
   const title = petalLabel(pin.title, pin.preview) || copy.board[pin.source.kind];
   const media = mediaForPin(pin);
   const collection = pin.source.kind === 'ALBUM' || pin.source.kind === 'MATERIAL_ALBUM';
+  const canEdit = Boolean(snapshot.temporary && media && ['image/png', 'image/jpeg'].includes(media.mimeType));
+  const edit = async () => {
+    if (!snapshot.expanded) await window.desktopPetals.expand(true);
+    setEditing(true);
+  };
   const open = () => void window.desktopPetals.openMain().catch(onError);
   const noteActions: PetalNoteMenuActions = {
+    temporary: Boolean(snapshot.temporary),
+    promotionTarget: snapshot.temporaryTargetSpace,
+    onEditImage: canEdit ? edit : undefined,
+    ...imageFileActions(collection ? null : media),
+    onPromote: snapshot.temporary
+      ? () =>
+          window.desktopPetals.temporaryFiles({
+            kind: 'promote',
+            id: pin.id,
+            expectedHash: snapshot.notes[0].contentHash,
+          })
+      : undefined,
+    onConvert: snapshot.temporary
+      ? () => window.desktopPetals.temporaryFiles({ kind: 'convert', id: pin.id })
+      : undefined,
     home: snapshot.home,
     alwaysOnTop: snapshot.alwaysOnTop,
     note: pin,
     board: snapshot.board,
     persisted: true,
-    disabled: snapshot.suspended,
+    disabled: snapshot.suspended || editing,
     onError,
     onAppearance: (patch) => window.desktopPetals.boardCommand({ kind: 'pin-appearance', id: pin.id, ...patch }),
   };
@@ -156,28 +179,24 @@ export function ContentPin({ pin, snapshot }: { pin: DesktopPin; snapshot: Deskt
     );
   return (
     <ContentSurface
-      kind={media && !collection ? 'media' : 'paper'}
+      kind={editing ? 'editor' : media && !collection ? 'media' : 'paper'}
       title={title}
-      contextLabel={`${copy.scope.current} · ${snapshot.libraryName}`}
+      contextLabel={snapshot.temporary ? copy.temporary.title : `${copy.scope.current} · ${snapshot.libraryName}`}
       titlesVisible={snapshot.titlesVisible}
-      className="content-surface--desktop absolute inset-2"
+      className={`content-surface--desktop absolute inset-2 ${snapshot.temporary ? 'outline outline-1 outline-dashed -outline-offset-2 outline-current' : ''}`}
       style={appearanceStyle(pin.color)}
       leading={<PetalNoteOperations {...noteActions} />}
       tools={
-        <>
-          {media && !collection && (
-            <ImagePlaybackButton
-              asset={media}
-              poster={mediaPosterUrl(media.id)}
-              motion={motion}
-              labels={mediaCopy}
-              disabled={snapshot.suspended}
-              onMotionChange={setMotion}
-            />
-          )}
-          <NoteDisplayMenu scale={pinTextScale(pin, snapshot)} actions={noteActions} />
-          <PetalNoteActions {...noteActions} onCollapse={() => window.desktopPetals.expand(false)} />
-        </>
+        <ContentPinToolbar
+          media={collection ? null : media}
+          editing={editing}
+          onEdit={canEdit ? edit : undefined}
+          snapshot={snapshot}
+          actions={noteActions}
+          scale={pinTextScale(pin, snapshot)}
+          motion={motion}
+          onMotion={setMotion}
+        />
       }
       status={error ? petalErrorText(error, copy.errors) : undefined}
       resize={
@@ -188,7 +207,9 @@ export function ContentPin({ pin, snapshot }: { pin: DesktopPin; snapshot: Deskt
         </div>
       }
     >
-      {collection ? (
+      {editing ? (
+        <ImageEditor key={pin.id} id={pin.id} suspended={snapshot.suspended} onClose={() => setEditing(false)} />
+      ) : collection ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-hidden p-4">
           {media ? (
             <div className="h-32 w-full min-h-0">
@@ -234,6 +255,75 @@ export function ContentPin({ pin, snapshot }: { pin: DesktopPin; snapshot: Deskt
         </div>
       )}
     </ContentSurface>
+  );
+}
+
+function imageFileActions(media: PinMedia | null) {
+  if (!media?.mimeType.startsWith('image/')) return {};
+  return {
+    onOpenFile: () => window.desktopPetals.assetFile({ assetId: media.id, action: 'open' }),
+    onCopyImage: () => window.desktopPetals.assetFile({ assetId: media.id, action: 'copy' }),
+    onSaveAs: () => window.desktopPetals.assetFile({ assetId: media.id, action: 'save-as' }),
+  };
+}
+
+function ContentPinToolbar({
+  media,
+  editing,
+  onEdit,
+  snapshot,
+  actions,
+  scale,
+  motion,
+  onMotion,
+}: {
+  media: PinMedia | null;
+  editing: boolean;
+  onEdit?: () => Promise<void>;
+  snapshot: DesktopPetalSnapshot;
+  actions: PetalNoteMenuActions;
+  scale?: number;
+  motion: 'auto' | 'play' | 'still';
+  onMotion(value: 'auto' | 'play' | 'still'): void;
+}) {
+  const copy = useI18n().messages.desktopPetals;
+  return (
+    <>
+      {onEdit && !editing && (
+        <PetalIconButton
+          label={copy.imageEditor.edit}
+          disabled={snapshot.suspended}
+          onClick={() => void onEdit().catch(actions.onError)}
+        >
+          <Pencil />
+        </PetalIconButton>
+      )}
+      {media && !editing && (
+        <ImagePlaybackButton
+          asset={media}
+          poster={mediaPosterUrl(media.id, 512, media.mediaUrl)}
+          motion={motion}
+          labels={copy.media}
+          disabled={snapshot.suspended}
+          onMotionChange={onMotion}
+        />
+      )}
+      <NoteDisplayMenu scale={scale} actions={actions} />
+      {editing && (
+        <PetalIconButton
+          label={copy.actions.hide}
+          disabled={snapshot.suspended}
+          onClick={() => void window.desktopPetals.hide().catch(actions.onError)}
+        >
+          <EyeOff />
+        </PetalIconButton>
+      )}
+      <PetalNoteActions
+        {...actions}
+        disabled={snapshot.suspended}
+        onCollapse={() => window.desktopPetals.expand(false)}
+      />
+    </>
   );
 }
 

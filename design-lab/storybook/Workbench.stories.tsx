@@ -23,14 +23,8 @@ function LayoutStory({ initiallySelected, ...sizes }: LayoutArgs) {
       layoutKey="content-search"
       collectionLabel={messages.referenceOutline.lookup.results}
       selectionKey={selectedKey ?? null}
-      collection={({ toggle, revealDetail }) => (
+      collection={({ revealDetail }) => (
         <>
-          <WorkbenchPaneHeader>
-            <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
-              {messages.referenceOutline.lookup.results}
-            </h2>
-            {toggle}
-          </WorkbenchPaneHeader>
           <ContentSearchResultList
             query={state.location.query}
             search={state.search}

@@ -46,7 +46,7 @@ export async function flushPetalInput(
 export function requestPetalFlush(
   entry: PetalWindow,
   pending: Map<string, PendingPetalFlush>,
-  recover: (id: string) => void,
+  recover: (id: string) => void | Promise<void>,
   save: boolean,
 ): Promise<boolean> {
   const observe = (report: PetalFlushReport) => observePetalFlush(entry, report);
@@ -55,7 +55,7 @@ export function requestPetalFlush(
   const previous = queues.get(entry);
   const request = (previous ?? Promise.resolve(true))
     .catch(() => false)
-    .then(() => {
+    .then(async () => {
       // Collapsed surfaces are read-only projections; only an expanded window owns an editor.
       if (!entry.instanceId || !entry.expanded || isContentPinId(entry.instanceId) || entry.window.isDestroyed()) {
         observe({ status: 'unchanged' });
@@ -63,7 +63,7 @@ export function requestPetalFlush(
       }
       if (entry.window.webContents.isCrashed()) {
         try {
-          recover(entry.instanceId);
+          await recover(entry.instanceId);
           // Recovery only proves preservation, not that this requested revision was committed.
           if (save) {
             observe({ status: 'blocked', reason: 'rendererUnavailable' });

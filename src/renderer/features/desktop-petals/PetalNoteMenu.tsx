@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { Check, Copy, ExternalLink, EyeOff, Layers, Maximize2, Palette, Pin, PinOff } from 'lucide-react';
+import { Check, Copy, ExternalLink, EyeOff, Layers, Maximize2, Palette, Pin, PinOff, Pencil } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuItem,
@@ -8,12 +8,21 @@ import {
   DropdownMenuTrigger,
 } from '@/renderer/components/ui/dropdown-menu';
 import { NoteAppearancePicker } from '@/renderer/features/desktop-petals/NoteAppearancePicker';
+import { PetalFileMenu } from '@/renderer/features/desktop-petals/PetalFileMenu';
 import { PetalMenuContent, PetalMenuSection } from '@/renderer/features/desktop-petals/PetalMenu';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { usePetalMenuApi, usePetalMenuExecutor } from '@/renderer/features/desktop-petals/petal-menu-api';
 import type { DesktopNote, DesktopPetalSnapshot, PetalColor, PetalIcon } from '@/shared/contracts/desktop-petals';
 
 export interface PetalNoteMenuActions {
+  temporary?: boolean;
+  promotionTarget?: string;
+  onPromote?: () => Promise<unknown>;
+  onConvert?: () => Promise<unknown>;
+  onEditImage?: () => Promise<unknown>;
+  onOpenFile?: () => Promise<unknown>;
+  onCopyImage?: () => Promise<unknown>;
+  onSaveAs?: () => Promise<unknown>;
   home?: 'desktop' | 'drawer';
   alwaysOnTop: boolean;
   note: Pick<DesktopNote, 'id' | 'color' | 'icon'>;
@@ -41,6 +50,14 @@ interface Props extends PetalNoteMenuActions {
 
 /** Collapsed petals and expanded notes share commands, grouping and appearance controls. */
 export function PetalNoteMenu({
+  temporary,
+  promotionTarget,
+  onPromote,
+  onConvert,
+  onEditImage,
+  onOpenFile,
+  onCopyImage,
+  onSaveAs,
   alwaysOnTop,
   note,
   board,
@@ -114,17 +131,41 @@ export function PetalNoteMenu({
     <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <PetalMenuContent align={align} onCloseAutoFocus={onCloseAutoFocus}>
+        {onEditImage && (
+          <DropdownMenuItem disabled={blocked} onSelect={item(onEditImage, [])}>
+            <Pencil />
+            {copy.imageEditor.edit}
+          </DropdownMenuItem>
+        )}
+        {onPromote && (
+          <DropdownMenuItem disabled={blocked} onSelect={item(onPromote, [])}>
+            <Pin />
+            {copy.temporary.promote}
+            {promotionTarget ? ` · ${promotionTarget}` : ''}
+          </DropdownMenuItem>
+        )}
+        {onConvert && (
+          <DropdownMenuItem disabled={blocked} onSelect={item(onConvert, [])}>
+            <Copy />
+            {copy.temporary.convert}
+          </DropdownMenuItem>
+        )}
         {onExpand && (
           <DropdownMenuItem disabled={blocked} onSelect={item(onExpand, [], false)}>
             <Maximize2 />
             {copy.actions.expand}
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem disabled={blocked || !persisted} onSelect={item(api.openMain, [])}>
-          <ExternalLink />
-          {copy.actions.openSource}
-        </DropdownMenuItem>
-        {onDuplicate && (
+        <PetalFileMenu
+          temporary={temporary}
+          persisted={persisted}
+          disabled={blocked}
+          onOpenFile={onOpenFile}
+          onCopyImage={onCopyImage}
+          onSaveAs={onSaveAs}
+          select={(action) => item(action, [])}
+        />
+        {onDuplicate && !temporary && (
           <DropdownMenuItem disabled={blocked || !persisted} onSelect={item(onDuplicate, [])}>
             <Copy />
             {copy.actions.duplicate}
@@ -153,6 +194,7 @@ export function PetalNoteMenu({
           </PetalMenuSection>
         )}
         {persisted &&
+          !temporary &&
           board.layers.length > 1 &&
           (showWindowControls ? (
             <PetalMenuSection icon={Layers} label={copy.actions.moveLayer} disabled={blocked}>
@@ -169,7 +211,7 @@ export function PetalNoteMenu({
           <EyeOff />
           {copy.actions.hide}
         </DropdownMenuItem>
-        {persisted && (
+        {persisted && !temporary && (
           <DropdownMenuItem disabled={blocked} onSelect={item(api.remove, [])}>
             <PinOff />
             {copy.actions.remove}

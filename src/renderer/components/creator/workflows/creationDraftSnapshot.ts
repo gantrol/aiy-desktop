@@ -22,6 +22,8 @@ export interface CreationDraftPromptSnapshot {
 }
 
 export interface CreationDraftSnapshotSource {
+  writingInstruction?: string;
+  startMode?: CreationDraftSaveInput['startMode'];
   targetAlbumId: string | null;
   title: string;
   prompt: CreationDraftPromptSnapshot;
@@ -40,6 +42,8 @@ export type CreationDraftSaveSnapshot = Omit<CreationDraftSaveInput, 'id' | 'exp
 
 export function savedCreationDraftSnapshot(draft: CreationDraftDto): CreationDraftSaveSnapshot {
   return {
+    ...(draft.startMode ? { startMode: draft.startMode } : {}),
+    ...(draft.writingInstruction !== undefined ? { writingInstruction: draft.writingInstruction } : {}),
     targetAlbumId: draft.targetAlbumId,
     title: draft.title,
     text: draft.text,
@@ -62,6 +66,8 @@ export function savedCreationDraftSnapshot(draft: CreationDraftDto): CreationDra
 /** Compare only persisted input fields, with the same defaults for loaded and captured drafts. */
 export function creationDraftSnapshotKey(snapshot: CreationDraftSaveSnapshot) {
   return JSON.stringify([
+    snapshot.startMode ?? 'image',
+    snapshot.writingInstruction ?? '',
     snapshot.targetAlbumId ?? null,
     snapshot.title,
     snapshot.text,
@@ -83,6 +89,8 @@ export function creationDraftSnapshotKey(snapshot: CreationDraftSaveSnapshot) {
 
 export function creationDraftSaveSnapshot(source: CreationDraftSnapshotSource): CreationDraftSaveSnapshot {
   return {
+    ...(source.startMode ? { startMode: source.startMode } : {}),
+    ...(source.writingInstruction !== undefined ? { writingInstruction: source.writingInstruction } : {}),
     targetAlbumId: source.targetAlbumId,
     title: source.title,
     text: source.prompt.manualPrompt,
@@ -159,6 +167,7 @@ export function creationDraftSnapshotHasMeaningfulInput(
   const resolvedDefaults = defaults ?? emptyAlbumCreationDefaults();
   if (
     snapshot.title.trim() ||
+    snapshot.writingInstruction?.trim() ||
     snapshot.text.trim() ||
     snapshot.referenceAssetIds.length ||
     (snapshot.document && documentHasDraftEdits(snapshot.document)) ||
@@ -170,7 +179,8 @@ export function creationDraftSnapshotHasMeaningfulInput(
   ) {
     return true;
   }
-  const defaultPaletteKeys = resolvedDefaults.recipes.map(paletteReferenceKey).sort(compareSnapshotKeys);
+  const defaultRecipes = snapshot.startMode && snapshot.startMode !== 'image' ? [] : resolvedDefaults.recipes;
+  const defaultPaletteKeys = defaultRecipes.map(paletteReferenceKey).sort(compareSnapshotKeys);
   const currentPaletteKeys = snapshot.wordPaletteReferences.map(paletteReferenceKey).sort(compareSnapshotKeys);
   if (JSON.stringify(currentPaletteKeys) !== JSON.stringify(defaultPaletteKeys)) return true;
   if (
