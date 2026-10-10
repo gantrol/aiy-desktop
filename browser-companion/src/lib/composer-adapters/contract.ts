@@ -29,8 +29,9 @@ export interface ComposerAdapter {
   findEditors(): ComposerElement[];
   findTitle?(editor: ComposerElement): TextControl | null;
   readText?(editor: TextControl): string;
-  splitDraft?(draft: string): string[] | null;
-  appendDraft?(editor: ComposerElement, drafts: readonly string[]): Promise<boolean>;
+  splitDraft?(draft: string, mediaCount: number): string[] | null;
+  mediaPerPost?: number;
+  appendDraft?(editor: ComposerElement, drafts: readonly string[], files: readonly File[]): Promise<boolean>;
   writeText?(editor: ComposerElement, draft: string, replaceExisting: boolean): Promise<boolean>;
   findMediaInput(editor: ComposerElement): HTMLInputElement | null;
   requestMediaInput(editor: ComposerElement): void;

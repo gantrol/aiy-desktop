@@ -110,9 +110,6 @@ export function TermList({
                     )}
                     onContextMenu={() => onSelect(term.id)}
                   >
-                    {selected && (
-                      <span className="absolute inset-y-3 left-0 w-0.5 rounded-r-full bg-selected-foreground" />
-                    )}
                     {hasMedia ? (
                       <MediaStackPreview
                         size="sm"

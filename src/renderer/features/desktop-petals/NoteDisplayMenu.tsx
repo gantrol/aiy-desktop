@@ -14,6 +14,7 @@ import { NoteAppearancePicker } from '@/renderer/features/desktop-petals/NoteApp
 import type { PetalNoteMenuActions } from '@/renderer/features/desktop-petals/PetalNoteMenu';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { stepPetalContentScale, PETAL_NOTE_SIZE_PRESETS } from '@/shared/petal-display';
+import { PetalWindowToolsMenu } from '@/renderer/features/desktop-petals/PetalWindowToolsMenu';
 
 export function NoteDisplayMenu({
   scale,
@@ -147,6 +148,7 @@ export function NoteDisplayMenu({
             {copy.externalApplications.show}
           </DropdownMenuCheckboxItem>
         )}
+        <PetalWindowToolsMenu disabled={disabled} onError={actions.onError} />
       </PetalMenuContent>
     </DropdownMenu>
   );

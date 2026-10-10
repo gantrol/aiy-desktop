@@ -104,7 +104,7 @@ export const FolderIcon = (props: SVGProps<SVGSVGElement>) => (
     <path d="M3 6h7l2 2h9v11H3V6Z" />
   </Icon>
 );
-export const AlbumGlyphIcon = (props: SVGProps<SVGSVGElement>) => (
+export const AlbumGlyphIcon = ({ shaded = true, ...props }: SVGProps<SVGSVGElement> & { shaded?: boolean }) => (
   <svg
     viewBox="0 0 24 24"
     fill="none"
@@ -116,7 +116,7 @@ export const AlbumGlyphIcon = (props: SVGProps<SVGSVGElement>) => (
     {...props}
   >
     <path d="M7 4.5h9.25a3.25 3.25 0 0 1 3.25 3.25V16" opacity=".48" />
-    <rect x="4.5" y="7.5" width="13" height="12" rx="2.5" fill="currentColor" opacity=".1" />
+    {shaded && <rect x="4.5" y="7.5" width="13" height="12" rx="2.5" fill="currentColor" opacity=".1" />}
     <rect x="4.5" y="7.5" width="13" height="12" rx="2.5" />
     <circle cx="9" cy="11.5" r="1.25" />
     <path d="m6.5 17 3.25-3.25 2.2 2.1 1.8-1.75 2.25 2.4" />

@@ -34,6 +34,37 @@ import {
   publishingMaskErrorMessage,
 } from '@/renderer/features/browser-companion/publishingMask';
 
+function publicationRowStatus(
+  row: PublicationCandidate,
+  blocked: boolean,
+  messages: ReturnType<typeof useI18n>['messages'],
+) {
+  const copy = messages.publishing;
+  const companionCopy = messages.browserCompanion;
+  const errorMessage = (error: string) => {
+    if (isPublishingMaskError(error)) return publishingMaskErrorMessage(error, messages);
+    const parsed = browserCompanionStageErrorCodeSchema.safeParse(error);
+    return parsed.success ? companionCopy.stageErrors[parsed.data] : error;
+  };
+  if (row.error) return errorMessage(row.error);
+  if (!row.receipt) return blocked ? copy.batchStopped : copy.ready;
+  const { result, errorCode } = row.receipt;
+  if (errorCode)
+    return errorCode === 'NOT_ATTEMPTED'
+      ? copy.notAttempted
+      : errorCode === 'OPEN_NOT_CONFIRMED'
+        ? copy.openNotConfirmed
+        : errorCode === 'HANDOFF_NOT_ALLOWED'
+          ? copy.denied
+          : errorCode === 'STAGE_FAILED'
+            ? copy.failed
+            : errorMessage(errorCode);
+  if (!result) return copy.unknown;
+  if (result.handoff.state === 'delivered') return copy.delivered;
+  if (result.handoff.state === 'claimed') return copy.claimed;
+  return result.browserOpenError ? companionCopy.openErrors[result.browserOpenError] : copy.waiting;
+}
+
 export function SocialPostPublishingDialog({
   spaceId,
   content,
@@ -67,10 +98,11 @@ export function SocialPostPublishingDialog({
   const [selected, setSelected] = useState(() => initialTargets.filter((target) => target !== 'chatgpt'));
   const [mode, setMode] = useState<'article' | 'images'>('article');
   const batch = usePublicationBatch({
+    spaceId,
     sourceKey: canonicalSocialPostContentJson(content),
     title: content.title,
     watermark,
-    prepare: (channels, wechatMode) =>
+    prepare: (channels, wechatMode, signal) =>
       prepareSocialPostHandoffs({
         spaceId,
         content,
@@ -81,6 +113,9 @@ export function SocialPostPublishingDialog({
         readSavedRevisionId,
         targets: channels,
         wechatMode,
+        watermark,
+        tableLabel: copy.tables.table,
+        signal,
         notify: () => undefined,
         copy: messages.desktopPetals.document,
         wechatArticle: {
@@ -92,32 +127,7 @@ export function SocialPostPublishingDialog({
   const locked = batch.busy || batch.submitted;
   const allowed = selected.every((target) => targets.includes(target));
   const readyCount = batch.rows.filter((row) => row.prepared && !row.error).length;
-
-  function errorMessage(error: string) {
-    if (isPublishingMaskError(error)) return publishingMaskErrorMessage(error, messages);
-    const parsed = browserCompanionStageErrorCodeSchema.safeParse(error);
-    return parsed.success ? companionCopy.stageErrors[parsed.data] : error;
-  }
-
-  function rowStatus(row: PublicationCandidate) {
-    if (row.error) return errorMessage(row.error);
-    if (!row.receipt) return copy.ready;
-    const { result, errorCode } = row.receipt;
-    if (errorCode)
-      return errorCode === 'NOT_ATTEMPTED'
-        ? copy.notAttempted
-        : errorCode === 'OPEN_NOT_CONFIRMED'
-          ? copy.openNotConfirmed
-          : errorCode === 'HANDOFF_NOT_ALLOWED'
-            ? copy.denied
-            : errorCode === 'STAGE_FAILED'
-              ? copy.failed
-              : errorMessage(errorCode);
-    if (!result) return copy.unknown;
-    if (result.handoff.state === 'delivered') return copy.delivered;
-    if (result.handoff.state === 'claimed') return copy.claimed;
-    return result.browserOpenError ? companionCopy.openErrors[result.browserOpenError] : copy.waiting;
-  }
+  const blocked = batch.rows.some((row) => !row.prepared || row.error);
 
   return (
     <Dialog
@@ -224,11 +234,21 @@ export function SocialPostPublishingDialog({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold">{companionCopy.targets[row.target]}</h3>
                 <span data-publication-status className="text-xs text-muted-foreground">
-                  {rowStatus(row)}
+                  {publicationRowStatus(row, blocked, messages)}
                 </span>
               </div>
-              {row.prepared && <PublicationPreview prepared={row.prepared} assets={assets} target={row.target} />}
-              {row.receipt && !row.receipt.result && !batch.fault && (
+              {row.prepared && (
+                <PublicationPreview
+                  prepared={row.prepared}
+                  assets={assets}
+                  target={row.target}
+                  onImagesReady={(ready) =>
+                    row.prepared?.tableConversion && batch.setTablePreviewReady(row.prepared.tableConversion.id, ready)
+                  }
+                  onChange={locked || batch.stale ? undefined : (prepared) => batch.update(row.target, prepared)}
+                />
+              )}
+              {row.receipt && !row.receipt.result && !batch.fault && !row.prepared?.tableConversion && (
                 <p className="text-xs text-muted-foreground">{copy.retrySettings}</p>
               )}
               {row.receipt &&
@@ -247,20 +267,32 @@ export function SocialPostPublishingDialog({
             </section>
           ))}
         </div>
-        {batch.rows.length > 0 && <p className="text-xs text-muted-foreground">{copy.snapshot}</p>}
+        {batch.rows.some((row) => row.prepared && !row.prepared.tableConversion) && (
+          <p className="text-xs text-muted-foreground">{copy.snapshot}</p>
+        )}
         <p className="text-sm text-muted-foreground">{copy.reviewNote}</p>
         <DialogFooter>
+          {batch.busy && !batch.submitted && (
+            <Button variant="outline" onClick={batch.cancelPreparation}>
+              {messages.common.cancel}
+            </Button>
+          )}
           <Button variant="outline" disabled={batch.busy} onClick={onClose}>
             {messages.common.close}
           </Button>
           {!batch.submitted && (
             <Button
               data-action="publication-open"
-              disabled={batch.busy || batch.stale || !allowed || !readyCount || Boolean(batch.fault)}
+              disabled={!allowed || !batch.canOpen}
               onClick={() => void batch.open()}
             >
               {batch.busy && <LoaderCircleIcon className="size-4 animate-spin" />}
-              {batch.busy ? copy.opening : copy.openReady.replace('{count}', String(readyCount))}
+              {batch.busy
+                ? copy.opening
+                : (batch.rows.some((row) => row.prepared?.tableConversion)
+                    ? copy.tables.confirm
+                    : copy.openReady
+                  ).replace('{count}', String(readyCount))}
             </Button>
           )}
         </DialogFooter>

@@ -65,6 +65,7 @@ export function articleDraftContent(
           : {}),
     },
     ...(content.files ? { files: content.files } : previous?.files ? { files: previous.files } : {}),
+    ...(previous?.reading ? { reading: previous.reading } : {}),
   });
 }
 

@@ -228,6 +228,7 @@ function MaterialResults({
       )}
       {albumSectionTitle && (
         <MaterialAlbumGrid
+          viewportRef={viewportRef}
           title={albumSectionTitle}
           albums={albums}
           busy={albumMutationBusy}

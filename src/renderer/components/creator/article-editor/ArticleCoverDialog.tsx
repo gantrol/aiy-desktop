@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { ImagePlusIcon, LoaderCircleIcon, RotateCcwIcon } from 'lucide-react';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
@@ -359,7 +360,7 @@ function ArticleCoverSources({
               )}
               onClick={() => selectSource(asset.assetId)}
             >
-              <img
+              <ScratchImage
                 src={mediaThumbnailUrl({ id: asset.assetId }, 192)}
                 alt=""
                 loading="lazy"

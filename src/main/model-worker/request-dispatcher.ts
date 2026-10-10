@@ -10,7 +10,12 @@ import { WorkTrackingService } from '@/main/extensions/work-tracking/service';
 import type { WorkResult } from '@/shared/contracts/work-tracking';
 import type { AgentGenerationService } from '@/main/agent/agent-generation-service';
 import { readAgentContent } from '@/main/agent/content-read';
-import { listAgentCreationAlbums, ensureAgentCreationAlbum, moveAgentCreations } from '@/main/agent/creation-commands';
+import {
+  listAgentCreationAlbums,
+  ensureAgentCreationAlbum,
+  moveAgentCreations,
+  deleteAgentEmptyCreationAlbums,
+} from '@/main/agent/creation-commands';
 import { searchAgentContent, updateAgentContent } from '@/main/agent/content-commands';
 import {
   listAgentAlbums,
@@ -698,6 +703,7 @@ const agentLibraryMutations = new Set<ModelWorkerMethod>([
   'agent.album.remove',
   'agent.creation.ensure-album',
   'agent.creation.move',
+  'agent.creation.delete-empty-albums',
   'agent.work.mutate',
   'agent.pack.apply',
 ]);
@@ -738,6 +744,12 @@ export function createModelWorkerRequestDispatcher(options: ModelWorkerRequestDi
         return ensureAgentCreationAlbum(options.database, parseModelWorkerMethodParams(method, params)[0], signal);
       case 'agent.creation.move':
         return moveAgentCreations(options.database, parseModelWorkerMethodParams(method, params)[0], signal);
+      case 'agent.creation.delete-empty-albums':
+        return deleteAgentEmptyCreationAlbums(
+          options.database,
+          parseModelWorkerMethodParams(method, params)[0],
+          signal,
+        );
       case 'agent.work.mutate':
         return unwrap(await work.mutate(parseModelWorkerMethodParams(method, params)[0].mutation, guard));
       case 'work-tracking.read':

@@ -252,6 +252,14 @@ export async function continueEmptyCreation(
   if (selection.translationLocales.length) startTranslation(selection.translationLocales);
 }
 
+function VideoDocumentWorkspaceLayout({ children }: { children: ReactNode }) {
+  return (
+    <section className="@container/video-workspace flex min-h-0 min-w-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1">{children}</div>
+    </section>
+  );
+}
+
 export function VideoDocumentsScreen({
   initialBranchId,
   active,
@@ -366,7 +374,7 @@ export function VideoDocumentsScreen({
 
   return (
     <div
-      className="relative flex size-full min-h-0 bg-background"
+      className="relative flex size-full min-h-0 min-w-0 bg-background"
       data-slot="video-documents-screen"
       onDragEnter={handleExternalDrag}
       onDragOver={handleExternalDrag}
@@ -418,7 +426,7 @@ export function VideoDocumentsScreen({
           />
         </VideoDocumentLibraryFrame>
       )}
-      <section className="flex min-w-0 flex-1">
+      <VideoDocumentWorkspaceLayout>
         <VideoDocumentWorkspacePane
           documentLoading={session.documentLoading}
           document={session.document}
@@ -480,7 +488,7 @@ export function VideoDocumentsScreen({
           onStartVideoDocument={chooseVideoFile}
           onCreateAlbum={() => setCreateAlbumParentId(null)}
         />
-      </section>
+      </VideoDocumentWorkspaceLayout>
       <VideoDocumentTranscriptRecognitionDialog {...transcriptRecognition.dialogProps} />
       <VideoDocumentTranscriptTranslationDialog {...transcriptTranslation.dialogProps} />
       <VideoDocumentWorkspaceDialogs

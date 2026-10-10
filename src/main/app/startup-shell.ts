@@ -16,6 +16,10 @@ import {
 } from '@/main/ipc/trusted-handlers';
 import type { LibraryRegistry } from '@/main/libraries/library-registry';
 import { appShellLanguageSchema } from '@/shared/contracts/tray-menu';
+import { EmbeddedWebRuntime } from '@/main/embedded-web/runtime';
+import { registerHtmlFileIpc } from '@/main/embedded-web/html-file-ipc';
+import { registerReadingFileIpc } from '@/main/embedded-web/reading-file-ipc';
+import { embeddedWebHideSchema, embeddedWebShowSchema } from '@/shared/contracts/embedded-web';
 
 type BootstrapHandler = (rawLocale: unknown) => unknown;
 type StartupRequestHandler = Parameters<IpcHandlerRegistrar['handle']>[1];
@@ -34,7 +38,11 @@ export function prepareStartupShell(options: StartupShellOptions) {
   options.shell.deferBackgroundServicesStart();
   // These requests are made on first render, before library services exist.
   const pendingHandlers = new Map<string, (handler: StartupRequestHandler) => void>();
-  for (const channel of ['extension-language-packs:list', 'video-document:transcript-background-tasks-get']) {
+  for (const channel of [
+    'extension-language-packs:list',
+    'image-visibility:list',
+    'video-document:transcript-background-tasks-get',
+  ]) {
     const handlerReady = new Promise<StartupRequestHandler>((resolve) => pendingHandlers.set(channel, resolve));
     options.ipcMain.handle(channel, (event, ...args) => handlerReady.then((handler) => handler(event, ...args)));
   }
@@ -89,6 +97,16 @@ export function prepareStartupShell(options: StartupShellOptions) {
 
   installRendererProtocol(protocol, rendererRuntimePath('renderer'));
   installCodexVisualizationPreviewProtocol(protocol, () => options.shell.activeLibraryContext);
+  registerHtmlFileIpc(options.ipcMain, () => options.shell.activeLibraryContext);
+  registerReadingFileIpc(options.ipcMain, () => options.shell.activeLibraryContext);
+  const embeddedWeb = new EmbeddedWebRuntime(
+    () => options.shell.mainWindow,
+    () => options.shell.activeLibraryContext,
+  );
+  options.ipcMain.handle('embedded-web:show', (_event, raw) => embeddedWeb.show(embeddedWebShowSchema.parse(raw)));
+  options.ipcMain.handle('embedded-web:hide', (_event, raw) =>
+    embeddedWeb.hide(embeddedWebHideSchema.parse(raw).previewId),
+  );
   installMediaProtocol(protocol, {
     activeLibraryContext: () => options.shell.activeLibraryContext,
     libraryRegistry: options.libraryRegistry,

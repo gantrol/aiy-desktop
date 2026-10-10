@@ -12,9 +12,18 @@ type PreparedHandoff = Omit<BrowserCompanionStageInput, 'target' | 'watermark'>;
 export function useBrowserCompanionHandoff({
   notify,
   prepare,
+  review,
 }: {
   notify(message: string): void;
-  prepare(target: BrowserCompanionTarget): Promise<PreparedHandoff | null>;
+  prepare(
+    target: BrowserCompanionTarget,
+    watermark?: BrowserCompanionWatermarkSelection,
+  ): Promise<PreparedHandoff | null>;
+  review?(
+    target: BrowserCompanionTarget,
+    watermark: BrowserCompanionWatermarkSelection,
+    prepared: PreparedHandoff,
+  ): void;
   zh?: boolean;
 }) {
   const copy = useI18n().messages.browserCompanion;
@@ -29,8 +38,12 @@ export function useBrowserCompanionHandoff({
     busyRef.current = true;
     setBusy(true);
     try {
-      const prepared = await prepare(target);
+      const prepared = await prepare(target, watermark);
       if (!prepared) return;
+      if (prepared.tableConversion) {
+        review?.(target, watermark ?? { kind: 'NONE' }, prepared);
+        return;
+      }
       const result = await window.desktopApi.browserCompanionStage({
         target,
         ...prepared,

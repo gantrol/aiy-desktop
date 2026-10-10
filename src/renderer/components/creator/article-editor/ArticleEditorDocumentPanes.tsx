@@ -43,6 +43,7 @@ function firstArticleLocation(elements: readonly ArticleElementPlacementInput[])
 }
 
 function ArticleDocumentSidebar({
+  toggleHost,
   comments,
   commentMutationBusy,
   controller,
@@ -61,6 +62,7 @@ function ArticleDocumentSidebar({
   onHeadingNavigate,
   onTopNavigate,
 }: {
+  toggleHost?: HTMLElement | null;
   comments: readonly ArticleCommentDto[];
   commentMutationBusy: boolean;
   controller: ArticleEditorSidebarController;
@@ -84,6 +86,7 @@ function ArticleDocumentSidebar({
   const displayedCursor = cursorId ? displayedHeadings.findIndex((item) => item.id === cursorId) : -1;
   return (
     <ArticleEditorSidebar
+      toggleHost={toggleHost}
       commentCount={comments.filter((comment) => comment.status === 'OPEN').length}
       controller={controller}
       files={filesPanel}
@@ -123,6 +126,7 @@ function ArticleDocumentSidebar({
 }
 
 interface ArticleEditorDocumentPaneProps {
+  sidebarToggleHost?: HTMLElement | null;
   children: ReactNode;
   comments: readonly ArticleCommentDto[];
   commentMutationBusy: boolean;
@@ -151,6 +155,7 @@ interface ArticleEditorDocumentPaneProps {
 }
 
 function ArticleEditorDocumentPane({
+  sidebarToggleHost,
   children,
   comments,
   commentMutationBusy,
@@ -195,6 +200,7 @@ function ArticleEditorDocumentPane({
       }
       sidePanel={
         <ArticleDocumentSidebar
+          toggleHost={sidebarToggleHost}
           filesPanel={filesPanel}
           fileCount={fileCount}
           mediaPanel={mediaPanel}
@@ -227,6 +233,7 @@ function ArticleEditorDocumentPane({
 }
 
 interface Props {
+  sidebarToggleHost?: HTMLElement | null;
   outlineMode?: boolean;
   createOutlinePage?: ComponentProps<typeof VideoDocumentWysiwygEditor>['createOutlinePage'];
   outlinePreferenceKey?: string;
@@ -296,6 +303,7 @@ interface Props {
 }
 
 export function ArticleEditorDocumentPanes({
+  sidebarToggleHost,
   outlineMode,
   createOutlinePage,
   outlinePreferenceKey,
@@ -421,6 +429,7 @@ export function ArticleEditorDocumentPanes({
             {primaryEditor}
           </div>
           <OutlineArticleSidebar
+            toggleHost={sidebarToggleHost}
             controller={leftSidebar}
             comments={{
               busy: commentMutationBusy,
@@ -454,6 +463,7 @@ export function ArticleEditorDocumentPanes({
     <ArticleEditorSplit
       left={
         <ArticleEditorDocumentPane
+          sidebarToggleHost={splitOpen ? null : sidebarToggleHost}
           filesPanel={attachmentsPanel}
           fileCount={attachmentCount}
           mediaPanel={mediaPanel}

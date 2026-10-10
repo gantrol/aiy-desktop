@@ -5,6 +5,7 @@ import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, text } from '@/main/database/core/values';
 import { imageDimensions } from '@/main/media/image-dimensions';
 import { trimTrailingCharacters } from '@/shared/string-boundaries';
+import type { ImageInputFailure } from '@/shared/contracts/image-search-issues';
 
 export interface ResolvedAssetFile {
   assetId: string;
@@ -198,17 +199,34 @@ export class AssetFileRepository {
     }
   }
 
-  async resolveManyAsync(assetIds: readonly string[]): Promise<ReadonlyMap<string, ResolvedAssetFile>> {
+  async resolveForSearch(assetIds: readonly string[]) {
+    const failures = new Map<string, ImageInputFailure>();
+    for (const id of assetIds) failures.set(id, { reason: 'SOURCE_MISSING', stage: 'source' });
+    const files = await this.resolveManyAsync(assetIds, failures);
+    for (const id of files.keys()) failures.delete(id);
+    return { files, failures };
+  }
+
+  async resolveManyAsync(
+    assetIds: readonly string[],
+    failures?: Map<string, ImageInputFailure>,
+  ): Promise<ReadonlyMap<string, ResolvedAssetFile>> {
     if (!assetIds.length) return new Map();
     const rows = this.rows([...new Set(assetIds)]);
     const files = new Map<string, ResolvedAssetFile>();
     const root = await realpath(this.storage.libraryRoot);
     // A single metadata query; file checks are sequential and only read bounded headers.
     for (const row of rows) {
+      const id = text(row.id);
+      failures?.set(id, { reason: 'SOURCE_UNREADABLE', stage: 'source' });
       const mimeType = text(row.mime_type) as keyof typeof imageFileTypes;
       const fileType = imageFileTypes[mimeType];
       const relativePath = text(row.relative_path);
-      if (!fileType || !relativePath || path.isAbsolute(relativePath)) continue;
+      if (!fileType) {
+        failures?.set(id, { reason: 'UNSUPPORTED_FORMAT', stage: 'source' });
+        continue;
+      }
+      if (!relativePath || path.isAbsolute(relativePath)) continue;
       try {
         const candidate = path.resolve(root, relativePath);
         if (!isPathInside(root, candidate)) continue;
@@ -225,7 +243,10 @@ export class AssetFileRepository {
         try {
           const header = Buffer.alloc(mimeType === 'image/svg+xml' ? Math.min(info.size, 4 * 1024 * 1024) : 12);
           const { bytesRead } = await handle.read(header, 0, header.length, 0);
-          if (!hasExpectedMediaHeader(header.subarray(0, bytesRead), mimeType)) continue;
+          if (!hasExpectedMediaHeader(header.subarray(0, bytesRead), mimeType)) {
+            failures?.set(id, { reason: 'DECODE_FAILED', stage: 'source' });
+            continue;
+          }
         } finally {
           await handle.close();
         }
@@ -241,7 +262,9 @@ export class AssetFileRepository {
           height: Number(row.height),
           byteSize: Number(row.byte_size),
         });
-      } catch {
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+          failures?.set(id, { reason: 'SOURCE_MISSING', stage: 'source' });
         // An unavailable file is reported by the caller with its article reference.
       }
     }

@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import { ArrowLeftIcon, ArrowRightIcon, CopyIcon, LoaderCircleIcon, Trash2Icon } from 'lucide-react';
 import type { AssetDto, AssetFileRevealContext, Locale } from '@/shared/contracts';
 import { readSingleImageAssetDrag } from '@/renderer/components/albums/albumDrag';
@@ -143,7 +144,7 @@ export function CreatorReferenceImageCard({
           onDragEnd={() => onDragTargetIdChange(null)}
           onClick={() => onPreview(asset.id)}
         >
-          <img
+          <ScratchImage
             src={mediaThumbnailUrl(asset, 512)}
             alt=""
             width={asset.width}

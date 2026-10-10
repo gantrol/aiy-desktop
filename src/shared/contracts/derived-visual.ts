@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ARTICLE_COVER_RATIOS } from '@/shared/article-covers';
+import { taskRecipeInputSchema } from '@/shared/contracts/task-recipe';
 
 const idSchema = z.string().min(1).max(200);
 const promptSchema = z.string().trim().min(1).max(30_000);
@@ -22,6 +23,7 @@ const derivedVisualWorkspaceCreateInputSchema = z.discriminatedUnion('role', [
     .object({
       mode: z.literal('CREATE'),
       role: z.literal('ARTICLE_HEADER'),
+      recipe: taskRecipeInputSchema.optional(),
       coverRatio: z.enum(ARTICLE_COVER_RATIOS).optional(),
       workspaceTitle: workspaceTitleSchema,
       sourceFormId: idSchema,
@@ -51,6 +53,7 @@ const derivedVisualWorkspaceCreateInputSchema = z.discriminatedUnion('role', [
     .object({
       mode: z.literal('CREATE'),
       role: z.literal('SOCIAL_POST_COVER'),
+      recipe: taskRecipeInputSchema.optional(),
       workspaceTitle: workspaceTitleSchema,
       sourceFormId: idSchema,
       socialPostId: idSchema,

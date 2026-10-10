@@ -1,5 +1,6 @@
-import { app, dialog, shell, type BrowserWindow } from 'electron';
+import { app, crashReporter, dialog, shell, type BrowserWindow } from 'electron';
 import type { AppShellMessages } from '@/shared/i18n/app-shell';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { RendererDiagnosticLog } from '@/main/app/renderer-diagnostic-log';
 import { isPackagedApplication } from '@/main/app/runtime-mode';
@@ -12,6 +13,31 @@ let log: RendererDiagnosticLog | null = null;
 
 function diagnosticLog() {
   return (log ??= new RendererDiagnosticLog(path.join(app.getPath('userData'), 'diagnostics', 'renderer')));
+}
+
+/** Initialize before creating renderers so native crashes retain their original stack locally. */
+export async function startLocalCrashReporter() {
+  try {
+    const directory = path.join(app.getPath('userData'), 'diagnostics', 'renderer', 'crashes');
+    await mkdir(directory, { recursive: true });
+    app.setPath('crashDumps', directory);
+    crashReporter.start({ uploadToServer: false });
+    diagnosticLog().write({
+      source: 'main',
+      event: 'crash-reporter-ready',
+      details: {
+        version: app.getVersion(),
+        electron: process.versions.electron,
+        chrome: process.versions.chrome,
+        platform: process.platform,
+        arch: process.arch,
+      },
+    });
+  } catch (error) {
+    // Diagnostic setup must not prevent access to the user's saved work.
+    console.warn('[runtime] Local crash reporter unavailable');
+    diagnosticLog().write({ source: 'main', event: 'crash-reporter-failed', details: rendererDiagnosticError(error) });
+  }
 }
 
 export function registerRendererDiagnostics(getWindow: () => BrowserWindow | null) {

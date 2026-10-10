@@ -17,6 +17,7 @@ import {
   codexVisualizationArtifactActionInputSchema,
   codexVisualizationExportResultSchema,
   codexVisualizationHtmlPreviewReleaseInputSchema,
+  codexVisualizationHtmlPreviewInputSchema,
   codexVisualizationHtmlPreviewSchema,
   codexVisualizationListInputSchema,
   codexVisualizationMermaidPreviewSchema,
@@ -112,7 +113,7 @@ export function createCodexArtifactsPreloadApi(
       codexVisualizationHtmlPreviewSchema.parse(
         await ipcRenderer.invoke(
           'codex-visualization:prepare-html-preview',
-          codexVisualizationArtifactActionInputSchema.parse(input),
+          codexVisualizationHtmlPreviewInputSchema.parse(input),
         ),
       ),
     codexVisualizationPrepareMermaidPreview: async (input) =>

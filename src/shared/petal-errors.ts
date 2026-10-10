@@ -1,6 +1,8 @@
 import type { DesktopPetalMessages } from '@/shared/i18n/desktop-petals';
 
 type ErrorCode =
+  | 'clipboardEmpty'
+  | 'imageEditUnsupported'
   | 'magnifierUnsupported'
   | 'magnifierDisabled'
   | 'magnifierOwnerHidden'

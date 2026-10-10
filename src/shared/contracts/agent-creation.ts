@@ -46,9 +46,21 @@ export const agentCreationMoveResultSchema = z
     entries: z.array(z.object({ creationItemId: id, moved: z.boolean() }).strict()).max(100),
   })
   .strict();
+export const agentCreationDeleteEmptyAlbumsSchema = scope.extend({
+  entries: z
+    .array(z.object({ albumId: id, expectedParentAlbumId: id.nullable() }).strict())
+    .min(1)
+    .max(100)
+    .refine((entries) => new Set(entries.map((entry) => entry.albumId)).size === entries.length, 'Duplicate album ID'),
+});
+export const agentCreationDeleteEmptyAlbumsResultSchema = z
+  .object({ spaceId: id, deletedAlbumIds: z.array(id).min(1).max(100) })
+  .strict();
 export const agentCreationCapabilities = {
-  commands: ['creation albums', 'creation ensure-album', 'creation move'],
+  commands: ['creation albums', 'creation ensure-album', 'creation move', 'creation delete-empty-albums'],
   maximumBatchSize: 100,
   moves: 'LEAF_ITEMS',
   requiresExpectedAlbumAndParent: true,
+  albumDeletion: 'EMPTY_ONLY_RECYCLE_BIN',
+  requiresExpectedAlbumParent: true,
 } as const;

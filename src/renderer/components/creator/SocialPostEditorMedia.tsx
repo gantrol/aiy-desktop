@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import { hasExternalFilesDrag, hasMaterialsDrag, readMaterialsDrag } from '@/renderer/components/albums/albumDrag';
 import { acceptsItemMove } from '@/renderer/components/albums/itemDrag';
 import {
@@ -332,6 +333,27 @@ function useMediaPreviewSelection(ids: readonly string[], onChangeIds: (ids: str
   return { previewAssetId, setPreviewAssetId, removeImage };
 }
 
+interface SocialPostMediaSectionProps {
+  adding: boolean;
+  assetsById: ReadonlyMap<string, AssetDto>;
+  content: SocialPostContentInput;
+  generatingCover: boolean;
+  locale: Locale;
+  notify(message: string): void;
+  onAdd(): void;
+  onChangeIds(ids: string[]): boolean;
+  onGenerateCover(): void;
+  onGenerateTextCover(): void;
+  textCoverDisabled: boolean;
+  onOpenRelations(assetId: string | null): void;
+  onPreviewRequestHandled?(): void;
+  onReferenceImage?(assetId: string): void;
+  onSelectRelation(item: CreationRelationItem): void;
+  onSetCover(assetId: string): void;
+  previewRequest?: FigurePreviewRequest | null;
+  relations: readonly CreationRelationItem[];
+}
+
 export function SocialPostMediaSection({
   adding,
   assetsById,
@@ -351,26 +373,7 @@ export function SocialPostMediaSection({
   onSetCover,
   previewRequest,
   relations,
-}: {
-  adding: boolean;
-  assetsById: ReadonlyMap<string, AssetDto>;
-  content: SocialPostContentInput;
-  generatingCover: boolean;
-  locale: Locale;
-  notify(message: string): void;
-  onAdd(): void;
-  onChangeIds(ids: string[]): boolean;
-  onGenerateCover(): void;
-  onGenerateTextCover(): void;
-  textCoverDisabled: boolean;
-  onOpenRelations(assetId: string | null): void;
-  onPreviewRequestHandled?(): void;
-  onReferenceImage?(assetId: string): void;
-  onSelectRelation(item: CreationRelationItem): void;
-  onSetCover(assetId: string): void;
-  previewRequest?: FigurePreviewRequest | null;
-  relations: readonly CreationRelationItem[];
-}) {
+}: SocialPostMediaSectionProps) {
   const { messages } = useI18n();
   const socialCopy = messages.creator.socialPostEditor;
   const fileLabels = messages.assetFile;
@@ -530,7 +533,7 @@ export function SocialPostMediaSection({
                       onClick={() => setPreviewAssetId(asset.id)}
                       onDragEnd={() => setDragTargetId(null)}
                     >
-                      <img
+                      <ScratchImage
                         src={asset.mediaUrl}
                         alt=""
                         className="pointer-events-none size-full bg-media-surround-light object-contain"

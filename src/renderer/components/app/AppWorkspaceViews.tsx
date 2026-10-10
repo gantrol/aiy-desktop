@@ -91,6 +91,7 @@ interface Props {
   onGalleryNavigate: ComponentProps<typeof GalleryScreen>['onNavigate'];
   onSearchNavigate(search: AppLocation['search']): void;
   onCalendarOpenLocation(location: AppLocation): void;
+  onMeNavigate: ComponentProps<typeof MeScreen>['onNavigate'];
   onSearchResultOpen: ComponentProps<typeof ContentSearchScreen>['onOpen'];
   onOpenGalleryResult: ComponentProps<typeof GalleryScreen>['onOpenResult'];
   onOpenGalleryTerm: ComponentProps<typeof GalleryScreen>['onOpenTerm'];
@@ -200,21 +201,19 @@ function SearchWorkspaceView({
   'surfaceVisible' | 'view' | 'location' | 'loadingBoundaries' | 'onSearchNavigate' | 'onSearchResultOpen'
 > &
   ContentSearchEditorHost) {
-  if (!surfaceVisible || view !== 'search') return null;
-  return (
-    <Activity mode={workspaceActivityMode(surfaceVisible, view, searchViews)}>
-      {loadingBoundaries.search(
-        <ContentSearchScreen
-          active={surfaceOwnsView(surfaceVisible, view, searchViews)}
-          location={location.search}
-          onNavigate={onSearchNavigate}
-          onOpen={onSearchResultOpen}
-          renderEditor={(document, active) => (
-            <AppContentSearchEditor source={document.source} active={active} host={editorHost} />
-          )}
-        />,
+  if (view !== 'search') return null;
+  // The tab host hides retained surfaces; keeping effects mounted preserves list scroll and focus.
+  // The screen's active flag suspends searches and indexing while this tab is hidden.
+  return loadingBoundaries.search(
+    <ContentSearchScreen
+      active={surfaceOwnsView(surfaceVisible, view, searchViews)}
+      location={location.search}
+      onNavigate={onSearchNavigate}
+      onOpen={onSearchResultOpen}
+      renderEditor={(document, active) => (
+        <AppContentSearchEditor source={document.source} active={active} host={editorHost} />
       )}
-    </Activity>
+    />,
   );
 }
 
@@ -277,11 +276,12 @@ function MeWorkspaceView({
   view,
   data,
   loadingBoundaries,
-}: Pick<Props, 'surfaceVisible' | 'view' | 'data' | 'loadingBoundaries'>) {
+  onMeNavigate,
+}: Pick<Props, 'surfaceVisible' | 'view' | 'data' | 'loadingBoundaries' | 'onMeNavigate'>) {
   if (view !== 'me') return null;
   return loadingBoundaries.me(
     <Activity mode={surfaceVisible ? 'visible' : 'hidden'}>
-      <MeScreen key={data.spaceId} spaceName={data.spaceName} />
+      <MeScreen key={data.spaceId} spaceName={data.spaceName} onNavigate={onMeNavigate} />
     </Activity>,
   );
 }

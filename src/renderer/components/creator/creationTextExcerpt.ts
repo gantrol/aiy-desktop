@@ -5,7 +5,9 @@ import type { CreationFormProjection } from '@/renderer/components/creator/creat
 export function creationTextPreview(form: CreationFormProjection | null, title: string) {
   const body =
     form?.role === 'ARTICLE'
-      ? form.entity?.content.markdown
+      ? form.entity && 'previewMarkdown' in form.entity
+        ? form.entity.previewMarkdown
+        : form.entity?.content.markdown
       : form?.role === 'SOCIAL_POST'
         ? form.entity?.content.body
         : undefined;

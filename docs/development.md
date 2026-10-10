@@ -72,6 +72,14 @@ Preview 不自动使用临时数据。未指定 `AIY_USER_DATA_DIR` 时，Dev、
 
 组件、页面状态和实验设计的组织与迁移见 [Design Lab](design-lab.md)。使用 `npm run design:storybook` 查看正式编辑工作面、大纲、内容条目、搜索、来源预览和基础控件；相关包只作为开发依赖，Cosmos 已移除。私有组件测试直接复用 stories。既有 `design:dev` 在完整媒体和旧实验迁移期间保留原入口。
 
+## 开发版插件诊断
+
+Dev 与本地 Preview 会自动记录宿主管理的插件执行进程；正式安装包不启用这组日志，也不允许用环境变量绕过安装包判断。文件位于应用数据目录下的 `diagnostics/extensions/extensions-current.jsonl`，轮转上一份为 `extensions-previous.jsonl`。默认 Windows 路径为 `%APPDATA%/AIY/diagnostics/extensions/`；使用 `AIY_USER_DATA_DIR` 时跟随该目录。
+
+复现后保留这两份文件，并说明操作与发生时间。每条记录包含运行、执行进程和请求的关联信息；可查看启动、请求类别和耗时、取消、超时、退出码和未结束请求，以及语义搜索的缓存、模型导入、后端选择、模型加载、图片解码、推理和资源释放阶段。Worker 阶段带子进程 PID、线程 ID 和进程 RSS，便于区分主进程、查询、索引和文稿编码。
+
+结构化记录不保存查询正文、图片内容、凭据或完整配置。开发模式另外截取原生运行时标准错误，单次最多 4 KiB、每个执行进程的连续记录最多 64 KiB；达到限额后，输出流结束时另保留最后 8 KiB，避免启动输出挤掉末尾故障信息。原生错误中可能包含本机路径。日志异步写入，每份上限 2 MiB，待写队列最多 256 KiB；写入失败不会中断任务，队列溢出会计数丢弃。正常退出最多等待 500 毫秒排空这组日志；强制结束或系统崩溃可能丢失最后几条尚未写入的记录。
+
 ## 浏览器伴侣
 
 桌面端和浏览器伴侣分别启动。在桌面应用根目录打开另一个终端；首次使用伴侣时先安装其依赖：
@@ -134,6 +142,9 @@ WXT 默认使用 `127.0.0.1:3017`，端口被占用时以终端输出为准。�
 - 开发日志：`dev-logs/desktop-dev-current.log`。
 - 预览日志：`dev-logs/desktop-preview-current.log`。
 - renderer 诊断：应用用户数据目录下的 `diagnostics/renderer/renderer-current.jsonl`。
+- 原生崩溃转储：同目录下的 `crashes/`，由应用启动时初始化的 Crashpad 保存，仅保存在本机，不自动上传。转储可能包含进程内存内容，不作为普通脱敏日志公开。
+
+诊断日志中的 `crash-reporter-ready` 记录应用、Electron、Chromium 版本和平台；`crash-reporter-failed` 表示转储初始化失败，应用仍继续启动。Windows 退出码 `-36861`（`0xffff7003`）表示进程没有连接到 Crashpad handler，不能据此判断最初的崩溃原因；需要结合原生转储、退出前的操作和内存记录定位。
 
 使用 `AIY_USER_DATA_DIR` 可以指定独立的应用数据目录。排查迁移、导入或恢复时使用数据副本，不直接修改唯一的用户数据库。报告问题时提供源码提交、运行命令及脱敏日志。
 

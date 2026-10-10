@@ -3,6 +3,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { useRef, useState, type DragEvent } from 'react';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { itemDragIntent } from '@/renderer/components/albums/itemDrag';
+import { useArticleEditorSessions } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 import { isContentLinkDrag } from '@/renderer/features/content-editor/contentLinkDrop';
 import { readReferenceDrag, referenceDragType, writeReferenceDrag } from '@/renderer/lib/itemReferenceDrag';
 import { referenceFailure } from '@/shared/i18n/reference-outline';
@@ -65,6 +66,7 @@ export function useOutlineItemDrag({
   const copy = useI18n().messages.referenceOutline;
   const dragged = useRef(false);
   const referenceHost = useContentReferenceHost();
+  const sessions = useArticleEditorSessions();
   const linkHost = useOutlineContentLinkHost();
   const referencePending = useRef(false);
   const [dragError, setDragError] = useState('');
@@ -81,7 +83,9 @@ export function useOutlineItemDrag({
     const current = outlineViewState(editor.state);
     const intent = itemDragIntent(event);
     const reference =
-      isContentLink(event) || (intent === 'REFERENCE' && event.dataTransfer.types.includes(referenceDragType));
+      event.dataTransfer.types.includes(referenceDragType) &&
+      (intent === 'REFERENCE' ||
+        (intent === 'MOVE' && !event.dataTransfer.types.includes('application/x-aiy-outline')));
     const transfer = outlineTransferSource(event.dataTransfer, editor, referenceHost);
     if (
       editor.isDestroyed ||
@@ -212,7 +216,10 @@ export function useOutlineItemDrag({
               setDragError('');
               const operation = link
                 ? dropOutlineContentLinks(editor, payload, linkHost!.spaceId, id, drop.placement)
-                : dropOutlineReferences(editor, payload, id, drop.placement);
+                : dropOutlineReferences(editor, payload, id, drop.placement, {
+                    source: referenceHost.source,
+                    sessions,
+                  });
               void operation
                 .then(() => focusOutlineView(editor, editorView))
                 .catch((reason) =>

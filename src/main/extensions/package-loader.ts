@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { ExtensionManifestDto, ExtensionSource } from '@/shared/contracts';
 import { parseExtensionManifest } from '@/main/extensions/manifest';
 import { validatePackagedCapabilityRuntime } from '@/main/extensions/host-runtime-contracts';
+import { assertExtensionSource } from '@/main/extensions/source-policy';
 
 const MAX_MANIFEST_BYTES = 256 * 1024;
 const MAX_LANGUAGE_CATALOG_BYTES = 2 * 1024 * 1024;
@@ -52,6 +53,7 @@ export async function loadExtensionPackage(
   const manifest = parseExtensionManifest(
     await readJsonFile(path.join(packagePath, 'manifest.json'), MAX_MANIFEST_BYTES),
   );
+  assertExtensionSource(manifest, source);
   if (manifest.kind === 'CAPABILITY') {
     validatePackagedCapabilityRuntime(manifest);
     return { manifest, source, packagePath, languageMessages: null };

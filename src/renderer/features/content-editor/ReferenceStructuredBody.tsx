@@ -4,6 +4,7 @@ import { contentAssetPath } from '@/shared/content-document';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { ContentMath } from '@/renderer/features/content-editor/ContentMath';
 import { parseAiyDeepLink } from '@/shared/contracts/app-deep-link';
+import { parseReadingCitationLink } from '@/shared/reading-citation-link';
 
 interface Options {
   occurrenceId: string;
@@ -12,7 +13,11 @@ interface Options {
 }
 
 function safeLink(href: string) {
-  return /^(https?:\/\/|#aiy-block:|aiy-figure:)/u.test(href) || parseAiyDeepLink(href) ? href : undefined;
+  return /^(https?:\/\/|#aiy-block:|aiy-figure:)/u.test(href) ||
+    parseAiyDeepLink(href) ||
+    parseReadingCitationLink(href)
+    ? href
+    : undefined;
 }
 
 function markedText(node: BlockNode, options: Options): ReactNode {

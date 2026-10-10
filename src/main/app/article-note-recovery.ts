@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { migrateSocialPostRecovery } from '@/main/app/social-post-article-recovery';
+import type { SocialPostRecoveryStore } from '@/main/app/social-post-recovery-store';
 import { mediaUrl } from '@/main/database/core/values';
 import { markdownBlockDocument } from '@/shared/block-document-codecs';
 import { contentAssetPath, replaceContentPromptText } from '@/shared/content-document';
@@ -96,9 +98,13 @@ export function bindArticleNoteRecovery(
   database: LibraryDatabase,
   recovery: ArticleEditorRecoveryStore,
   run?: import('@/main/ipc/trusted-handlers').TrustedIpcInvocationRunner,
+  posts?: SocialPostRecoveryStore,
 ) {
   recovery.setLegacyDraftMigration(async (scope) => {
-    const migrate = () => migrateArticleNoteRecovery(database, scope, recovery);
+    const migrate = async () => {
+      await migrateArticleNoteRecovery(database, scope, recovery);
+      if (posts) await migrateSocialPostRecovery(database, scope, recovery, posts);
+    };
     if (run) await run('article-editor-recovery:list', migrate);
     else await migrate();
   });

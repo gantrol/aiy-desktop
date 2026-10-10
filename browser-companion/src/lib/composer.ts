@@ -55,9 +55,10 @@ export async function fillComposer(
   const adapter = composerAdapter(site, options.contentKind);
   if (options.contentKind === 'article-body' && (!options.articleHtml || !options.title || !adapter.fillArticle))
     return failure(requestId, site, 'INVALID_REQUEST');
-  const drafts = adapter.splitDraft ? adapter.splitDraft(draft) : [draft];
+  const drafts = adapter.splitDraft ? adapter.splitDraft(draft, mediaFiles.length) : [draft];
   if (!drafts?.length || (drafts.length > 1 && !adapter.appendDraft)) return failure(requestId, site, 'FILL_FAILED');
   const firstDraft = drafts[0]!;
+  const firstMedia = mediaFiles.slice(0, adapter.mediaPerPost ?? mediaFiles.length);
   const draftError = adapter.validateDraft?.(draft, options.title);
   if (draftError) return failure(requestId, site, draftError);
   if (adapter.acceptsMedia && !adapter.acceptsMedia(mediaFiles)) {
@@ -165,16 +166,17 @@ export async function fillComposer(
     return failure(requestId, site, 'FILL_FAILED');
   }
 
-  if (mediaInput && !setMediaFiles(mediaInput, mediaFiles)) {
+  if (mediaInput && !setMediaFiles(mediaInput, firstMedia)) {
     return failure(requestId, site, 'MEDIA_FILL_FAILED');
   }
 
   if (drafts.length > 1) {
     // X moves the upload toolbar to the active post when a thread grows.
     // Finish the first post's uploads before adding another editor.
-    if (mediaFiles.length && !(await adapter.confirmMedia?.(mediaFiles, mediaSnapshot, 90_000)))
+    if (firstMedia.length && !(await adapter.confirmMedia?.(firstMedia, mediaSnapshot, 90_000)))
       return failure(requestId, site, 'MEDIA_FILL_FAILED');
-    if (!(await adapter.appendDraft!(editor, drafts.slice(1)))) return failure(requestId, site, 'FILL_FAILED');
+    if (!(await adapter.appendDraft!(editor, drafts.slice(1), mediaFiles)))
+      return failure(requestId, site, 'FILL_FAILED');
   }
 
   return {

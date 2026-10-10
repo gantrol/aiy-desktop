@@ -2,6 +2,7 @@ import type { ArticleDto, BootstrapDto } from '@/shared/contracts';
 import { WORK_TRACKING_EXTENSION_ID } from '@/shared/extension-ids';
 import { WorkTrackingScreen } from '@/renderer/features/work-tracking/WorkTrackingScreen';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { useWorkspaceVisible } from '@/renderer/components/workspace/WorkspacePaneScope';
 
 export function AlbumWorkTracking({
   albumId,
@@ -17,6 +18,7 @@ export function AlbumWorkTracking({
   onArticleSaved(article: ArticleDto): void;
 }) {
   const l = useI18n().messages.workTracking;
+  const active = useWorkspaceVisible();
   const extension = data.extensions?.find((entry) => entry.manifest.id === WORK_TRACKING_EXTENSION_ID);
   if (archived || !extension)
     return (
@@ -29,7 +31,7 @@ export function AlbumWorkTracking({
       <WorkTrackingScreen
         key={`${data.spaceId}:${albumId}`}
         albumId={albumId}
-        active
+        active={active}
         data={data}
         extension={extension}
         notify={notify}

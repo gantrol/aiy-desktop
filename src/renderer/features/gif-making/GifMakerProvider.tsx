@@ -255,7 +255,7 @@ export function GifMakerProvider({
                   await refreshSavedWork();
                 }}
                 onRefresh={refreshSavedWork}
-                onOpenGroup={(postId) => presentation?.navigate({ surface: 'social-post', postId })}
+                onOpenGroup={(articleId) => presentation?.navigate({ surface: 'article', articleId })}
               />
             </Suspense>,
             session.container,

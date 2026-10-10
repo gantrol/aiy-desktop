@@ -32,9 +32,11 @@ interface Props {
 }
 
 export function WordPaletteBadges({ palette, labels }: { palette: WordPaletteDto; labels: RecipeItemMessages }) {
+  const tasks = useI18n().messages.recipe.task.tasks;
   return (
     <>
       <Badge variant="outline">V{palette.revisionNo}</Badge>
+      {palette.method && <Badge variant="outline">{tasks[palette.method.task]}</Badge>}
       {palette.parameters.length > 0 && (
         <Badge variant="secondary">
           <SlidersHorizontalIcon className="size-3" />
@@ -61,6 +63,7 @@ export function WordPaletteDetails({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
+      {palette.method && <p className="whitespace-pre-wrap text-sm">{palette.method.instructions}</p>}
       {palette.referenceAssets.length > 0 && (
         <div className="flex items-center gap-2">
           <MediaStackPreview size="sm" items={palette.referenceAssets.map((asset) => ({ asset }))} notify={notify} />
@@ -85,14 +88,16 @@ export function WordPaletteDetails({
           <span>{parameter.options.map((option) => option.label).join(' / ')}</span>
         </div>
       ))}
-      <footer className="mt-auto flex gap-3 pt-1 text-[11px] text-muted-foreground">
-        <span>
-          {palette.terms.length} {labels.terms}
-        </span>
-        <span>
-          {labels.used} {palette.usageCount}
-        </span>
-      </footer>
+      {!palette.method && (
+        <footer className="mt-auto flex gap-3 pt-1 text-[11px] text-muted-foreground">
+          <span>
+            {palette.terms.length} {labels.terms}
+          </span>
+          <span>
+            {labels.used} {palette.usageCount}
+          </span>
+        </footer>
+      )}
     </div>
   );
 }
@@ -222,7 +227,7 @@ export function WordPaletteLibraryItem({
   const labels = messages.recipe.item;
   const compact = action === 'apply';
   const dragProps =
-    draggable && palette.status === 'ACTIVE'
+    draggable && !palette.method && palette.status === 'ACTIVE'
       ? {
           draggable: true,
           onDragStart: (event: DragEvent<HTMLElement>) =>

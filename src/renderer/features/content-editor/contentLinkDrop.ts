@@ -3,11 +3,7 @@ import type { ReferenceTarget } from '@/shared/contracts/content-source';
 import type { readReferenceDrag } from '@/renderer/lib/itemReferenceDrag';
 import { referenceDragType } from '@/renderer/lib/itemReferenceDrag';
 import { itemDragIntent } from '@/renderer/components/albums/itemDrag';
-import {
-  ALBUM_DRAG_TYPE,
-  CREATION_ITEM_DRAG_TYPE,
-  CREATION_OUTLINE_DRAG_TYPE,
-} from '@/renderer/components/albums/albumDrag';
+import { ALBUM_DRAG_TYPE } from '@/renderer/components/albums/albumDrag';
 import { contentLibraryApi } from '@/renderer/features/content-editor/contentLibraryClient';
 
 export function isContentLinkDrag(
@@ -16,9 +12,7 @@ export function isContentLinkDrag(
   return (
     itemDragIntent(event) === 'MOVE' &&
     Boolean(event.dataTransfer?.types.includes(referenceDragType)) &&
-    [ALBUM_DRAG_TYPE, CREATION_ITEM_DRAG_TYPE, CREATION_OUTLINE_DRAG_TYPE].some((type) =>
-      event.dataTransfer?.types.includes(type),
-    )
+    Boolean(event.dataTransfer?.types.includes(ALBUM_DRAG_TYPE))
   );
 }
 

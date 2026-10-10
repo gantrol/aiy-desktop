@@ -1,7 +1,12 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react';
 import type { HistoryNavigationGuard } from '@/renderer/components/app/app-navigation';
 import type { useWorkspaceController } from '@/renderer/components/workspace/useWorkspaceController';
-import { findWorkspaceTab, type WorkspaceRuntimeGroup } from '@/renderer/components/workspace/workspace-state';
+import {
+  findWorkspaceTab,
+  workspaceTabsToClose,
+  type WorkspaceRuntimeGroup,
+  type WorkspaceTabCloseScope,
+} from '@/renderer/components/workspace/workspace-state';
 
 interface Options {
   workspace: ReturnType<typeof useWorkspaceController>;
@@ -32,7 +37,14 @@ export function useWorkspaceActions(options: Options) {
 
   function requestTabExits(tabIds: readonly string[], action: () => void) {
     const topology = (state: typeof workspace.state) =>
-      JSON.stringify(state?.groups.map((group) => [group.id, group.tabs.map((tab) => tab.id)]));
+      JSON.stringify([
+        state?.spaceId,
+        state?.groups.map((group) => [
+          group.id,
+          group.activeTabId,
+          group.tabs.map((tab) => [tab.id, Boolean(tab.pinned)]),
+        ]),
+      ]);
     const expected = topology(workspace.state);
     const advance = (index: number) => {
       if (topology(latest.current.workspace.state) !== expected) return;
@@ -96,10 +108,22 @@ export function useWorkspaceActions(options: Options) {
   }
 
   function closeOtherTabs(group: WorkspaceRuntimeGroup, tabId: string) {
-    const closing = group.tabs.filter((tab) => tab.id !== tabId).map((tab) => tab.id);
+    closeTabs(group, tabId, 'others');
+  }
+
+  function closeTabs(
+    group: WorkspaceRuntimeGroup,
+    tabId: string,
+    scope: WorkspaceTabCloseScope,
+    committed?: () => void,
+  ) {
+    const closing = workspaceTabsToClose(group, tabId, scope).map((tab) => tab.id);
+    if (!closing.length) return;
     requestTabExits(closing, () => {
       closing.forEach((id) => flushers.current.get(id)?.());
-      workspace.closeOtherTabs(group.id, tabId);
+      if (closing.includes(latest.current.workspace.activeTab?.id ?? '')) clearFullWindow();
+      workspace.closeTabs(group.id, tabId, scope);
+      committed?.();
     });
   }
 
@@ -137,6 +161,7 @@ export function useWorkspaceActions(options: Options) {
     setGroupTabsCollapsed,
     closeTab,
     closeOtherTabs,
+    closeTabs,
     resetLayout,
     mergeWorkspaceGroupsFrom,
     moveTabToOtherGroup,

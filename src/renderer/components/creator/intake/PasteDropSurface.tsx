@@ -13,6 +13,7 @@ import {
 import { intakeMediaMimeType, isIntakeVideoMimeType } from '@/renderer/features/intake/intakeImageFormats';
 
 interface Props {
+  accessibleName?: string;
   className?: string;
   children: ReactNode;
   disabled?: boolean;
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export function PasteDropSurface({
+  accessibleName,
   className,
   children,
   disabled,
@@ -41,6 +43,8 @@ export function PasteDropSurface({
 
   function paste(event: ClipboardEvent<HTMLElement>) {
     if (disabled || event.defaultPrevented) return;
+    // React portals bubble through this component even when their DOM is elsewhere.
+    if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return;
     if (respectEditableImagePaste && isEditableTarget(event.target)) return;
     const files = clipboardImageFiles(event.clipboardData);
     if (files.length) {
@@ -105,7 +109,22 @@ export function PasteDropSurface({
   return (
     <section
       data-workbench-pane={workbenchPane || undefined}
-      className={cn('relative', className)}
+      aria-label={accessibleName}
+      tabIndex={accessibleName && !disabled ? 0 : undefined}
+      className={cn(
+        'relative',
+        accessibleName && 'outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+        className,
+      )}
+      onPointerDown={(event) => {
+        if (!accessibleName || disabled || event.defaultPrevented || event.button !== 0) return;
+        if (!(event.target instanceof Element) || !event.currentTarget.contains(event.target)) return;
+        const control = event.target.closest(
+          'button, a[href], input, textarea, select, label, summary, [contenteditable="true"], [tabindex]',
+        );
+        if (control && control !== event.currentTarget) return;
+        event.currentTarget.focus({ preventScroll: true });
+      }}
       onPasteCapture={paste}
       onDragEnter={(event) => drag(event, true)}
       onDragOver={(event) => drag(event, true)}

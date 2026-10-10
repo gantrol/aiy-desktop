@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import { ImageOffIcon } from 'lucide-react';
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, type ReactNode, type RefObject } from 'react';
 import type { Components } from 'react-markdown';
@@ -75,7 +76,7 @@ const ArticleComparisonMarkdown = memo(function ArticleComparisonMarkdown({
         return (
           <AssetFileContextMenu assetId={resolved.assetId} inline>
             <span className="group/article-image relative isolate my-7 block max-h-[34rem] w-full overflow-hidden rounded-md bg-surface-sunken">
-              <img
+              <ScratchImage
                 src={resolved.mediaUrl}
                 alt={alt ?? ''}
                 className="max-h-[34rem] w-full object-contain"

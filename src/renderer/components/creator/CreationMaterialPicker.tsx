@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Paperclip } from 'lucide-react';
+import { Paperclip, PlusIcon } from 'lucide-react';
 import type {
   AssetDto,
   CreationVideoAttachmentDto,
@@ -7,7 +7,6 @@ import type {
   GalleryItemDto,
   TermListItem,
 } from '@/shared/contracts';
-import { ImageIcon } from '@/renderer/icons';
 import { MaterialImagePickerDialog } from '@/renderer/components/gallery/MaterialImagePickerDialog';
 import type { MaterialImagePickerCollection } from '@/renderer/components/gallery/materialImagePicker';
 import { Button } from '@/renderer/components/ui/button';
@@ -96,13 +95,13 @@ export function CreationMaterialPicker({
         type="button"
         variant={toolbar ? 'ghost' : 'outline'}
         size={toolbar ? 'sm' : 'icon'}
-        className={toolbar ? 'h-8 gap-1.5 px-2' : 'rounded-full'}
+        className={toolbar ? 'h-8 gap-1.5 px-2' : 'size-10 rounded-sm border-dashed shadow-none'}
         disabled={disabled}
         title={toolbar ? messages.creator.starter.materials : labels.add}
         aria-label={toolbar ? messages.creator.starter.materials : labels.add}
         onClick={() => setOpen(true)}
       >
-        {toolbar ? <Paperclip className="size-3.5" aria-hidden /> : <ImageIcon className="size-4" />}
+        {toolbar ? <Paperclip className="size-3.5" aria-hidden /> : <PlusIcon className="size-4" />}
         {toolbar && messages.creator.starter.materials}
         {toolbar && selectedMaterials.length > 0 && (
           <span className="text-xs tabular-nums text-muted-foreground">{selectedMaterials.length}</span>

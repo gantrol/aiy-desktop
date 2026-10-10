@@ -8,6 +8,7 @@ import { FilesIcon, ImagesIcon, ListTreeIcon, MessageSquareIcon, PaperclipIcon }
 import { useContext, type ReactNode } from 'react';
 
 interface Props {
+  toggleHost?: HTMLElement | null;
   commentCount: number;
   comments: ReactNode;
   controller: ArticleEditorSidebarController;
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export function ArticleEditorSidebar({
+  toggleHost,
   controller,
   comments,
   commentCount,
@@ -35,6 +37,8 @@ export function ArticleEditorSidebar({
   const navigation = useContext(CreationWorkNavigationContext);
   return (
     <ContentWorkspacePanels
+      toggleHost={toggleHost}
+      keepMounted={Boolean(navigation && controller.preferences.activePanel === 'OUTPUTS')}
       preferenceKey={controller.preferenceKey}
       panelWidth={controller.preferences.width}
       minimumWidth={controller.minimumWidth}

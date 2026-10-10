@@ -8,9 +8,11 @@ import { ContentCommentsPanel } from '@/renderer/features/content-editor/Content
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 export function OutlineArticleSidebar({
+  toggleHost,
   controller,
   comments,
 }: {
+  toggleHost?: HTMLElement | null;
   controller: ArticleEditorSidebarController;
   comments: ComponentProps<typeof ContentCommentsPanel>;
 }) {
@@ -19,6 +21,8 @@ export function OutlineArticleSidebar({
   const active = navigation && controller.preferences.activePanel !== 'COMMENTS' ? 'OUTPUTS' : 'COMMENTS';
   return (
     <ContentWorkspacePanels
+      toggleHost={toggleHost}
+      keepMounted={active === 'OUTPUTS'}
       preferenceKey={controller.preferenceKey}
       panelWidth={controller.preferences.width}
       minimumWidth={controller.minimumWidth}

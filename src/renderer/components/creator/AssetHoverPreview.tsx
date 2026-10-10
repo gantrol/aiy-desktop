@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import type { AssetDto } from '@/shared/contracts';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/renderer/components/ui/hover-card';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 
 interface Props {
   asset: AssetDto | null | undefined;
@@ -23,7 +24,7 @@ export function AssetHoverPreview({ asset, children, side }: Props) {
         className="relative isolate w-auto overflow-hidden border-foreground/10 bg-surface-sunken p-1"
       >
         <ImageAmbientBackdrop src={asset.mediaUrl} />
-        <img
+        <ScratchImage
           src={asset.mediaUrl}
           alt=""
           className="relative z-10 block rounded-sm object-contain"

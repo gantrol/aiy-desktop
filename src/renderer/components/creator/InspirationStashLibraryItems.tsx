@@ -221,8 +221,7 @@ export function InspirationStashCompactItem(props: ItemProps) {
       draggable={Boolean(onDragStart)}
       className={cn(
         'relative grid size-16 shrink-0 place-items-center overflow-visible rounded-xl border border-border/70 bg-background text-foreground-secondary outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        selected &&
-          'after:pointer-events-none after:absolute after:top-1/2 after:-left-1 after:h-6 after:w-0.5 after:-translate-y-1/2 after:rounded-full after:bg-selected-foreground',
+        selected && 'bg-selected text-selected-foreground',
       )}
       onClick={() => onSelect(stash.id)}
       onDragStart={onDragStart}

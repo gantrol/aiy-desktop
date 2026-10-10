@@ -1,6 +1,11 @@
 import type { BootstrapDto } from '@/shared/contracts';
 import type { AppView } from '@/renderer/components/app/app-navigation';
-import type { WorkspaceRuntimeGroup, WorkspaceRuntimeTab } from '@/renderer/components/workspace/workspace-state';
+import type {
+  WorkspaceRuntimeGroup,
+  WorkspaceRuntimeTab,
+  WorkspaceTabCloseScope,
+  WorkspaceTabMove,
+} from '@/renderer/components/workspace/workspace-state';
 
 /** Folding changes the strip's presentation, never its tab membership. */
 export function visibleWorkspaceTabs(group: WorkspaceRuntimeGroup): readonly WorkspaceRuntimeTab[] {
@@ -44,13 +49,16 @@ export interface WorkspaceTabStripProps {
   onActivate(tabId: string): void;
   onClose(tabId: string, committed?: () => void): void;
   onCloseOthers(tabId: string): void;
-  onReorder(tabId: string, delta: -1 | 1): void;
+  onCloseTabs(tabId: string, scope: WorkspaceTabCloseScope, committed?: () => void): void;
+  onPinnedChange(tabId: string, pinned: boolean): void;
+  onReorder(tabId: string, move: WorkspaceTabMove): void;
   onNewTab(view: AppView): void;
   onOpenBeside(view: AppView): void;
   splitAxis: 'columns' | 'rows' | null;
   splitPosition: 'start' | 'end';
   onMerge(): void;
   onMoveToOtherGroup(tabId: string): void;
+  canMoveToOtherGroup: boolean;
   onSplit(axis: 'columns' | 'rows'): void;
   onReset(): void;
 }

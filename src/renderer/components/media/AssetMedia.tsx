@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import type { AssetDto } from '@/shared/contracts';
 import { imagePreviewSource, mayAnimateImage, mediaPosterUrl, type PreviewAsset } from '@/shared/media-preview-policy';
 import { useMediaActivity, useMediaReducedMotion } from '@/renderer/components/media/useMediaActivity';
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
+import { imageAssetIdFromUrl, useImageHidden } from '@/renderer/components/media/ImageVisibilityProvider';
 
 type MediaAsset = PreviewAsset & { id?: string };
 type MediaElement = HTMLImageElement | HTMLVideoElement;
@@ -49,7 +51,9 @@ export function AssetMedia({
 }: Props) {
   const video = isVideoAsset(asset);
   const mediaRef = useRef<MediaElement | null>(null);
-  const visible = useMediaActivity(mediaRef, src ?? asset.mediaUrl);
+  const hidden = useImageHidden(video ? null : (asset.id ?? imageAssetIdFromUrl(src ?? asset.mediaUrl)));
+  // Toggling the wrapper replaces the image element; reattach its visibility observer.
+  const visible = useMediaActivity(mediaRef, JSON.stringify([src ?? asset.mediaUrl, hidden]));
   const reducedMotion = useMediaReducedMotion();
   const [loadedVideoSource, setLoadedVideoSource] = useState<string | null>(null);
   const requested =
@@ -67,7 +71,8 @@ export function AssetMedia({
 
   if (!video)
     return (
-      <img
+      <ScratchImage
+        assetId={asset.id}
         ref={(element) => {
           mediaRef.current = element;
         }}

@@ -31,8 +31,9 @@ import { createCompanionLoopback } from '@/main/browser-companion/loopback-runti
 import { AppUpdateService } from '@/main/app/app-update-service';
 import { isPackagedApplication } from '@/main/app/runtime-mode';
 import { resolveAiyUserDataPath } from '@/main/app/user-data-path';
-import { DesktopApplicationShell } from '@/main/app/application-shell';
+import { allowWindowPresentation, DesktopApplicationShell } from '@/main/app/application-shell';
 import { createDesktopPetalsController } from '@/main/desktop-petals/create-desktop-petals-controller';
+import { createClipboardCapture } from '@/main/clipboard-capture/create-clipboard-capture';
 import { WorkspaceLayoutStore } from '@/main/app/workspace-layout-store';
 import { ArticleEditorRecoveryStore } from '@/main/app/article-editor-recovery-store';
 import { TransitionPreviewCache, TRANSITION_PREVIEW_LIMIT } from '@/main/app/transition-preview-cache';
@@ -49,6 +50,7 @@ import { registerApplicationSchemes } from '@/main/app/protocol-schemes';
 import { AppDeepLinkController, registerAiyDeepLinkProtocolClient } from '@/main/app/external-deep-link';
 import { prepareStartupShell } from '@/main/app/startup-shell';
 import { finishStartupStage } from '@/main/app/startup-timing';
+import { startLocalCrashReporter } from '@/main/app/renderer-diagnostics';
 import type { ActiveLibraryContext } from '@/main/libraries/active-library-context';
 import { createLibraryStartupTiming } from '@/main/libraries/library-startup-timing';
 import { LibraryRegistry, libraryDatabasePath, type LibraryDescriptor } from '@/main/libraries/library-registry';
@@ -90,15 +92,16 @@ let legacySpaceMigration: LegacySpaceMigrationService | null = null;
 let localSpaceTransfer: LocalSpaceTransferService | null = null;
 let managedCodexHistorySearch: CodexHistorySearch | null = null;
 let desktopPetals: ReturnType<typeof createDesktopPetalsController> | null = null;
+let clipboardCapture: ReturnType<typeof createClipboardCapture> | null = null;
 const browserCompanionService = createCompanionLoopback(() => appShell.activeLibraryContext, rendererEvents);
-const allowWindowPresentation = process.env.AIY_E2E !== '1' || process.env.AIY_E2E_OBSERVE === '1';
 const appShell = new DesktopApplicationShell(rendererEvents, {
   backgroundColor: '#f8f7f3',
   title: productNameForLocale(app.getLocale()),
   allowWindowPresentation,
-  drainDesktopPetals: () => desktopPetals?.drain() ?? Promise.resolve(true),
-  resumeDesktopPetals: () => desktopPetals?.resume(),
+  drainDesktopPetals: () => clipboardCapture?.drain() ?? desktopPetals?.drain() ?? Promise.resolve(true),
+  resumeDesktopPetals: () => clipboardCapture?.resume(),
   desktopPetals: () => desktopPetals?.tray ?? null,
+  clipboardCapture: () => clipboardCapture,
   onSecondInstanceArguments: (commandLine) => appDeepLinks.acceptCommandLine(commandLine),
   onOpenUrl: (url) => appDeepLinks.acceptUrl(url),
   backgroundModelTasks: transcriptBackgroundTasks,
@@ -137,10 +140,9 @@ function liveServiceProxy<T extends object>(resolve: (context: ActiveLibraryCont
   });
 }
 
-const configuredUserDataPath = process.env.AIY_USER_DATA_DIR?.trim();
 const userDataPath = resolveAiyUserDataPath({
   appDataRoot: app.getPath('appData'),
-  configuredPath: configuredUserDataPath,
+  configuredPath: process.env.AIY_USER_DATA_DIR?.trim(),
   windowsStore: process.windowsStore,
 });
 const configuredLegacyUserDataPath = process.env.AIY_LEGACY_USER_DATA_DIR?.trim();
@@ -162,7 +164,9 @@ if (ownsSingleInstanceLock)
     .whenReady()
     .then(async () => {
       finishStartupStage('electronReady');
+      await startLocalCrashReporter();
       desktopPetals = createDesktopPetalsController(appShell, allowWindowPresentation);
+      clipboardCapture = createClipboardCapture(appShell, desktopPetals, allowWindowPresentation);
       registerAiyDeepLinkProtocolClient();
       const appIpc = createTrustedIpcHandlerRegistrar(() => appShell.mainWindow);
       registerAppDeepLinkIpc(appIpc, appDeepLinks);
@@ -510,6 +514,7 @@ if (ownsSingleInstanceLock)
         appShell.setActiveLibraryContext(context);
         activeLibrary = context.library;
         context.activate();
+        clipboardCapture?.activate(context);
         await replayAssetExportCalendar(context.database);
         await desktopPetals
           ?.activate(context, restorePetalsAfter)

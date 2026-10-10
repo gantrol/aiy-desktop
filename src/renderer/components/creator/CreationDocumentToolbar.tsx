@@ -7,6 +7,7 @@ import { ContentToolbar } from '@/renderer/features/content-editor/ContentToolba
 import { emptyToolbarState, selectToolbarState } from '@/renderer/features/content-editor/contentEditorToolbarState';
 import { FormatButton, HeadingMenu, LinkMenu } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { cn } from '@/renderer/lib/utils';
 
 export function CreationDocumentToolbar({
   editor,
@@ -25,11 +26,14 @@ export function CreationDocumentToolbar({
     useEditorState({ editor, selector: ({ editor: current }) => selectToolbarState(current) }) ?? emptyToolbarState;
   return (
     <TooltipProvider>
-      <ContentToolbar label={labels.formatting} className="min-h-11 border-0 bg-transparent px-0">
-        {(narrow) => (
+      <ContentToolbar
+        label={labels.formatting}
+        className="min-h-11 gap-x-2 gap-y-1 border-0 bg-transparent px-0 py-1.5"
+      >
+        {(narrow, width) => (
           <>
             {editor && (
-              <>
+              <div className="flex min-w-0 flex-wrap items-center gap-0.5">
                 {!outlineMode && <HeadingMenu editor={editor} state={state} labels={labels} textLabel={!narrow} />}
                 <FormatButton
                   label={labels.bold}
@@ -70,9 +74,9 @@ export function CreationDocumentToolbar({
                 >
                   <Redo2 className="size-3.5" />
                 </FormatButton>
-              </>
+              </div>
             )}
-            <div className="ml-auto flex items-center gap-1">
+            <div className={cn('ml-auto flex flex-wrap items-center justify-end gap-1', width < 560 && 'w-full')}>
               {materials}
               {children}
             </div>

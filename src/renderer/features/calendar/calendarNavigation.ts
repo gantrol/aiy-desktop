@@ -1,5 +1,6 @@
 import { initialAppLocation, type AppLocation } from '@/renderer/components/app/app-navigation';
 import type { BootstrapDto } from '@/shared/contracts';
+import { inspirationArticleIds } from '@/shared/article-summary';
 import type { CalendarItem } from '@/shared/contracts/calendar';
 
 /** Only exact, supported destinations are returned; IDs are never reinterpreted as another content type. */
@@ -25,9 +26,7 @@ export function calendarSourceLocation(item: Pick<CalendarItem, 'entity'>, data:
         ? creator({ surface: 'social-post', postId: id })
         : null;
     case 'INSPIRATION_STASH':
-      return data.inspirationStashes?.some((entry) => entry.id === id)
-        ? creator({ surface: 'inspiration-stash', stashId: id })
-        : null;
+      return inspirationArticleIds(data).includes(id) ? creator({ surface: 'inspiration-stash', stashId: id }) : null;
     case 'PROMPT_SERIES':
       return data.series.some((entry) => entry.id === id)
         ? creator({ surface: 'existing-creation', seriesId: id, assetId: null })

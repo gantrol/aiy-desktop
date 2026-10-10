@@ -8,6 +8,7 @@ import { ActionMenuButton } from '@/renderer/components/ui/action-menu';
 import { CreationLibraryTreeItem } from '@/renderer/components/creator/CreationLibraryTreeItem';
 import { CREATION_TREE_COMPACT_NODE_METRICS } from '@/renderer/components/albums/treeConnectionGeometry';
 import type { useCreationDraftList } from '@/renderer/components/creator/useCreationDraftList';
+import { useCreationDraftDisclosure } from '@/renderer/components/creator/useCreationDraftDisclosure';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
@@ -22,9 +23,10 @@ interface Props {
 export function CreationDraftList({ drafts, selectedId, busy, onSelect, onDelete, onClear }: Props) {
   const { messages } = useI18n();
   const labels = messages.creator.results;
+  const disclosure = useCreationDraftDisclosure();
   if (!drafts.items.length && !drafts.failed) return null;
   return (
-    <Collapsible defaultOpen asChild>
+    <Collapsible open={disclosure.open} onOpenChange={disclosure.onOpenChange} asChild>
       <section
         aria-label={labels.savedDrafts}
         className="flex min-h-0 max-h-[35%] shrink-0 flex-col border-t border-border/60"
@@ -34,12 +36,16 @@ export function CreationDraftList({ drafts, selectedId, busy, onSelect, onDelete
           <h3 className="min-w-0 flex-1">
             <CollapsibleTrigger asChild>
               <Button
+                ref={disclosure.triggerRef}
                 type="button"
                 variant="ghost"
                 size="xs"
                 className="group w-full min-w-0 justify-start gap-1 px-0 text-muted-foreground"
               >
-                <ChevronRightIcon aria-hidden="true" className="size-3.5 group-data-[state=open]:rotate-90" />
+                <ChevronRightIcon
+                  aria-hidden="true"
+                  className="size-3.5 transition-transform duration-base ease-standard group-data-[state=open]:rotate-90 motion-reduce:transition-none"
+                />
                 <span className="truncate">{labels.savedDrafts}</span>
               </Button>
             </CollapsibleTrigger>
@@ -62,8 +68,13 @@ export function CreationDraftList({ drafts, selectedId, busy, onSelect, onDelete
             />
           )}
         </header>
-        <CollapsibleContent asChild>
-          <ScrollArea className="min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
+        <CollapsibleContent forceMount asChild>
+          <ScrollArea
+            ref={disclosure.contentRef}
+            inert={!disclosure.open}
+            aria-hidden={!disclosure.open}
+            className="min-h-0 data-[state=closed]:h-0 [&_[data-slot=scroll-area-viewport]>div]:!block"
+          >
             <div className="px-2 pb-2">
               {drafts.items.map((draft) => {
                 const title = draft.title.trim() || draft.preview.trim().replace(/\s+/gu, ' ') || labels.untitledDraft;

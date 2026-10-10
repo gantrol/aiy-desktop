@@ -98,17 +98,6 @@ export function FeatureDemoImageCreation({
         startReady={Boolean(prompt)}
         fullWindow={false}
         annotationRefinement={null}
-        materialPicker={
-          <CreationMaterialPicker
-            libraryKey={data.spaceName}
-            dataRevision={0}
-            terms={data.terms}
-            facets={data.facets}
-            selectedAssets={references}
-            onApply={ignore}
-            onImport={ignore}
-          />
-        }
         videoPicker={
           <Button
             variant="outline"
@@ -148,6 +137,17 @@ export function FeatureDemoImageCreation({
         }
         references={
           <CreationReferenceStrip
+            addAction={
+              <CreationMaterialPicker
+                libraryKey={data.spaceName}
+                dataRevision={0}
+                terms={data.terms}
+                facets={data.facets}
+                selectedAssets={references}
+                onApply={ignore}
+                onImport={ignore}
+              />
+            }
             assets={references}
             promptResolution={resolution}
             hidePromptMaterials

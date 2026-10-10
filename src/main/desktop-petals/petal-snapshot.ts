@@ -32,6 +32,7 @@ export function desktopPetalSnapshot(
     contentScale: contentScale(context.library.id, entry, deps.windows),
     applicationPanelHeight: entry ? deps.windows.notePanel.height(entry) : 0,
     collectionUndo: collection ? { token: collection.token, expiresAt: collection.expiresAt } : null,
+    collectionPreview: deps.windows.collectionPreview.active(entry),
     editEpoch: entry?.editEpoch ?? 0,
     point: { x: bounds?.x ?? 0, y: bounds?.y ?? 0 },
     ...noteContent(entry, deps.notes),

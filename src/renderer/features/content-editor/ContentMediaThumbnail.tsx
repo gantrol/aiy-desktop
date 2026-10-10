@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { Button } from '@/renderer/components/ui/button';
@@ -37,7 +38,7 @@ export function ContentMediaThumbnail({
         disabled={!available}
       >
         {available ? (
-          <img
+          <ScratchImage
             src={mediaUrl}
             alt=""
             loading="lazy"
@@ -85,10 +86,10 @@ export function ContentMediaThumbnail({
         <DialogTitle className="sr-only">{label}</DialogTitle>
         {assetId ? (
           <AssetFileContextMenu assetId={assetId} actions={actions}>
-            <img src={mediaUrl} alt={label} className="h-[80dvh] w-full object-contain" />
+            <ScratchImage src={mediaUrl} alt={label} className="h-[80dvh] w-full object-contain" />
           </AssetFileContextMenu>
         ) : (
-          <img src={mediaUrl} alt={label} className="h-[80dvh] w-full object-contain" />
+          <ScratchImage src={mediaUrl} alt={label} className="h-[80dvh] w-full object-contain" />
         )}
       </DialogContent>
     </Dialog>

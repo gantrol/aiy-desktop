@@ -8,6 +8,7 @@ import TaskList from '@tiptap/extension-task-list';
 import { ContentMarkdownManager } from '@/shared/content-markdown-manager';
 import StarterKit from '@tiptap/starter-kit';
 import { linkCardMarkdown } from '@/shared/link-card-document';
+import { htmlFileMarkdown, parseHtmlFileLink } from '@/shared/html-file-document';
 import { isMathNode, mathMarkdown } from '@/shared/content-math';
 import type { List, PhrasingContent, RootContent } from 'mdast';
 import {
@@ -63,6 +64,7 @@ const markdown = new ContentMarkdownManager({
     ...inlineNodes,
     ...['inlineMath', 'blockMath'].map((name) => Node.create({ name, renderMarkdown: mathMarkdown })),
     Node.create({ name: 'linkCard', group: 'block', atom: true, renderMarkdown: linkCardMarkdown }),
+    Node.create({ name: 'htmlFile', group: 'inline', inline: true, atom: true, renderMarkdown: htmlFileMarkdown }),
   ],
 });
 
@@ -181,6 +183,11 @@ export function markdownBlockDocument(
   );
   const leaf = (node: RootContent | PhrasingContent): BlockNode[] | null => {
     switch (node.type) {
+      case 'link': {
+        const label = node.children.map((child) => ('value' in child ? child.value : '')).join('');
+        const attrs = parseHtmlFileLink(node.url, label);
+        return attrs ? [{ type: 'htmlFile', attrs }] : null;
+      }
       case 'math':
       case 'inlineMath':
         return [{ type: node.type === 'math' ? 'blockMath' : 'inlineMath', attrs: { latex: node.value } }];
@@ -327,6 +334,7 @@ export function blockDocumentText(document: BlockDocument): string {
     if (node.type === 'text') return node.text ?? '';
     if (node.type === 'hardBreak') return '\n';
     if (node.type === 'image') return String(node.attrs?.alt ?? '');
+    if (node.type === 'htmlFile') return String(node.attrs?.fileName ?? '');
     if (node.type === 'linkCard') return [node.attrs?.title, node.attrs?.url].filter(Boolean).join('\n');
     if (node.type === 'creatorTerm' || node.type === 'creatorRecipe') return String(node.attrs?.promptText ?? '');
     return (node.content ?? [])

@@ -10,6 +10,7 @@ interface Props {
   artifact: CodexVisualizationArtifactDto;
   busy: boolean;
   openSourceLabel: string;
+  scriptsAllowed?: boolean;
   children: ReactNode;
   onClose(): void;
   onOpenSource(): void;
@@ -19,6 +20,7 @@ export function CodexVisualizationPreviewFrame({
   artifact,
   busy,
   openSourceLabel,
+  scriptsAllowed = false,
   children,
   onClose,
   onOpenSource,
@@ -36,7 +38,7 @@ export function CodexVisualizationPreviewFrame({
           </DialogTitle>
           <Badge variant="outline" className="gap-1">
             <ShieldCheckIcon className="size-3" />
-            {l.preview.restricted}
+            {scriptsAllowed ? l.preview.offlineRuntime : l.preview.restricted}
           </Badge>
           <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onOpenSource}>
             <SquareArrowOutUpRightIcon className="size-4" />

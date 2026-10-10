@@ -5,10 +5,12 @@ import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import {
   codexVisualizationArtifactActionInputSchema,
   codexVisualizationHtmlPreviewReleaseInputSchema,
+  codexVisualizationHtmlPreviewInputSchema,
   codexVisualizationListInputSchema,
   codexVisualizationSessionActionInputSchema,
 } from '@/shared/contracts/codex-visualizations';
 import { CODEX_EXTENSION_ID, CODEX_VISUALIZATION_THREAD_CONTENT_PERMISSION } from '@/shared/extension-ids';
+import { EMBEDDED_WEB_EXTENSION_ID } from '@/shared/contracts/embedded-web';
 
 export function registerCodexVisualizationIpc(
   ipcMain: IpcHandlerRegistrar,
@@ -51,9 +53,15 @@ export function registerCodexVisualizationIpc(
     }),
   );
   ipcMain.handle('codex-visualization:prepare-html-preview', (_event, raw) =>
-    invoke(() => {
-      const input = codexVisualizationArtifactActionInputSchema.parse(raw);
-      return discovery.prepareHtmlPreview(input.artifactId);
+    invoke(async () => {
+      const input = codexVisualizationHtmlPreviewInputSchema.parse(raw);
+      const scriptsAllowed = input.interactive === true && extensions.isActivated(EMBEDDED_WEB_EXTENSION_ID);
+      const preview = await discovery.prepareHtmlPreview(input.artifactId, scriptsAllowed);
+      if (scriptsAllowed && !extensions.isActivated(EMBEDDED_WEB_EXTENSION_ID)) {
+        discovery.releaseHtmlPreview(preview.previewId);
+        throw new Error('Embedded web runtime is disabled');
+      }
+      return preview;
     }),
   );
   ipcMain.handle('codex-visualization:prepare-mermaid-preview', (_event, raw) =>

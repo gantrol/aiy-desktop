@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import { useState, type DragEvent } from 'react';
 import { CropIcon, ImagePlusIcon, ImagesIcon, LoaderCircleIcon, RotateCcwIcon, StarIcon, TypeIcon } from 'lucide-react';
 import { ArticleHeaderIconButton } from '@/renderer/components/creator/article-editor/ArticleEditorHeader';
@@ -104,7 +105,7 @@ export function ArticleCoverSlot({
         <LoaderCircleIcon className="size-4 animate-spin motion-reduce:animate-none" />
       ) : asset ? (
         <>
-          <img
+          <ScratchImage
             src={mediaThumbnailUrl({ id: asset.assetId }, 192)}
             alt=""
             loading="lazy"

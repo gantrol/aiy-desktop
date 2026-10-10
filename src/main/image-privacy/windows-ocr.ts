@@ -15,7 +15,9 @@ const resultSchema = z.discriminatedUnion('status', [
     .object({
       status: z.literal('ready'),
       angle: z.number().finite().min(-180).max(180),
-      lines: z.array(z.object({ words: z.array(wordSchema).max(10000) })).max(10000),
+      lines: z
+        .array(z.object({ words: z.array(wordSchema).max(10000), text: z.string().max(262144).optional() }))
+        .max(10000),
     })
     .refine((value) => value.lines.reduce((count, line) => count + line.words.length, 0) <= 10000),
   z.object({ status: z.enum(['unavailable', 'tooLarge', 'failed', 'cancelled']) }),

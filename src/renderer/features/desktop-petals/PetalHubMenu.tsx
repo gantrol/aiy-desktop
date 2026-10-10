@@ -1,17 +1,6 @@
-import {
-  Eye,
-  EyeOff,
-  House,
-  Pin,
-  Play,
-  Pause,
-  RotateCcw,
-  Settings,
-  StickyNote,
-  Undo2,
-  type LucideIcon,
-} from 'lucide-react';
+import { Eye, EyeOff, House, Play, Pause, RotateCcw, Settings, StickyNote, Undo2, type LucideIcon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
+import { PinToDesktopIcon } from '@/renderer/features/desktop-petals/PinToDesktopIcon';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -117,7 +106,11 @@ export function PetalHubMenu({
           label={copy.actions.myPetals}
           onSelect={() => menu.select(api.hubView, 'notes')}
         />
-        <PetalMenuItem icon={Pin} label={copy.board.pin} onSelect={() => menu.select(api.hubView, 'sources')} />
+        <PetalMenuItem
+          icon={PinToDesktopIcon}
+          label={copy.board.pin}
+          onSelect={() => menu.select(api.hubView, 'sources')}
+        />
         {showTimer && (
           <>
             <DropdownMenuSeparator className={petalMenuSeparatorClass} />

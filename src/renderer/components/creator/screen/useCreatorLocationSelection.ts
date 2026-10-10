@@ -11,7 +11,7 @@ function selectionFromLocation(location: CreatorLocation): CreatorActiveSelectio
   if (location.surface === 'inspiration-stash') return { kind: 'ARTICLE', id: location.stashId };
   if (location.surface === 'image-breakdown') return { kind: 'IMAGE_BREAKDOWN', id: location.breakdownId };
   if (location.surface === 'evaluation-suite') return { kind: 'EVALUATION_SUITE', id: location.suiteId };
-  if (location.surface === 'social-post') return { kind: 'SOCIAL_POST', id: location.postId };
+  if (location.surface === 'social-post') return { kind: 'ARTICLE', id: location.postId };
   if (location.surface === 'article') return { kind: 'ARTICLE', id: location.articleId };
   if (location.surface === 'album-detail') return { kind: 'ALBUM', id: location.albumId };
   if (location.surface === 'idea-creation') return { kind: 'IDEA_CREATION', id: location.creationId };

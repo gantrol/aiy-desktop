@@ -26,8 +26,14 @@ import type {
   ContentLifecycleTarget,
 } from '@/shared/contracts';
 import type { LibraryStorage } from '@/main/database/core/storage';
+import {
+  articleCreationScope,
+  isolateArticleCreation,
+  type ArticleCreationScope,
+} from '@/main/database/creations/article-creation-management';
 import { type JsonMap, now, text } from '@/main/database/core/values';
 import { promptSeriesRecoveryPayloadSchema, recycleBinPurgeAfter } from '@/main/database/recovery/recycle-bin-entry';
+import { storedContentPreview } from '@/shared/content-lifecycle-preview';
 
 const entityTypeSchema = z.enum([
   'GIF_DOCUMENT',
@@ -136,6 +142,7 @@ interface Snapshot {
 interface PreparedOperation {
   root: Snapshot;
   members: Snapshot[];
+  articleScope?: ArticleCreationScope;
 }
 
 interface PurgeableManagedAsset {
@@ -402,7 +409,7 @@ export class ContentLifecycleRepository {
     const normalized = [
       ...new Map(
         targets.map((target) => {
-          if (target.scope === 'FORM' && action !== 'DELETE') {
+          if (target.scope === 'FORM' && target.entityType !== 'ARTICLE' && action !== 'DELETE') {
             throw new Error('Creation forms can only be moved to the recycle bin');
           }
           const resolved = this.normalizeTarget(target);
@@ -420,7 +427,9 @@ export class ContentLifecycleRepository {
         }),
       ).values(),
     ];
-    normalized.sort((left, right) => (left.entityType === 'ALBUM' ? -1 : right.entityType === 'ALBUM' ? 1 : 0));
+    const containerOrder = (target: ContentLifecycleTarget) =>
+      target.entityType === 'ALBUM' ? 0 : target.entityType === 'CREATION_ITEM' ? 1 : 2;
+    normalized.sort((left, right) => containerOrder(left) - containerOrder(right));
     const claimed = new Set<string>();
     const operations: PreparedOperation[] = [];
     for (const target of normalized) {
@@ -437,7 +446,13 @@ export class ContentLifecycleRepository {
       const root = members.find((member) => key(member) === key(target));
       if (!root) throw new Error('Content is unavailable');
       if (action === 'ARCHIVE' && root.stateBeforeAction === 'ARCHIVED') throw new Error('Content is already archived');
-      operations.push({ root, members });
+      operations.push({
+        root,
+        members,
+        ...(target.entityType === 'ARTICLE' && target.scope === 'FORM'
+          ? { articleScope: articleCreationScope(this.storage, target.entityId) }
+          : {}),
+      });
       for (const member of members) claimed.add(key(member));
     }
     return operations;
@@ -450,6 +465,7 @@ export class ContentLifecycleRepository {
     let albumCount = 0;
     for (const operation of operations) {
       hash.update(`root:${key(operation.root)}\n`);
+      if (operation.articleScope) hash.update(`article-scope:${JSON.stringify(operation.articleScope)}\n`);
       for (const member of operation.members) {
         hash.update(`${JSON.stringify(member)}\n`);
         if (
@@ -470,7 +486,16 @@ export class ContentLifecycleRepository {
     } satisfies ContentLifecyclePlanDto;
   }
 
-  private applyOperation(action: ContentLifecycleAction, operation: PreparedOperation, changedAt: string) {
+  private applyOperation(action: ContentLifecycleAction, operation: PreparedOperation, changedAt: string): void {
+    if (operation.articleScope) {
+      // Earlier operations in this same batch may already have separated a sibling manuscript.
+      const creationItemId = isolateArticleCreation(
+        this.storage,
+        articleCreationScope(this.storage, operation.root.entityId),
+      );
+      const members = this.snapshotCreationItem(creationItemId);
+      return this.applyOperation(action, { root: members[0], members }, changedAt);
+    }
     const batchId = ulid();
     this.db
       .prepare('DELETE FROM content_lifecycle_batches WHERE action = ? AND root_entity_type = ? AND root_entity_id = ?')
@@ -545,6 +570,10 @@ export class ContentLifecycleRepository {
   private normalizeTarget(target: ContentLifecycleTarget): ContentLifecycleTarget {
     if (target.entityType === 'INSPIRATION_STASH') return this.normalizeTarget({ ...target, entityType: 'ARTICLE' });
     if (target.scope === 'FORM') {
+      if (target.entityType === 'ARTICLE') {
+        articleCreationScope(this.storage, target.entityId);
+        return target;
+      }
       if (target.entityType !== 'GIF_DOCUMENT') throw new Error('This creation form cannot be deleted separately');
       const form = this.db
         .prepare(
@@ -855,8 +884,9 @@ export class ContentLifecycleRepository {
       row = this.db.prepare('SELECT * FROM inspiration_stashes WHERE id = ? AND deleted_at IS NULL').get(id) as
         JsonMap | undefined;
       subtype = 'INSPIRATION_STASH';
-      title = row ? this.jsonTitle(row.input_json, id) : id;
-      previewText = row ? text(row.input_json).slice(0, 500) : null;
+      const presentation = storedContentPreview(row?.input_json);
+      title = presentation.title || id;
+      previewText = presentation.previewText;
       statusBefore = row ? text(row.status) : undefined;
       archived = statusBefore === 'ARCHIVED';
       changedAt = row ? text(row.updated_at) : '';
@@ -866,7 +896,7 @@ export class ContentLifecycleRepository {
       subtype = 'IMAGE_BREAKDOWN';
       title = row ? text(row.title) : id;
       previewAssetId = row?.source_asset_id ? text(row.source_asset_id) : null;
-      previewText = row?.result_json ? text(row.result_json).slice(0, 500) : null;
+      previewText = storedContentPreview(row?.result_json).previewText;
       archived = Boolean(row?.archived_at);
       changedAt = row ? text(row.updated_at) : '';
     } else if (type === 'EVALUATION_SUITE') {
@@ -879,8 +909,9 @@ export class ContentLifecycleRepository {
         )
         .get(id) as JsonMap | undefined;
       subtype = 'EVALUATION_SUITE';
-      title = row ? this.jsonTitle(row.content_json, id) : id;
-      previewText = row ? text(row.content_json).slice(0, 500) : null;
+      const presentation = storedContentPreview(row?.content_json);
+      title = presentation.title || id;
+      previewText = presentation.previewText;
       statusBefore = row ? text(row.status) : undefined;
       archived = statusBefore === 'ARCHIVED';
       changedAt = row ? text(row.updated_at) : '';
@@ -896,8 +927,9 @@ export class ContentLifecycleRepository {
         )
         .get(id) as JsonMap | undefined;
       subtype = type === 'SOCIAL_POST' ? 'SOCIAL_POST' : 'ARTICLE';
-      title = row ? this.jsonTitle(row.content_json, id) : id;
-      previewText = row ? text(row.content_json).slice(0, 500) : null;
+      const presentation = storedContentPreview(row?.content_json);
+      title = presentation.title || id;
+      previewText = presentation.previewText;
       statusBefore = row ? text(row.status) : undefined;
       archived = statusBefore === 'ARCHIVED';
       changedAt = row ? text(row.updated_at) : '';
@@ -1585,6 +1617,18 @@ export class ContentLifecycleRepository {
         )
         .run(id);
     } else if (member.entity_type === 'ARTICLE') {
+      this.db
+        .prepare(
+          `UPDATE social_post_revisions SET content_json='{}',content_hash='purged:' || id
+        WHERE draft_id IN (SELECT post_id FROM article_legacy_posts WHERE article_id=?)`,
+        )
+        .run(id);
+      this.db
+        .prepare(
+          `UPDATE social_post_drafts SET album_id=NULL,source_inspiration_stash_id=NULL
+        WHERE id IN (SELECT post_id FROM article_legacy_posts WHERE article_id=?)`,
+        )
+        .run(id);
       this.db.prepare('DELETE FROM article_comments WHERE article_id = ?').run(id);
       this.db.prepare('DELETE FROM article_revision_elements WHERE article_id = ?').run(id);
       this.db.prepare('DELETE FROM article_elements WHERE article_id = ?').run(id);
@@ -1958,17 +2002,5 @@ export class ContentLifecycleRepository {
     if (type === 'ARTICLE') return 'ARTICLE';
     if (type === 'VIDEO_DOCUMENT') return 'VIDEO_DOCUMENT';
     return null;
-  }
-
-  private jsonTitle(value: unknown, fallback: string) {
-    try {
-      const parsed = JSON.parse(text(value)) as unknown;
-      if (parsed && typeof parsed === 'object' && 'title' in parsed && typeof parsed.title === 'string') {
-        return parsed.title.trim() || fallback;
-      }
-    } catch {
-      // Persisted JSON is preview-only; malformed optional content falls back to the stable id.
-    }
-    return fallback;
   }
 }

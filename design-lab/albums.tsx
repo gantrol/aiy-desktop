@@ -11,6 +11,7 @@ import { MaterialAlbumGrid } from '@/renderer/components/gallery/MaterialAlbumGr
 import { CreationAlbumGrid } from '@/renderer/components/gallery/CreationAlbumGrid';
 import { MaterialAlbumHeader } from '@/renderer/components/gallery/MaterialAlbumHeader';
 import { AlbumDetailHeader } from '@/renderer/components/gallery/AlbumDetailHeader';
+import { CreationNewButton } from '@/renderer/components/creator/CreationNewButton';
 import { AlbumContents } from '@/renderer/components/creator/AlbumContents';
 import { AlbumTreePreview } from '@/renderer/components/albums/AlbumTreePreview';
 import { MaterialAlbumMoveProvider } from '@/renderer/components/gallery/MaterialAlbumMoveProvider';
@@ -134,7 +135,15 @@ function AlbumLab() {
                   onTogglePin={async (album) => notify(`pin:${album.id}`)}
                   onArchive={async (album) => notify(`archive:${album.id}`)}
                   onDelete={async (album) => notify(`delete:${album.id}`)}
-                  onCreateCreation={() => notify('create')}
+                  newCreationAction={
+                    <CreationNewButton
+                      busy={busy}
+                      showLabel
+                      onNewCreation={(mode) => notify(`create:${mode ?? 'manuscript'}`)}
+                      onNewAnimation={() => notify('create:animation')}
+                      onNewAlbum={() => notify(`create-album:${selected.id}`)}
+                    />
+                  }
                   notify={notify}
                 />
               )}

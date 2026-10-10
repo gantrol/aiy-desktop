@@ -1,7 +1,7 @@
 import type { ComponentProps, ReactNode } from 'react';
 import type {
   AlbumDto,
-  ArticleDto,
+  ArticleListItem,
   BootstrapDto,
   CreationInputSnapshotDto,
   CreationInputStashDto,
@@ -49,7 +49,7 @@ interface Props {
   paletteToApply: WordPaletteDto | null;
   recipeSavedMessage: string;
   renameAlbum: AlbumDto | null;
-  renameArticle: ArticleDto | null;
+  renameArticle: ArticleListItem | null;
   renameDocument: VideoDocumentSummaryDto | null;
   renameSeriesOpen: boolean;
   series: PromptSeriesDto | undefined;
@@ -68,7 +68,7 @@ interface Props {
   onRenameAlbum: ComponentProps<typeof RenameAlbumDialog>['onSave'];
   onRenameAlbumChange(album: AlbumDto | null): void;
   onRenameArticle: ComponentProps<typeof RenameArticleDialog>['onSave'];
-  onRenameArticleChange(article: ArticleDto | null): void;
+  onRenameArticleChange(article: ArticleListItem | null): void;
   onRenameDocument(id: string, title: string): Promise<void>;
   onRenameDocumentChange(document: VideoDocumentSummaryDto | null): void;
   onRenameSeriesOpenChange(open: boolean): void;

@@ -19,6 +19,7 @@ export interface ArticleEditorSessionMetadata {
   readonly coverVariants?: ArticleRevisionSaveInput['content']['coverVariants'];
   readonly creationInput?: ArticleRevisionSaveInput['content']['creationInput'];
   readonly files?: ArticleRevisionSaveInput['content']['files'];
+  readonly reading?: ArticleRevisionSaveInput['content']['reading'];
 }
 
 export interface ArticleEditorSaveIdentity {

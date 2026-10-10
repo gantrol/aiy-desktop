@@ -1,0 +1,26 @@
+{
+  "manifestVersion": 1,
+  "kind": "CAPABILITY",
+  "id": "com.aiy.embedded-web",
+  "version": "0.1.0",
+  "displayName": "Embedded Web Runtime",
+  "description": "Run local HTML scripts in an isolated offline preview.",
+  "engines": { "aiy": "^0.3.10" },
+  "runtime": { "kind": "HOST", "id": "embedded-web" },
+  "contributes": { "commands": ["embeddedWeb.run"] },
+  "permissions": ["browser.execute:local-html"],
+  "optionalPermissions": [],
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "displayName": "Embedded Web Runtime",
+        "description": "Run local HTML scripts in an isolated offline preview."
+      },
+      "zh": {
+        "displayName": "内置网页运行",
+        "description": "在隔离的离线预览中运行本地 HTML 脚本。"
+      }
+    }
+  }
+}

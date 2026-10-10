@@ -17,6 +17,8 @@ import {
   agentCreationCapabilities,
   agentCreationAlbumsSchema,
   agentCreationAlbumsResultSchema,
+  agentCreationDeleteEmptyAlbumsSchema,
+  agentCreationDeleteEmptyAlbumsResultSchema,
   agentCreationEnsureAlbumSchema,
   agentCreationEnsureAlbumResultSchema,
   agentCreationMoveSchema,
@@ -103,6 +105,7 @@ Usage:
   aiy-agent creation albums --input REQUEST.json [--user-data-dir PATH]
   aiy-agent creation ensure-album --input REQUEST.json [--user-data-dir PATH]
   aiy-agent creation move --input REQUEST.json [--user-data-dir PATH]
+  aiy-agent creation delete-empty-albums --input REQUEST.json [--user-data-dir PATH]
   aiy-agent content read --input REQUEST.json [--user-data-dir PATH]
   aiy-agent content search --input REQUEST.json [--user-data-dir PATH]
   aiy-agent content update --input REQUEST.json [--user-data-dir PATH]
@@ -156,6 +159,7 @@ function parseArguments(argv: readonly string[]): ParsedArguments {
     'creation albums',
     'creation ensure-album',
     'creation move',
+    'creation delete-empty-albums',
     'capabilities',
     'content read',
     'content search',
@@ -246,6 +250,12 @@ const commandDefinitions = {
     method: 'agent.creation.move',
     input: agentCreationMoveSchema,
     output: agentCreationMoveResultSchema,
+    refreshFileView: true,
+  },
+  'creation delete-empty-albums': {
+    method: 'agent.creation.delete-empty-albums',
+    input: agentCreationDeleteEmptyAlbumsSchema,
+    output: agentCreationDeleteEmptyAlbumsResultSchema,
     refreshFileView: true,
   },
   'work list': { method: 'agent.work.list', input: agentWorkListSchema, output: agentWorkListResultSchema },

@@ -175,6 +175,38 @@ function useSocialPostEditorControls(
   };
 }
 
+function useSocialCoverGeneration(
+  session: ReturnType<typeof useSocialPostSaveSession>,
+  presets: readonly CanvasPresetDto[],
+  generate: Props['onGenerateCover'],
+  notify: Props['notify'],
+) {
+  const l = useI18n().messages.creator.socialPostEditor;
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  async function run() {
+    if (inFlight.current || !session.ready) return;
+    const preset = presets.find((item) => item.stableKey === 'xiaohongshu_portrait_3_4');
+    if (!preset) {
+      notify(l.canvasUnavailable);
+      return;
+    }
+    inFlight.current = true;
+    setBusy(true);
+    try {
+      if (!(await session.persist(session.content))) return;
+      const saved = session.savedPostRef.current;
+      await generate(saved, editableContent(saved), preset);
+    } catch (reason) {
+      notify(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  }
+  return { generatingCover: busy, generateCover: run };
+}
+
 function SocialPostEditorBody({
   spaceId,
   post,
@@ -198,11 +230,10 @@ function SocialPostEditorBody({
   const { content, setContent, mediaAssets, setMediaAssets, savedPostRef, saving, dirty, saveFailed, persist } =
     session;
   const [creatingForm, setCreatingForm] = useState(false);
-  const [generatingCover, setGeneratingCover] = useState(false);
+  const { generatingCover, generateCover } = useSocialCoverGeneration(session, canvasPresets, onGenerateCover, notify);
   const [relationsOpen, setRelationsOpen] = useState(false);
   const documentView = useSocialPostDocumentWidth();
   const [relationAssetId, setRelationAssetId] = useState<string | null>(null);
-  const defaultCoverPreset = canvasPresets.find((preset) => preset.stableKey === 'xiaohongshu_portrait_3_4');
   const diagnostics = useSocialPostDiagnostics({ post, content, dirty, saving, saveFailed });
   function saveWithDiagnostics(request: SocialPostRevisionSaveInput, savingSpaceId?: string) {
     return saveSocialPostWithDiagnostics(onSave, diagnostics.beginSave, request, savingSpaceId);
@@ -253,23 +284,6 @@ function SocialPostEditorBody({
         copySourceContent,
       ),
     );
-  }
-
-  async function generateCover() {
-    if (generatingCover || !session.ready) return;
-    if (!defaultCoverPreset) {
-      notify(socialCopy.canvasUnavailable);
-      return;
-    }
-    setGeneratingCover(true);
-    try {
-      if (!(await persist(content))) return;
-      await onGenerateCover(savedPostRef.current, editableContent(savedPostRef.current), defaultCoverPreset);
-    } catch (reason) {
-      notify(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setGeneratingCover(false);
-    }
   }
 
   return (

@@ -35,7 +35,7 @@ export function CreatorPromptEditorSurface({
         <div
           className={cn(
             'pointer-events-none absolute right-5 top-2 text-[15px] leading-[1.65] text-muted-foreground',
-            presentation === 'document' ? 'left-10' : 'left-12',
+            presentation === 'document' ? 'left-7' : 'left-8',
           )}
         >
           {placeholder}
@@ -63,7 +63,7 @@ export function CreatorPromptEditorSurface({
       type="always"
       className={cn(
         'relative [&_[data-slot=scroll-area-scrollbar]]:opacity-100',
-        fullWindow ? 'min-h-0 flex-1' : 'h-60 max-h-[38vh]',
+        fullWindow ? 'min-h-32 flex-1' : 'h-72 max-h-[46vh]',
       )}
     >
       {content}

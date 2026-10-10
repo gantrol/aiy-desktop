@@ -123,6 +123,7 @@ export function useExtensionManager(options: Options) {
       'install',
       async () => {
         const result = await window.desktopApi.extensionInstallLocal();
+        if (result.errorCode) throw new Error(messages.extensions.updateErrors[result.errorCode]);
         installedId = result.extensionId;
         return result.extensions;
       },

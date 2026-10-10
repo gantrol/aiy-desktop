@@ -1,0 +1,17 @@
+# Image visibility
+
+Image context menus provide Hide image / Unhide image. The material selection toolbar applies either action to the selected images, excluding video and text. Hiding does not remove an asset from keyword or semantic search, change its associations, or modify its original bytes.
+
+Display preferences live in the current library's existing `app_meta` table, under `image_visibility:<asset ID>`. Only hidden IDs are stored. No schema revision or product version is added. The main process validates the narrow IPC request and image identity, then writes at most 500 IDs per transaction using set-oriented SQL. These small synchronous SQLite operations follow the existing database interface; they do not read media files. Renderer requests are sequential, stop scheduling when the space provider unmounts, and retain successful chunks if a later chunk fails.
+
+`ImageVisibilityProvider` loads preferences once per space and refreshes on window focus. Images remain covered while that initial read is pending or has failed. A failed read/write produces a localized error. The shared image component protects library thumbnails, search results, common previews and document images; the annotation viewer retains its native image/ref through a reveal boundary. Ambient image backgrounds remain disabled for hidden assets. Automatically selected loading/transition images exclude hidden IDs and refresh their selection after a visibility change.
+
+The scratch surface accepts mouse, pen and touch input. A click alone does not reveal an image. After a stroke clears approximately half the coating, releasing the pointer reveals that surface. Enter or Space provides a keyboard equivalent. Reveal state is local to the mounted surface and is reset when it leaves the viewport, its tab is suspended, the window becomes hidden, or the asset changes. Unhide is the separate persistent action.
+
+The resting cover uses a shared silver-foil SVG with broad reflections, subtle brushed lines and fine grain. A small visibility icon and the existing action label sit in the center; narrow thumbnails retain the icon and accessible name. At the first stroke, canvas draws the same loaded texture, avoiding a switch from a plain placeholder to a different material. If the texture has not loaded, an opaque neutral fill keeps the image concealed. Thin partial grooves outside the brush soften its edge; only the fully erased core counts toward the reveal threshold.
+
+Canvas allocation is deferred until scratching, with its longest side capped at 1,024 pixels. Cleared-area estimation uses a fixed sampling grid instead of full-frame pixel readback. Resize resets the coating. These bounds are implementation constraints, not measured performance claims.
+
+This is a display preference, not encryption or export redaction. Explicit copy, export, external open and creation-reference actions continue to use original images. Local visibility preferences are not a promise of cross-device synchronization. Dedicated image composition/crop tools and desktop petals are outside this first display-surface integration.
+
+Existing related regression suites, type checking, scoped formatting/lint and production build passed. No tests or snapshots were added or rewritten. Existing tests do not directly verify the new scratch gesture, persistence failure combinations, high-DPI sizing or touch/keyboard interaction; manual UI verification has not been performed.

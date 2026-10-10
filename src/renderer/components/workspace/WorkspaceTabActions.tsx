@@ -6,6 +6,7 @@ import {
   ListIcon,
   LoaderCircleIcon,
   PlusIcon,
+  PinIcon,
 } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import {
@@ -103,6 +104,12 @@ export function WorkspaceTabActions(props: Props) {
               >
                 <CheckIcon className={cn('size-4 shrink-0', !current && 'invisible')} aria-hidden="true" />
                 <span className="min-w-0 flex-1 truncate">{title}</span>
+                {tab.pinned && (
+                  <>
+                    <PinIcon className="size-3.5 shrink-0" aria-hidden="true" />
+                    <span className="sr-only">{labels.pinnedTab}</span>
+                  </>
+                )}
               </DropdownMenuItem>
             );
           })}

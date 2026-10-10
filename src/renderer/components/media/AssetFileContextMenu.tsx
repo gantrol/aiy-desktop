@@ -36,6 +36,8 @@ import { ImageBreakdownContextMenuItem } from '@/renderer/components/media/Image
 import { PinContentMenuItem } from '@/renderer/features/desktop-petals/PinContentAction';
 import type { PinSource } from '@/shared/contracts/petal-board';
 import { GifContextMenuItem } from '@/renderer/features/gif-making/GifContextMenuItem';
+import { ImageVisibilityMenuItem } from '@/renderer/components/media/ImageVisibilityMenuItem';
+import { AssetNavigationMenuItems } from '@/renderer/components/media/AssetNavigationMenuItems';
 
 interface Props {
   pinSource?: PinSource;
@@ -51,6 +53,7 @@ interface Props {
   usableInCreation?: boolean;
   draggable?: boolean;
   inline?: boolean;
+  showMaterialNavigation?: boolean;
 }
 
 type FileAction = 'COPY' | 'SAVE_AS' | 'REVEAL' | 'OPEN';
@@ -122,6 +125,7 @@ export function AssetFileContextMenu({
   usableInCreation = true,
   draggable = copyable,
   inline = false,
+  showMaterialNavigation,
 }: Props) {
   const TriggerContainer = inline ? 'span' : 'div';
   const { messages } = useI18n();
@@ -252,6 +256,11 @@ export function AssetFileContextMenu({
         </TriggerContainer>
       </ContextMenuTrigger>
       <LazyAssetContextMenuContent open={menuOpen}>
+        <AssetNavigationMenuItems
+          assetId={assetId}
+          showMaterial={showMaterialNavigation}
+          hasDetails={actions.some((action) => action.id === 'details')}
+        />
         {actions.length > 0 && (
           <>
             <ActionContextMenuItems actions={actions} />
@@ -270,6 +279,7 @@ export function AssetFileContextMenu({
           {labels.copy}
         </ContextMenuItem>
         <PinContentMenuItem source={pinSource ?? { kind: 'IMAGE', id: assetId }} notify={notify} />
+        <ImageVisibilityMenuItem assetId={assetId} enabled={copyable} />
         <ContextMenuSub>
           <ContextMenuSubTrigger>
             <AssetMenuIcon icon={FolderPlusIcon} />

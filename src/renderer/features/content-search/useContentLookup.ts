@@ -40,10 +40,13 @@ export function useContentLookup(
   query: string,
   type: ContentLookupInput['type'],
   enabled = true,
+  pollDelay = 80,
+  context = '',
 ) {
   const [request, setRequest] = useState({
     query,
     type,
+    context,
     offset: 0,
     snapshot: '',
     revision: 0,
@@ -54,9 +57,9 @@ export function useContentLookup(
   const [data, setData] = useState<LookupData | null>(null);
   const [error, setError] = useState<{ key: string; message: string } | null>(null);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
-  const matching = request.query === query && request.type === type;
+  const matching = request.query === query && request.type === type && request.context === context;
   const offset = matching ? request.offset : 0;
-  const key = JSON.stringify([query, type, request.revision]);
+  const key = JSON.stringify([query, type, context, request.revision]);
   const requestKey = JSON.stringify([key, offset, request.attempt]);
   useEffect(() => {
     if (!enabled) return;
@@ -64,6 +67,7 @@ export function useContentLookup(
       setRequest((current) => ({
         query,
         type,
+        context,
         offset: 0,
         snapshot: '',
         revision: current.revision + 1,
@@ -101,7 +105,7 @@ export function useContentLookup(
         if (result.reset) pageOffset = 0;
         snapshot = result.snapshot;
         setPendingKey(null);
-        if (result.coverage.pending && !paused) timer = setTimeout(() => void run(), 80);
+        if (result.coverage.pending && !paused) timer = setTimeout(() => void run(), pollDelay);
       } catch (reason) {
         if (!cancelled) {
           setError({ key: requestKey, message: String(reason) });
@@ -114,7 +118,21 @@ export function useContentLookup(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [api, key, requestKey, query, type, offset, matching, request.retry, request.snapshot, paused, enabled]);
+  }, [
+    api,
+    key,
+    requestKey,
+    query,
+    type,
+    context,
+    offset,
+    matching,
+    request.retry,
+    request.snapshot,
+    paused,
+    enabled,
+    pollDelay,
+  ]);
   const result = data?.key === key ? data.result : null;
   const failure = error?.key === requestKey ? error.message : '';
   const busy = enabled && (pendingKey === requestKey || (data?.requestKey !== requestKey && !failure));
@@ -131,6 +149,7 @@ export function useContentLookup(
       setRequest((current) => ({
         query,
         type,
+        context,
         offset: 0,
         snapshot: '',
         revision: current.revision + 1,

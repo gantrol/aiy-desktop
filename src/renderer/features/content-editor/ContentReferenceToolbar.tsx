@@ -34,7 +34,7 @@ export function ContentReferenceToolbar(props: ReferenceActionsProps & { visible
   const selector = reference.selector?.kind === 'BLOCK' ? reference.selector : undefined;
   const names = { LINK: copy.linkMode, FOLLOW: copy.following, SYNC: copy.syncSource, FIXED: copy.fixedReference };
   const show = visible || Boolean(openMenu) || actions.busy || Boolean(actions.error);
-  const canOpen = ['ARTICLE', 'INSPIRATION_STASH', 'ALBUM'].includes(reference.source.kind);
+  const canOpen = ['ARTICLE', 'INSPIRATION_STASH', 'SOCIAL_POST', 'ALBUM'].includes(reference.source.kind);
   const canChoosePlacement = canOpen && reference.source.kind !== 'ALBUM';
   return (
     <>

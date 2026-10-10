@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" preserveAspectRatio="none">
+  <defs>
+    <!-- Broad reflections describe the silver coating, rather than the image beneath it. -->
+    <linearGradient id="silver" x1="0" y1="0" x2="1" y2="0.85">
+      <stop stop-color="#eeefeb"/>
+      <stop offset="0.19" stop-color="#c8cac5"/>
+      <stop offset="0.36" stop-color="#e4e6e0"/>
+      <stop offset="0.55" stop-color="#b6b9b2"/>
+      <stop offset="0.76" stop-color="#eceee8"/>
+      <stop offset="1" stop-color="#c9ccc4"/>
+    </linearGradient>
+    <linearGradient id="light" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#fff" stop-opacity="0.3"/>
+      <stop offset="0.25" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.85" stop-color="#43473e" stop-opacity="0"/>
+      <stop offset="1" stop-color="#43473e" stop-opacity="0.08"/>
+    </linearGradient>
+    <pattern id="grain" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path fill="#fff" opacity="0.42" d="M2 3h.8v.6h-.8z M12 1h.6v.8h-.6z M24 5h1v.5h-1z M6 12h.7v.8h-.7z M18 10h.6v.6h-.6z M29 15h.8v.6h-.8z M3 23h.8v.5h-.8z M13 19h.5v.7h-.5z M22 25h.8v.6h-.8z M10 30h.6v.5h-.6z M30 28h.7v.8h-.7z"/>
+      <path fill="#555a50" opacity="0.16" d="M7 6h.6v.7h-.6z M19 3h.8v.5h-.8z M29 9h.6v.8h-.6z M2 17h.7v.5h-.7z M12 13h.8v.6h-.8z M23 17h.5v.7h-.5z M8 25h.6v.8h-.6z M17 28h.8v.5h-.8z M28 22h.6v.6h-.6z"/>
+    </pattern>
+    <pattern id="brushed" width="512" height="24" patternUnits="userSpaceOnUse">
+      <path d="M-4 7C96 3 184 13 278 8S430 2 516 5 M-4 20C104 16 205 25 312 18S446 14 516 17" fill="none" stroke="#fff" stroke-width="0.6" opacity="0.22"/>
+      <path d="M-4 8C96 4 184 14 278 9S430 3 516 6 M-4 21C104 17 205 26 312 19S446 15 516 18" fill="none" stroke="#686e60" stroke-width="0.5" opacity="0.09"/>
+    </pattern>
+  </defs>
+  <path fill="url(#silver)" d="M0 0h512v512H0z"/>
+  <path fill="url(#brushed)" d="M0 0h512v512H0z"/>
+  <path fill="url(#grain)" d="M0 0h512v512H0z"/>
+  <path fill="url(#light)" d="M0 0h512v512H0z"/>
+</svg>

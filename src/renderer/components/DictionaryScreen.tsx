@@ -715,6 +715,7 @@ export function DictionaryScreen({
           onClassifications={openClassifications}
         />
         <TermOverview
+          active={active && surface === 'overview'}
           locale={locale}
           terms={dictionaryTerms}
           visibleTerms={overviewTerms}

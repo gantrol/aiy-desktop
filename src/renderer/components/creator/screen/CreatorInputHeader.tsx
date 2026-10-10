@@ -10,6 +10,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { Button } from '@/renderer/components/ui/button';
 import { Combobox } from '@/renderer/components/ui/combobox';
 import { CreationWorkNavigation } from '@/renderer/components/creator/CreationWorkNavigation';
+import { cn } from '@/renderer/lib/utils';
 
 interface Labels {
   importedPrompt: string;
@@ -32,6 +33,7 @@ interface DerivedHeader {
 
 interface Props {
   startAction?: ReactNode;
+  endAction?: ReactNode;
   albums: readonly AlbumDto[];
   allSeries: readonly PromptSeriesDto[];
   busy: boolean;
@@ -178,7 +180,7 @@ function CreatorInputHeaderContent(props: Props) {
     <AlbumSelect
       options={albumOptions}
       value={props.targetAlbumId}
-      className="h-8 w-48 max-w-[35vw] text-xs"
+      className="h-8 w-48 max-w-full shrink text-xs"
       disabled={props.busy}
       ariaLabel={messages.albumPicker.newCreation}
       nullOption={{ kind: 'unassigned', label: messages.albumPicker.unassigned }}
@@ -187,7 +189,7 @@ function CreatorInputHeaderContent(props: Props) {
     />
   );
   const startAction = props.startAction ? (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 flex-1 items-center gap-2">
       {props.startAction}
       {props.newCreationSurface && isDocumentCreationStartMode(props.creationStartMode) && albumPicker}
     </div>
@@ -239,7 +241,12 @@ function CreatorInputHeaderContent(props: Props) {
       </div>
     ));
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b px-4">
+    <header
+      className={cn(
+        'flex shrink-0 items-center justify-between gap-2 border-b px-3',
+        props.startAction ? 'h-9' : 'h-12',
+      )}
+    >
       {main}
       <div className="flex shrink-0 items-center gap-1.5">
         {!props.startAction && <CreationWorkNavigation />}
@@ -255,6 +262,7 @@ function CreatorInputHeaderContent(props: Props) {
         >
           <HistoryIcon className="size-3.5" />
         </Button>
+        {props.endAction}
       </div>
     </header>
   );

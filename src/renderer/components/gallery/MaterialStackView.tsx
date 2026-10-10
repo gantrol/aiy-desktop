@@ -36,6 +36,7 @@ import {
   type SelectionModifiers,
 } from '@/renderer/components/gallery/materialLibraryTypes';
 import type { MaterialStack } from '@/renderer/components/gallery/materialStacking';
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 
 interface Props {
   stacks: readonly MaterialStack[];
@@ -90,7 +91,7 @@ function StackMedia({ item }: { item: Exclude<MaterialLibraryItem, { kind: 'TEXT
     );
   }
   return (
-    <img
+    <ScratchImage
       src={mediaThumbnailUrl(item.image.asset, 320)}
       alt=""
       className="size-full object-contain"

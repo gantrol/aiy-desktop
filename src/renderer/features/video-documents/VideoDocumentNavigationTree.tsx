@@ -307,8 +307,7 @@ function CompactNavigationEntryRow({
             aria-current={selected ? 'page' : undefined}
             className={cn(
               'group relative grid size-16 place-items-center overflow-visible rounded-xl bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              selected &&
-                'after:pointer-events-none after:absolute after:-left-1 after:top-1/2 after:h-6 after:w-0.5 after:-translate-y-1/2 after:bg-selected-foreground',
+              selected && 'bg-selected text-selected-foreground',
             )}
             onClick={entry.kind === 'ALBUM' ? onToggleAlbum : onOpenDocument}
           >

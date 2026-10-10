@@ -7,6 +7,7 @@ import { petalError } from '@/shared/petal-errors';
 
 const mimeTypes: Readonly<Record<string, string>> = {
   '.pdf': 'application/pdf',
+  '.epub': 'application/epub+zip',
   '.mp3': 'audio/mpeg',
   '.wav': 'audio/wav',
   '.ogg': 'audio/ogg',

@@ -6,6 +6,7 @@ import { xiaohongshuHandoffError } from '@/shared/xiaohongshu-publishing';
 import { publishingMaskMediaOrder } from '@/shared/contracts/publishing-mask';
 import { publishingBodyStartsWithTitle } from '@/shared/publishing-body-title';
 import { xPostThread, xPostTitleFits } from '@/shared/x-post-text';
+import { X_HANDOFF_MEDIA_LIMIT } from '@/shared/x-thread-media';
 
 export function prepareImagePostHandoff({
   body,
@@ -90,7 +91,7 @@ export function prepareImagePostHandoff({
       return null;
     }
   }
-  const mediaLimit = { wechat: 20, weibo: 18, chatgpt: 18, x: 4, xiaohongshu: 18 }[target];
+  const mediaLimit = { wechat: 20, weibo: 18, chatgpt: 18, x: X_HANDOFF_MEDIA_LIMIT, xiaohongshu: 18 }[target];
   if (orderedIds.length > mediaLimit) {
     notify(copy.mediaLimit.replace('{count}', String(mediaLimit)));
     return null;

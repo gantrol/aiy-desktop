@@ -1,4 +1,3 @@
-import { PanelRightOpenIcon } from 'lucide-react';
 import type {
   VideoDocumentBranchRole,
   VideoDocumentDto,
@@ -8,13 +7,16 @@ import type {
   VideoDocumentTranscriptBackgroundTaskStatus,
   VideoDocumentTranscriptRecognitionProgress,
 } from '@/shared/contracts';
-import { Button } from '@/renderer/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import {
   VideoDocumentEmptyCreation,
   type VideoDocumentEmptyCreationSelection,
 } from '@/renderer/features/video-documents/VideoDocumentEmptyCreation';
 import { VideoDocumentHeader } from '@/renderer/features/video-documents/VideoDocumentHeader';
+import {
+  VideoDocumentSourcePaneToggle,
+  useVideoDocumentSourceDisclosure,
+} from '@/renderer/features/video-documents/VideoDocumentSourceDisclosure';
 import { VideoDocumentSourcePane } from '@/renderer/features/video-documents/VideoDocumentSourcePane';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
@@ -87,59 +89,64 @@ export function VideoDocumentEmptyWorkspace({
   onStartCreation,
   onImportCreation,
 }: Props) {
+  const sourceDisclosure = useVideoDocumentSourceDisclosure();
+  const changeSourcePaneOpen = (open: boolean) => (open ? onOpenSourcePane() : onCollapseSourcePane());
+
   return (
-    <>
-      <main className="relative flex min-w-0 flex-1 flex-col">
-        <VideoDocumentHeader
-          title={title}
-          savedTitle={document.title}
-          titleLabel={labels.documentTitle}
-          albumTitle={document.albumTitle || labels.unfiled}
-          saving={savingTitle}
-          onTitleChange={onTitleChange}
-          onSaveTitle={onSaveTitle}
-          onMove={onMove}
-          paneToggle={
-            !sourcePaneOpen && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                title={labels.player.expand}
-                aria-label={labels.player.expand}
-                aria-expanded={false}
-                onClick={onOpenSourcePane}
-              >
-                <PanelRightOpenIcon className="size-4" />
-              </Button>
-            )
-          }
-        />
-        <Tabs value="CREATION" className="flex min-h-0 flex-1 flex-col gap-0">
-          <div className="flex h-12 shrink-0 items-end border-b px-6">
-            <TabsList className="min-w-0 flex-1 border-b-0">
-              <TabsTrigger value="CREATION">{labels.creation.title}</TabsTrigger>
-            </TabsList>
-          </div>
-          <TabsContent value="CREATION" className="min-h-0 flex-1 overflow-auto">
-            <VideoDocumentEmptyCreation
-              documentId={document.id}
-              hasAudio={document.source.audio.status === 'HAS_AUDIO'}
-              canRecognize={canRecognize}
-              recognizing={recognizing}
-              importingTranscript={importingTranscript}
-              progress={recognitionProgress}
-              taskStatus={recognitionTaskStatus}
-              onStart={onStartCreation}
-              onOpenProgress={onRecognize}
-              onImportTranscript={onImportCreation}
+    <div ref={sourceDisclosure.workspaceRef} className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <VideoDocumentHeader
+        title={title}
+        savedTitle={document.title}
+        titleLabel={labels.documentTitle}
+        albumTitle={document.albumTitle || labels.unfiled}
+        saving={savingTitle}
+        onTitleChange={onTitleChange}
+        onSaveTitle={onSaveTitle}
+        onMove={onMove}
+        paneToggle={
+          sourceDisclosure.docked ? (
+            <VideoDocumentSourcePaneToggle
+              ref={sourceDisclosure.toggleRef}
+              open={sourcePaneOpen}
+              placement="workspace-header"
+              collapseLabel={labels.player.collapse}
+              expandLabel={labels.player.expand}
+              contentId={sourceDisclosure.contentId}
+              onOpenChange={changeSourcePaneOpen}
             />
-          </TabsContent>
-        </Tabs>
-      </main>
-      {sourcePaneOpen && (
+          ) : undefined
+        }
+      />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col @min-[56rem]/video-workspace:flex-row">
+        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <Tabs value="CREATION" className="flex min-h-0 flex-1 flex-col gap-0">
+            <div className="flex h-12 shrink-0 items-end border-b px-6">
+              <TabsList className="min-w-0 flex-1 border-b-0">
+                <TabsTrigger value="CREATION">{labels.creation.title}</TabsTrigger>
+              </TabsList>
+            </div>
+            <TabsContent value="CREATION" className="min-h-0 flex-1 overflow-auto">
+              <VideoDocumentEmptyCreation
+                documentId={document.id}
+                hasAudio={document.source.audio.status === 'HAS_AUDIO'}
+                canRecognize={canRecognize}
+                recognizing={recognizing}
+                importingTranscript={importingTranscript}
+                progress={recognitionProgress}
+                taskStatus={recognitionTaskStatus}
+                onStart={onStartCreation}
+                onOpenProgress={onRecognize}
+                onImportTranscript={onImportCreation}
+              />
+            </TabsContent>
+          </Tabs>
+        </main>
         <VideoDocumentSourcePane
           document={document}
+          open={sourcePaneOpen}
+          contentId={sourceDisclosure.contentId}
+          docked={sourceDisclosure.docked}
+          toggleRef={sourceDisclosure.toggleRef}
           seekRequest={seekRequest}
           width={sourcePaneWidth}
           labels={{
@@ -157,9 +164,9 @@ export function VideoDocumentEmptyWorkspace({
           onPlaybackTimeChange={onPlaybackTimeChange}
           onPlaybackError={onPlaybackError}
           onOpenMaterial={onOpenSourceMaterial}
-          onCollapse={onCollapseSourcePane}
+          onOpenChange={changeSourcePaneOpen}
         />
-      )}
-    </>
+      </div>
+    </div>
   );
 }

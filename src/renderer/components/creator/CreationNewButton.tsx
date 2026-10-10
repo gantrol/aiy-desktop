@@ -1,5 +1,15 @@
 import { useRef, useState } from 'react';
-import { ChevronDownIcon, FileTextIcon, GalleryVerticalEndIcon, ListTreeIcon, PlusIcon } from 'lucide-react';
+import {
+  ChevronDownIcon,
+  FileTextIcon,
+  FilmIcon,
+  GalleryVerticalEndIcon,
+  ImageIcon,
+  ListTreeIcon,
+  PlusIcon,
+  VideoIcon,
+} from 'lucide-react';
+import type { CreationStartMode } from '@/shared/contracts/creation-draft';
 import { Button } from '@/renderer/components/ui/button';
 import {
   DropdownMenu,
@@ -12,19 +22,21 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
   busy: boolean;
-  collapsed: boolean;
+  collapsed?: boolean;
+  showLabel?: boolean;
   newAlbumLabel?: string;
-  onNewCreation(): void;
-  onNewDocument(mode: 'outline' | 'manuscript'): void;
+  onNewCreation(mode?: CreationStartMode): void;
+  onNewAnimation?(): void;
   onNewAlbum(): void;
 }
 
-export function CreationLibraryNewButton({
+export function CreationNewButton({
   busy,
-  collapsed,
+  collapsed = false,
+  showLabel = false,
   newAlbumLabel,
   onNewCreation,
-  onNewDocument,
+  onNewAnimation,
   onNewAlbum,
 }: Props) {
   const { messages } = useI18n();
@@ -71,8 +83,8 @@ export function CreationLibraryNewButton({
         <Button
           ref={trigger}
           type="button"
-          variant="ghost"
-          size="icon-sm"
+          variant={showLabel ? 'default' : 'ghost'}
+          size={showLabel ? 'sm' : 'icon-sm'}
           className="relative"
           data-action="new-creation"
           disabled={busy}
@@ -81,7 +93,11 @@ export function CreationLibraryNewButton({
           onClick={() => select(onNewCreation)}
         >
           <PlusIcon className="size-4" aria-hidden />
-          <ChevronDownIcon className="absolute bottom-0.5 right-0.5 size-2.5 text-muted-foreground" aria-hidden />
+          {showLabel && messages.creator.results.newCreation}
+          <ChevronDownIcon
+            className={showLabel ? 'size-3' : 'absolute bottom-0.5 right-0.5 size-2.5 text-muted-foreground'}
+            aria-hidden
+          />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -103,13 +119,25 @@ export function CreationLibraryNewButton({
           <GalleryVerticalEndIcon aria-hidden />
           {newAlbumLabel ?? messages.creator.album.newAlbum}
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => select(() => onNewDocument('outline'))}>
+        <DropdownMenuItem onSelect={() => select(() => onNewCreation('outline'))}>
           <ListTreeIcon aria-hidden />
           {messages.creator.results.newOutline}
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => select(() => onNewDocument('manuscript'))}>
+        <DropdownMenuItem onSelect={() => select(() => onNewCreation('manuscript'))}>
           <FileTextIcon aria-hidden />
           {messages.creator.results.newArticle}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => select(() => onNewCreation('image'))}>
+          <ImageIcon aria-hidden />
+          {messages.creator.outputs.image}
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={!onNewAnimation} onSelect={() => onNewAnimation && select(onNewAnimation)}>
+          <FilmIcon aria-hidden />
+          {messages.creator.outputs.animation}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => select(() => onNewCreation('video-document'))}>
+          <VideoIcon aria-hidden />
+          {messages.creator.outputs.fromVideo}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

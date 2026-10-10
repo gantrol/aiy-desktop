@@ -35,6 +35,8 @@ import { ActionMenuButton } from '@/renderer/components/ui/action-menu';
 import { ItemActions } from '@/renderer/components/ui/item-actions';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
+import { VirtualList } from '@/renderer/components/ui/virtual-list';
+import { useWorkspaceVisible } from '@/renderer/components/workspace/WorkspacePaneScope';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 
@@ -196,6 +198,7 @@ function AlbumContentCard({ row, layout, ...props }: Omit<AlbumContentsProps, 'e
 }
 
 export function AlbumContents({ entries, layout, ...props }: AlbumContentsProps) {
+  const visible = useWorkspaceVisible();
   const { messages } = useI18n();
   const labels = messages.creator.album;
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -289,14 +292,30 @@ export function AlbumContents({ entries, layout, ...props }: AlbumContentsProps)
             renderItem={(_item, index) => <AlbumContentCard row={rows[index]} layout={layout} {...props} />}
           />
         </div>
-      ) : (
+      ) : rows.length <= 20 ? (
         <ul className="space-y-1 p-2">
-          {rows.map((row) => (
-            <li key={albumContentKey(row.entry)}>
-              <AlbumContentCard row={row} layout={layout} {...props} />
-            </li>
-          ))}
+          {visible &&
+            rows.map((row) => (
+              <li key={albumContentKey(row.entry)}>
+                <AlbumContentCard row={row} layout={layout} {...props} />
+              </li>
+            ))}
         </ul>
+      ) : (
+        <div role="list" className="p-2">
+          <VirtualList
+            items={rows}
+            itemKey={albumRowKey}
+            viewportRef={viewportRef}
+            active={visible}
+            estimatedHeight={76}
+            renderItem={(row) => (
+              <div role="listitem" className="pb-1">
+                <AlbumContentCard row={row} layout={layout} {...props} />
+              </div>
+            )}
+          />
+        </div>
       )}
       {props.loading && rows.length === 0 ? (
         <div className="grid place-items-center p-6">
@@ -315,4 +334,8 @@ export function AlbumContents({ entries, layout, ...props }: AlbumContentsProps)
       )}
     </ScrollArea>
   );
+}
+
+function albumRowKey(row: AlbumContentRow) {
+  return albumContentKey(row.entry);
 }

@@ -15,7 +15,7 @@ import { cn } from '@/renderer/lib/utils';
 export type SettingsArea = 'interface' | 'editor' | 'ai' | 'shortcuts' | 'maintenance' | 'permissions';
 
 interface Props {
-  selected: SettingsArea;
+  selected: SettingsArea | 'contentManagement';
   panelId: string;
   onSelect(area: SettingsArea): void;
   onContentManagementOpen(): void;
@@ -47,7 +47,7 @@ export function SettingsLayout({ selected, panelId, onSelect, onContentManagemen
   }
 
   return (
-    <div className="flex flex-col gap-5 p-5 md:p-6" role="group" aria-label={labels.layout.label}>
+    <div className="flex flex-col gap-5 p-5 @[56rem]/settings:p-6" role="group" aria-label={labels.layout.label}>
       <div className="grid min-h-64 grid-cols-[5.5rem_minmax(0,1fr)_4.5rem] grid-rows-[auto_1fr] overflow-hidden rounded-md border bg-background">
         {region(
           'interface',
@@ -68,7 +68,13 @@ export function SettingsLayout({ selected, panelId, onSelect, onContentManagemen
           variant="ghost"
           onClick={onContentManagementOpen}
           aria-label={labels.manageContent}
-          className="h-auto min-w-0 flex-col items-start justify-start gap-4 whitespace-normal rounded-none border-r p-3 text-left text-xs font-normal focus-visible:z-10 focus-visible:ring-inset"
+          aria-pressed={selected === 'contentManagement'}
+          aria-controls={`${panelId}-contentManagement`}
+          className={cn(
+            'h-auto min-w-0 flex-col items-start justify-start gap-4 whitespace-normal rounded-none border-r p-3 text-left text-xs font-normal focus-visible:z-10 focus-visible:ring-inset',
+            selected === 'contentManagement' &&
+              'bg-selected text-selected-foreground hover:bg-selected ring-1 ring-inset ring-selected-foreground',
+          )}
         >
           <FolderIcon className="size-4" aria-hidden="true" />
           <span>{labels.manageContent}</span>

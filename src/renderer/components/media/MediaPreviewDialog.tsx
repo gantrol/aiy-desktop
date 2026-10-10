@@ -14,6 +14,8 @@ import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/renderer/comp
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
   assetIds: readonly string[];
@@ -35,15 +37,14 @@ function PreviewThumbnail({
   asset,
   index,
   selected,
-  zh,
   onSelect,
 }: {
   asset: AssetDto;
   index: number;
   selected: boolean;
-  zh: boolean;
   onSelect(): void;
 }) {
+  const { messages, locale } = useI18n();
   const thumbnailUrl = mediaThumbnailUrl(asset, 192);
   return (
     <button
@@ -52,12 +53,12 @@ function PreviewThumbnail({
         'relative isolate h-14 w-11 shrink-0 overflow-hidden rounded-md bg-surface-sunken ring-1 ring-inset ring-foreground/10 outline-none hover:ring-2 hover:ring-border-strong focus-visible:ring-2 focus-visible:ring-ring',
         selected && 'ring-2 ring-ring',
       )}
-      aria-label={zh ? `查看图片 ${index + 1}` : `View image ${index + 1}`}
+      aria-label={messages.assetFile.viewImage.replace('{index}', new Intl.NumberFormat(locale).format(index + 1))}
       aria-pressed={selected}
       onClick={onSelect}
     >
       <ImageAmbientBackdrop src={thumbnailUrl} loading="lazy" />
-      <img
+      <ScratchImage
         src={thumbnailUrl}
         alt=""
         loading="lazy"
@@ -74,7 +75,6 @@ export function MediaPreviewDialog({
   assetsById,
   copyingAssetId,
   copyLabel,
-  locale,
   openAssetId,
   notify,
   onCopy,
@@ -84,7 +84,8 @@ export function MediaPreviewDialog({
   onRemove,
   onSetCover,
 }: Props) {
-  const zh = locale === 'zh';
+  const { messages } = useI18n();
+  const copy = messages.assetFile;
   const availableAssets = assetIds.flatMap((assetId) => assetsById.get(assetId) ?? []);
   const selectedIndex = Math.max(
     0,
@@ -106,15 +107,15 @@ export function MediaPreviewDialog({
         className="h-[calc(100vh-2rem)] max-w-[min(96vw,96rem)] grid-rows-[minmax(0,1fr)_auto] gap-0 overflow-hidden p-0"
         showCloseButton={false}
       >
-        <DialogTitle className="sr-only">{zh ? '图片预览' : 'Image preview'}</DialogTitle>
+        <DialogTitle className="sr-only">{copy.preview}</DialogTitle>
         <DialogClose asChild>
           <Button
             type="button"
             variant="secondary"
             size="icon-sm"
             className="absolute top-4 right-4 z-30 shadow-overlay"
-            title={zh ? '关闭' : 'Close'}
-            aria-label={zh ? '关闭' : 'Close'}
+            title={messages.common.close}
+            aria-label={messages.common.close}
           >
             <XIcon className="size-4" />
           </Button>
@@ -125,7 +126,7 @@ export function MediaPreviewDialog({
               <AssetFileContextMenu assetId={selectedAsset.id} notify={notify}>
                 <div className="relative isolate size-full overflow-hidden">
                   <ImageAmbientBackdrop src={selectedAsset.mediaUrl} />
-                  <img
+                  <ScratchImage
                     src={selectedAsset.mediaUrl}
                     alt=""
                     width={selectedAsset.width}
@@ -145,8 +146,8 @@ export function MediaPreviewDialog({
                     variant="secondary"
                     size="icon"
                     className="absolute top-1/2 left-4 z-20 -translate-y-1/2 shadow-overlay"
-                    title={zh ? '上一张' : 'Previous image'}
-                    aria-label={zh ? '上一张' : 'Previous image'}
+                    title={copy.previousImage}
+                    aria-label={copy.previousImage}
                     onClick={() => selectRelative(-1)}
                   >
                     <ChevronLeftIcon className="size-5" />
@@ -156,8 +157,8 @@ export function MediaPreviewDialog({
                     variant="secondary"
                     size="icon"
                     className="absolute top-1/2 right-4 z-20 -translate-y-1/2 shadow-overlay"
-                    title={zh ? '下一张' : 'Next image'}
-                    aria-label={zh ? '下一张' : 'Next image'}
+                    title={copy.nextImage}
+                    aria-label={copy.nextImage}
                     onClick={() => selectRelative(1)}
                   >
                     <ChevronRightIcon className="size-5" />
@@ -190,7 +191,7 @@ export function MediaPreviewDialog({
                     onClick={() => onSetCover(selectedAsset.id)}
                   >
                     <StarIcon className={cn('size-4', coverAssetId === selectedAsset.id && 'fill-current')} />
-                    {zh ? '设为首图' : 'Set as cover'}
+                    {copy.setCover}
                   </Button>
                 )}
                 {onRemove && (
@@ -202,7 +203,7 @@ export function MediaPreviewDialog({
                     onClick={() => onRemove(selectedAsset.id)}
                   >
                     <Trash2Icon className="size-4" />
-                    {zh ? '移除' : 'Remove'}
+                    {copy.remove}
                   </Button>
                 )}
               </div>
@@ -214,7 +215,6 @@ export function MediaPreviewDialog({
                   asset={asset}
                   index={index}
                   selected={asset.id === selectedAsset.id}
-                  zh={zh}
                   onSelect={() => onOpenAssetIdChange(asset.id)}
                 />
               ))}

@@ -169,6 +169,12 @@ export class ArticleEditorSessionModel {
     });
   }
 
+  setReading(reading: ArticleContentInput['reading']) {
+    const state = this.#state;
+    if (state.lifecycle === 'disposed') return;
+    this.#commit({ ...state, draft: { ...state.draft, metadata: { ...state.draft.metadata, reading } } });
+  }
+
   addImportedImage(binding: ArticleMediaBindingInput, media: VideoDocumentRevisionMediaDto) {
     const state = this.#state;
     if (state.lifecycle === 'disposed') return;

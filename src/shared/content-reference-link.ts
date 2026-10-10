@@ -6,11 +6,11 @@ export type ReferenceLinkSource = Partial<Pick<ContentReference, 'source' | 'spa
 /** Link presentation retains the captured scope while navigating to its current source. */
 export function referenceLinkUrl(reference: ReferenceLinkSource): string | undefined {
   const { source, spaceId, selector } = reference;
-  if (!spaceId || !source || (source.kind !== 'ARTICLE' && source.kind !== 'ALBUM')) return;
+  if (!spaceId || !source || !['ARTICLE', 'ALBUM', 'SOCIAL_POST', 'INSPIRATION_STASH'].includes(source.kind)) return;
   return contentLinkUrl({
     spaceId,
     target: {
-      kind: source.kind,
+      kind: source.kind === 'ALBUM' ? 'ALBUM' : 'ARTICLE',
       id: source.id,
       ...(selector?.kind === 'BLOCK' ? { blockId: selector.blockId } : {}),
     },

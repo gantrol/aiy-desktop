@@ -2,10 +2,12 @@ import { browserCompanionWatermarkSelectionSchema } from '@/shared/contracts/bro
 import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
 import { blockDocumentAssetIds, blockDocumentSchema } from '@/shared/contracts/block-document';
 import { z } from 'zod';
+import { taskRecipeInputSchema, taskRecipeSnapshotSchema } from '@/shared/contracts/task-recipe';
 import { authorSummarySchema, contentWriteContextSchema } from '@/shared/contracts/authorship';
 import { ARTICLE_COVER_RATIOS, articleCoverAssetIds, articleCoverVariantsSchema } from '@/shared/article-covers';
 import { articleCreationInputSchema } from '@/shared/contracts/inspiration-stash';
 import { noteFileSchema, NOTE_FILE_LIMITS } from '@/shared/contracts/note-files';
+import { creationReadingSchema } from '@/shared/contracts/creation-reading';
 import {
   contentCommentAnchorSchema as articleCommentAnchorSchema,
   contentCommentAnchorUpdateSchema as articleCommentAnchorUpdateSchema,
@@ -67,6 +69,7 @@ export const articleContentSchema = z
     coverAssetId: idSchema.nullable(),
     coverVariants: articleCoverVariantsSchema.optional(),
     creationInput: articleCreationInputSchema.optional(),
+    reading: creationReadingSchema.optional(),
     files: z.array(noteFileSchema).max(NOTE_FILE_LIMITS.count).optional(),
   })
   .strict()
@@ -118,6 +121,7 @@ export function canonicalArticleContentJson(input: z.input<typeof articleContent
         }
       : {}),
     ...(content.creationInput ? { creationInput: content.creationInput } : {}),
+    ...(content.reading ? { reading: content.reading } : {}),
     ...(content.files ? { files: content.files } : {}),
   });
 }
@@ -148,6 +152,7 @@ const articleContentDtoSchema = z
     coverVariants: articleCoverVariantsSchema.optional(),
     mediaAssets: z.array(articleAssetSchema).max(100),
     creationInput: articleCreationInputSchema.optional(),
+    reading: creationReadingSchema.optional(),
     files: z.array(noteFileSchema).max(NOTE_FILE_LIMITS.count).optional(),
   })
   .strict()
@@ -394,6 +399,7 @@ export const articleCheckBlockSchema = z
 
 export const articleCheckInputSchema = z
   .object({
+    recipe: taskRecipeInputSchema.optional(),
     articleId: idSchema,
     expectedRevisionId: idSchema,
     locale: z.enum(['zh', 'en']),
@@ -437,6 +443,7 @@ export const articleCheckCommentIdsSchema = z
 
 export const articleCheckRunSchema = z
   .object({
+    recipe: taskRecipeSnapshotSchema.optional(),
     id: idSchema,
     articleId: idSchema,
     inputRevisionId: idSchema,

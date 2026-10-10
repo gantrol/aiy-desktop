@@ -1,4 +1,6 @@
 import { ImageIcon, LoaderCircleIcon } from 'lucide-react';
+import type { CreationStartMode } from '@/shared/contracts/creation-draft';
+import { CreationNewButton } from '@/renderer/components/creator/CreationNewButton';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AlbumDto,
@@ -50,6 +52,7 @@ import { useCreationAlbumDrop } from '@/renderer/components/creator/useCreationA
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { CreationOrganizationAction } from '@/renderer/features/creation-outline/CreationOrganizationAction';
 import { AlbumWorkTracking } from '@/renderer/features/work-tracking/AlbumWorkTracking';
+import { useWorkspaceVisible } from '@/renderer/components/workspace/WorkspacePaneScope';
 
 interface Props {
   album: AlbumDto;
@@ -72,13 +75,19 @@ interface Props {
   onDelete(album: AlbumDto): Promise<void>;
   onTogglePin(album: AlbumDto): Promise<void>;
   onArchive(album: AlbumDto): Promise<void>;
-  onCreateCreation(): void;
+  onCreateCreation(mode?: CreationStartMode): void;
+  onCreateAnimation?(): void;
+  onCreateAlbum(): void;
   onSettings(): void;
   notify(message: string): void;
   onArticleSaved(article: ArticleDto): void;
 }
 
 const pageSize = 48;
+
+function albumDocumentsVisible(active: boolean, documents: boolean, tab: string) {
+  return active && documents && tab === 'contents';
+}
 
 export function CreatorAlbumDetail({
   album,
@@ -102,10 +111,13 @@ export function CreatorAlbumDetail({
   onTogglePin,
   onArchive,
   onCreateCreation,
+  onCreateAnimation,
+  onCreateAlbum,
   onSettings,
   notify,
   onArticleSaved,
 }: Props) {
+  const active = useWorkspaceVisible();
   const { locale, messages } = useI18n();
   const { albums, creationItems } = data;
   const [tab, setTab] = useState('contents');
@@ -122,7 +134,7 @@ export function CreatorAlbumDetail({
     [album.id, creationItems],
   );
   const documentList = useVideoDocumentList({
-    active: contentFilter.documents && tab !== 'work',
+    active: albumDocumentsVisible(active, contentFilter.documents, tab),
     refreshKey: `${documentNavigationRevision}:${documentMembershipKey}`,
     query: '',
     albumId: album.id,
@@ -290,6 +302,10 @@ export function CreatorAlbumDetail({
   }, [query]);
 
   useEffect(() => {
+    if (!active) {
+      setLoading(false);
+      return;
+    }
     if (activeTab !== 'images' || !contentFilter.images) {
       requestId.current += 1;
       setLoading(false);
@@ -331,10 +347,21 @@ export function CreatorAlbumDetail({
     return () => {
       requestId.current += 1;
     };
-  }, [activeTab, album, albums, debouncedQuery, contentFilter.images, locale, retryKey, source, unratedDimensions]);
+  }, [
+    active,
+    activeTab,
+    album,
+    albums,
+    debouncedQuery,
+    contentFilter.images,
+    locale,
+    retryKey,
+    source,
+    unratedDimensions,
+  ]);
 
   async function loadMore() {
-    if (!nextCursor || loading) return;
+    if (!active || !nextCursor || loading) return;
     const currentRequest = ++requestId.current;
     setLoading(true);
     setError('');
@@ -409,7 +436,6 @@ export function CreatorAlbumDetail({
     belongsTo: (title: string) => `${messages.gallery.albums.belongsTo} · ${title}`,
     empty: messages.gallery.albums.empty,
     operationFailed: messages.gallery.albums.operationFailed,
-    newCreation: messages.creator.results.newCreation,
     settings: messages.creator.album.settings,
   };
 
@@ -441,7 +467,16 @@ export function CreatorAlbumDetail({
         onDelete={onDelete}
         onTogglePin={onTogglePin}
         onArchive={onArchive}
-        onCreateCreation={onCreateCreation}
+        newCreationAction={
+          <CreationNewButton
+            busy={busy}
+            showLabel
+            newAlbumLabel={messages.creator.results.newAlbumIn(album.title)}
+            onNewCreation={onCreateCreation}
+            onNewAnimation={onCreateAnimation}
+            onNewAlbum={onCreateAlbum}
+          />
+        }
         onSettings={onSettings}
         notify={notify}
       />

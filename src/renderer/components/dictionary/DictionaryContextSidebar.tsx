@@ -1,5 +1,5 @@
 import { ArrowLeftIcon, ChevronRightIcon, ImageIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from 'lucide-react';
-import { useEffect, useRef, type RefObject, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, type RefObject, type ReactNode } from 'react';
 import type { TermListItem } from '@/shared/contracts';
 import { cn } from '@/renderer/lib/utils';
 import { MediaStackPreview } from '@/renderer/components/media/MediaStackPreview';
@@ -129,7 +129,7 @@ interface TermRowProps {
   onSelect(termId: string): void;
 }
 
-function ExpandedTermRow({ term, current, notify, onSelect }: TermRowProps) {
+const ExpandedTermRow = memo(function ExpandedTermRow({ term, current, notify, onSelect }: TermRowProps) {
   const secondary = dictionaryContextSecondaryText(term);
   return (
     <div
@@ -142,9 +142,6 @@ function ExpandedTermRow({ term, current, notify, onSelect }: TermRowProps) {
           'border-selected-border bg-selected text-selected-foreground hover:border-selected-border hover:bg-selected',
       )}
     >
-      {current && (
-        <span aria-hidden className="absolute inset-y-3 left-0 w-0.5 rounded-r-full bg-selected-foreground" />
-      )}
       {term.mediaPreview.totalCount > 0 ? (
         <MediaStackPreview
           size="sm"
@@ -173,9 +170,9 @@ function ExpandedTermRow({ term, current, notify, onSelect }: TermRowProps) {
       </button>
     </div>
   );
-}
+});
 
-function CompactTermRow({ term, current, notify, onSelect }: TermRowProps) {
+const CompactTermRow = memo(function CompactTermRow({ term, current, notify, onSelect }: TermRowProps) {
   const secondary = dictionaryContextSecondaryText(term);
   const preview = (
     <Tooltip>
@@ -190,14 +187,11 @@ function CompactTermRow({ term, current, notify, onSelect }: TermRowProps) {
           className={cn(
             'relative isolate mx-auto block h-14 w-11 overflow-hidden rounded-lg border-2 border-transparent bg-surface-sunken outline-none transition-colors',
             'hover:border-border-strong focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
-            current && 'border-selected-border ring-2 ring-ring hover:border-selected-border',
+            current && 'border-selected-border bg-selected hover:border-selected-border',
           )}
           onClick={() => onSelect(term.id)}
         >
           <CompactTermPreview term={term} />
-          {current && (
-            <span aria-hidden className="absolute inset-x-1 bottom-1 z-20 h-0.5 rounded-full bg-selected-foreground" />
-          )}
         </button>
       </TooltipTrigger>
       <TooltipContent side="right" className="max-w-64">
@@ -214,7 +208,7 @@ function CompactTermRow({ term, current, notify, onSelect }: TermRowProps) {
   ) : (
     preview
   );
-}
+});
 
 function BreadcrumbTrail({ breadcrumb, onBack }: { breadcrumb: DictionaryContextBreadcrumb; onBack(): void }) {
   const labels = breadcrumb.path
@@ -327,6 +321,12 @@ export function DictionaryContextSidebar({
   const loadTriggerRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef(onLoadMore);
   loadMoreRef.current = onLoadMore;
+  const actionsRef = useRef({ onSelect, notify });
+  useLayoutEffect(() => {
+    actionsRef.current = { onSelect, notify };
+  }, [notify, onSelect]);
+  const selectTerm = useCallback((termId: string) => actionsRef.current.onSelect(termId), []);
+  const notifyResult = useCallback((message: string) => actionsRef.current.notify(message), []);
 
   useEffect(() => {
     const root = viewportRef.current;
@@ -426,16 +426,16 @@ export function DictionaryContextSidebar({
                     key={term.id}
                     term={term}
                     current={term.id === currentTermId}
-                    notify={notify}
-                    onSelect={onSelect}
+                    notify={notifyResult}
+                    onSelect={selectTerm}
                   />
                 ) : (
                   <ExpandedTermRow
                     key={term.id}
                     term={term}
                     current={term.id === currentTermId}
-                    notify={notify}
-                    onSelect={onSelect}
+                    notify={notifyResult}
+                    onSelect={selectTerm}
                   />
                 ),
               )}

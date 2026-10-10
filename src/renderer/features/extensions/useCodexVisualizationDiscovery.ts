@@ -56,7 +56,7 @@ async function prepareArtifactPreview(api: DesktopApi, artifact: CodexVisualizat
   return {
     kind: 'HTML',
     artifact,
-    access: await api.codexVisualizationPrepareHtmlPreview({ artifactId: artifact.id }),
+    access: await api.codexVisualizationPrepareHtmlPreview({ artifactId: artifact.id, interactive: true }),
   };
 }
 

@@ -1,4 +1,5 @@
 import { CreationLibraryPaneToggle } from '@/renderer/components/creator/CreationLibraryPaneToggle';
+import type { CreationStartMode } from '@/shared/contracts/creation-draft';
 import {
   allCreationLibraryFilters,
   formMatchesFilter,
@@ -38,7 +39,7 @@ import {
 } from 'react';
 import type {
   AlbumDto,
-  ArticleDto,
+  ArticleListItem,
   AssetDto,
   BootstrapDto,
   CreationDto,
@@ -187,7 +188,7 @@ interface Props {
   onSelectSocialPost(postId: string): void;
   onSelectArticle(articleId: string): void;
   onSelectAnimation(documentId: string): void;
-  onRenameArticle(article: ArticleDto): void;
+  onRenameArticle(article: ArticleListItem): void;
   onContentLifecycleAction(request: ContentLifecycleActionRequest): void;
   onSelect(seriesId: string, assetId?: string): void;
   onOpenDerivedVisual(visualId: string, view?: DerivedVisualWorkspaceViewState): void;
@@ -196,8 +197,8 @@ interface Props {
   onRenameDocument(document: VideoDocumentSummaryDto): void;
   onSelectAlbum(albumId: string): void;
   onMore(seriesId: string): void;
-  onNew(): void;
-  onNewDocument(mode: 'outline' | 'manuscript'): void;
+  onNew(mode?: CreationStartMode): void;
+  onNewAnimation?(): void;
   onNewInAlbum(albumId: string): void;
   onRenameSeries(series: PromptSeriesDto): void;
   onRenameAlbum(album: AlbumDto): void;
@@ -207,8 +208,13 @@ interface Props {
   onConfirmCreateAlbum(request: CreationAlbumRequest, title: string): Promise<boolean>;
   onCancelCreateAlbum(): void;
   onMoveAlbum(albumId: string, parentAlbumId: string | null, copy?: boolean): Promise<void>;
-  onMoveCreationItem(creationItemId: string, albumId: string | null, copy?: boolean): Promise<void>;
-  onToggleCreationItemPin(creationItemId: string, pinned: boolean): void;
+  onMoveCreationItem(
+    creationItemId: string,
+    albumId: string | null,
+    copy?: boolean,
+    articleFormId?: string,
+  ): Promise<void>;
+  onToggleCreationItemPin(creationItemId: string, pinned: boolean, articleFormId?: string): void;
   onImportExternalFiles?(albumId: string, files: File[], sourceUrl: string): void;
   notify(message: string): void;
 }
@@ -417,7 +423,7 @@ function ResultLibraryTree({
   onSelectAlbum,
   onMore,
   onNew,
-  onNewDocument,
+  onNewAnimation,
   onNewInAlbum,
   onRenameSeries,
   onRenameAlbum,
@@ -461,7 +467,7 @@ function ResultLibraryTree({
   const { query, setQuery, setSearchOpen } = search;
   const listVisible = mode === 'full' || search.popoverOpen;
   const [previewAsset, setPreviewAsset] = useState<AssetDto | null>(null);
-  const [moveTarget, setMoveTarget] = useState<AlbumMoveTarget | null>(null);
+  const [moveTarget, setMoveTarget] = useState<(AlbumMoveTarget & { articleFormId?: string }) | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const libraryScroll = useCreationTreeScrollMemory();
   const albumExpansion = useTreeBranchExpansion(viewportRef);
@@ -981,6 +987,8 @@ function ResultLibraryTree({
 
   function childFormActions(form: CreationFormProjection): ActionMenuAction[] {
     const title = formDisplayTitle(form);
+    const item = projection.itemById.get(form.form.creationItemId);
+    const tabTarget = creationFormTabTarget(form, item?.item.albumId ?? null);
     const actions: ActionMenuAction[] = [
       {
         id: 'open-form',
@@ -989,6 +997,14 @@ function ResultLibraryTree({
         onSelect: () => openForm(form),
       },
     ];
+    if (tabTarget) {
+      actions.push({
+        id: 'open-form-in-new-tab',
+        label: libraryLabels.openInNewTab,
+        icon: PlusIcon,
+        onSelect: () => onOpenInNewTab(tabTarget),
+      });
+    }
     if (form.role === 'ARTICLE' && form.entity) {
       actions.push({
         id: 'rename-form',
@@ -997,6 +1013,56 @@ function ResultLibraryTree({
         disabled: lifecycleBusy,
         onSelect: () => onRenameArticle(form.entity!),
       });
+      actions.push(
+        {
+          id: 'pin-form',
+          label: creatorAlbumLabels.pin,
+          icon: PinIcon,
+          disabled: lifecycleBusy,
+          onSelect: () => onToggleCreationItemPin(form.form.creationItemId, true, form.form.id),
+        },
+        pinContentAction({ kind: 'ARTICLE', id: form.entityRef.id }, lifecycleBusy),
+        {
+          id: 'move-form',
+          label: creatorAlbumLabels.move,
+          icon: FolderInputIcon,
+          disabled: lifecycleBusy,
+          onSelect: () =>
+            setMoveTarget({
+              kind: 'CREATION',
+              id: form.form.creationItemId,
+              articleFormId: form.form.id,
+              title,
+              currentAlbumId: item?.item.albumId ?? null,
+            }),
+        },
+        {
+          id: 'archive-form',
+          label: creatorAlbumLabels.archive,
+          icon: ArchiveIcon,
+          separatorBefore: true,
+          disabled: lifecycleBusy,
+          onSelect: () =>
+            onContentLifecycleAction({
+              action: 'ARCHIVE',
+              target: { entityType: 'ARTICLE', entityId: form.entityRef.id, scope: 'FORM' },
+              title,
+            }),
+        },
+        {
+          id: 'delete-form',
+          label: creatorAlbumLabels.delete,
+          icon: Trash2Icon,
+          destructive: true,
+          disabled: lifecycleBusy,
+          onSelect: () =>
+            onContentLifecycleAction({
+              action: 'DELETE',
+              target: { entityType: 'ARTICLE', entityId: form.entityRef.id, scope: 'FORM' },
+              title,
+            }),
+        },
+      );
     }
     if (form.role === 'ANIMATION' && form.entity) {
       actions.push({
@@ -1113,6 +1179,7 @@ function ResultLibraryTree({
           disabled: lifecycleBusy,
           onSelect: () => onRenameArticle(defaultForm.entity!),
         });
+        actions.push(pinContentAction({ kind: 'ARTICLE', id: defaultForm.entityRef.id }, lifecycleBusy));
       }
       if (defaultForm.role === 'IMAGE_CREATION' && defaultForm.session) {
         actions.push(
@@ -1655,7 +1722,8 @@ function ResultLibraryTree({
   function moveTargetTo(albumId: string | null) {
     if (!moveTarget) return Promise.resolve();
     if (moveTarget.kind === 'ALBUM') return onMoveAlbum(moveTarget.id, albumId);
-    if (moveTarget.kind === 'CREATION') return onMoveCreationItem(moveTarget.id, albumId);
+    if (moveTarget.kind === 'CREATION')
+      return onMoveCreationItem(moveTarget.id, albumId, false, moveTarget.articleFormId);
     return Promise.resolve();
   }
 
@@ -1727,7 +1795,7 @@ function ResultLibraryTree({
       onFilterChange={onFilterChange}
       authors={authorOptions}
       onNewCreation={onNew}
-      onNewDocument={onNewDocument}
+      onNewAnimation={onNewAnimation}
       onNewAlbum={() => onCreateAlbum(createAlbumParent)}
       newAlbumLabel={
         createAlbumParent ? libraryLabels.newAlbumIn(createAlbumParent.title) : creatorAlbumLabels.newAlbum

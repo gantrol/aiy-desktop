@@ -1,6 +1,8 @@
 /** Shared English base for the renderer catalog and application shell. */
 export const appShellMessages = {
   open: 'Open AIY',
+  capture: 'Capture region',
+  'clipboard-history': 'Clipboard history',
   'petals-open': 'Open AIY Petals',
   'petals-show-all': 'Restore Petals',
   'petals-hide-all': 'Temporarily Hide Petals',

@@ -20,11 +20,13 @@ function initialOpen() {
 export function NewCreationOutputWorkspace({
   model,
   enabled,
+  toggleHost,
   materialsImporting,
   children,
 }: {
   model: CreatorScreenViewModel;
   enabled: boolean;
+  toggleHost?: HTMLElement | null;
   materialsImporting: boolean;
   children: ReactNode;
 }) {
@@ -35,6 +37,7 @@ export function NewCreationOutputWorkspace({
         <NewCreationOutputSidebar
           key={`${model.selection.inputSessionRevision}:${model.selection.creationStartMode}`}
           model={model}
+          toggleHost={toggleHost}
           materialsImporting={materialsImporting}
         />
       )}
@@ -44,9 +47,11 @@ export function NewCreationOutputWorkspace({
 
 function NewCreationOutputSidebar({
   model,
+  toggleHost,
   materialsImporting,
 }: {
   model: CreatorScreenViewModel;
+  toggleHost?: HTMLElement | null;
   materialsImporting: boolean;
 }) {
   const copy = useI18n().messages.creator.outputs;
@@ -64,6 +69,8 @@ function NewCreationOutputSidebar({
   return (
     <ContentWorkspacePanels
       preferenceKey="creation-outputs"
+      toggleHost={toggleHost}
+      keepMounted
       minimumWidth={208}
       maximumWidth={360}
       open={open}

@@ -1,9 +1,14 @@
 import type { VideoDocumentBranchRole, VideoDocumentDto } from '@/shared/contracts';
+import type { Ref } from 'react';
 import { VideoDocumentSourcePane } from '@/renderer/features/video-documents/VideoDocumentSourcePane';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
   document: VideoDocumentDto;
+  open: boolean;
+  contentId: string;
+  docked: boolean;
+  toggleRef: Ref<HTMLButtonElement>;
   activeBranch: VideoDocumentBranchRole;
   articleEditing: boolean;
   quickInsertNoteBusy: boolean;
@@ -17,11 +22,15 @@ interface Props {
   onPlaybackError(error: unknown): void;
   onQuickInsertNote(): void;
   onOpenMaterial(materialId: string): void;
-  onCollapse(): void;
+  onOpenChange(open: boolean): void;
 }
 
 export function VideoDocumentWorkspaceSourcePane({
   document,
+  open,
+  contentId,
+  docked,
+  toggleRef,
   activeBranch,
   articleEditing,
   quickInsertNoteBusy,
@@ -35,13 +44,17 @@ export function VideoDocumentWorkspaceSourcePane({
   onPlaybackError,
   onQuickInsertNote,
   onOpenMaterial,
-  onCollapse,
+  onOpenChange,
 }: Props) {
   const { messages } = useI18n();
   const labels = messages.videoDocuments;
   return (
     <VideoDocumentSourcePane
       document={document}
+      open={open}
+      contentId={contentId}
+      docked={docked}
+      toggleRef={toggleRef}
       seekRequest={seekRequest}
       width={width}
       labels={{
@@ -62,7 +75,7 @@ export function VideoDocumentWorkspaceSourcePane({
       onPlaybackError={onPlaybackError}
       onQuickInsertNote={articleEditing && activeBranch === 'ARTICLE' ? onQuickInsertNote : undefined}
       onOpenMaterial={onOpenMaterial}
-      onCollapse={onCollapse}
+      onOpenChange={onOpenChange}
     />
   );
 }

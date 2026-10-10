@@ -75,7 +75,6 @@ function createDemoSession() {
     ],
   });
   const listeners = new Set<() => void>();
-  const menuListeners = new Set<() => void>();
   const status = new Set<'ready' | 'motion-ready' | 'failed'>();
   const targets = new Map<DemoTarget, Extract<DemoWindowDetail, { type: 'target' }>>();
   const publish = (patch: Partial<typeof snapshot>) => {
@@ -98,12 +97,8 @@ function createDemoSession() {
     save: async ({ text, title, document, format }: Parameters<DesktopPetalsApi['save']>[0]) =>
       patchNote({ text, title: title ?? snapshot.notes[0]!.title, document, format }),
     onFlush: unsubscribe,
-    onMenuRequested: (listener: () => void) => {
-      menuListeners.add(listener);
-      return () => {
-        menuListeners.delete(listener);
-      };
-    },
+    onMenuRequested: unsubscribe,
+    onOverlayClosed: unsubscribe,
     onPluckPointer: unsubscribe,
     onDrawerFrame: unsubscribe,
     onDrawerPointer: unsubscribe,
@@ -154,7 +149,6 @@ function createDemoSession() {
       for (const type of status) notify({ type });
       for (const target of targets.values()) notify(target);
     },
-    requestMenu: () => menuListeners.forEach((listener) => listener()),
   };
 }
 
@@ -236,10 +230,7 @@ function DemoContent({ session: current }: { session: NonNullable<typeof session
       observer.disconnect();
     };
   }, [current]);
-  if (role === 'workspace')
-    return (
-      <DemoWorkspaceWindow time={time} snapshot={snapshot} requestMenu={current.requestMenu} notify={current.notify} />
-    );
+  if (role === 'workspace') return <DemoWorkspaceWindow time={time} snapshot={snapshot} notify={current.notify} />;
   const fold = demoFlowerFoldAt(time);
   const note = snapshot.notes[0]!;
   return role === 'flower' ? (

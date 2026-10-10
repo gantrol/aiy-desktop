@@ -12,6 +12,8 @@ import { now } from '@/main/database/core/values';
 import type { ContentLibraryRepository } from '@/main/database/creations/content-library-repository';
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
 import { contentAssetPath } from '@/shared/content-document';
+import { htmlFileLink, htmlFilesInMarkdown } from '@/shared/html-file-document';
+import { readHtmlFile } from '@/main/embedded-web/html-file-store';
 import { replaceMarkdownMedia, contentMarkdownReferences } from '@/shared/content-markdown';
 import { ContentReadError } from '@/shared/content-read-error';
 import type { AssetFileRevealTargetDto } from '@/shared/contracts';
@@ -359,6 +361,7 @@ export class ReadableContentRepository {
       const relative = path.relative(relativeDirectory, file).split(path.sep).join('/');
       replacements.set(contentAssetPath(id), relative);
     }
+    await this.projectHtmlFiles({ parts, relativeDirectory, oldFiles, files, replacements, record });
     for (const part of parts) {
       const markdown =
         (part.title.trim() ? '# ' + part.title.trim() + '\n\n' : '') +
@@ -400,6 +403,57 @@ export class ReadableContentRepository {
       for (const file of files) if (file.assetId) insert.run(key, file.assetId, file.path);
     })();
     return directory;
+  }
+  private async projectHtmlFiles({
+    parts,
+    relativeDirectory,
+    oldFiles,
+    files,
+    replacements,
+    record,
+  }: {
+    parts: readonly { markdown: string }[];
+    relativeDirectory: string;
+    oldFiles: OwnedFile[];
+    files: OwnedFile[];
+    replacements: Map<string, string>;
+    record(): void;
+  }) {
+    const htmlFiles = new Map(
+      parts
+        .flatMap((part) => htmlFilesInMarkdown(part.markdown))
+        .map((file) => [htmlFileLink(file.objectHash, file.spaceId), file]),
+    );
+    const copies = new Map<string, string>();
+    for (const [url, html] of htmlFiles) {
+      let file = copies.get(html.objectHash);
+      if (!file) {
+        const subdirectory = path.join(relativeDirectory, '附件');
+        await readablePath(this.root, subdirectory, true);
+        file = await this.allocateFile(
+          subdirectory,
+          `网页-${html.objectHash.slice(0, 12)}.html`,
+          html.objectHash,
+          oldFiles,
+        );
+        const owned: OwnedFile = {
+          path: file,
+          hash: html.objectHash,
+          mode: 'COPY',
+          fingerprint: oldFiles.find((old) => old.path === file)?.fingerprint,
+        };
+        files.push(owned);
+        record();
+        if (!(await matches(path.join(this.root, file), html.objectHash, owned.fingerprint))) {
+          const bytes = await readHtmlFile(this.root, html.objectHash);
+          await writeFile(path.join(this.root, file), bytes, { flag: 'wx' });
+          await chmod(path.join(this.root, file), 0o444);
+        }
+        owned.fingerprint = await fileFingerprint(path.join(this.root, file));
+        copies.set(html.objectHash, file);
+      }
+      replacements.set(url, path.relative(relativeDirectory, file).split(path.sep).join('/'));
+    }
   }
   private active(source: ContentSource) {
     return Boolean(

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Download, ListTree } from 'lucide-react';
 import type { ArticleDto } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
@@ -66,6 +66,7 @@ function OutlineArticleWorkspace({
   const copy = messages.referenceOutline,
     labels = messages.creator.manuscriptEditor;
   const session = useArticleEditorSession();
+  const [sidebarToggleHost, setSidebarToggleHost] = useState<HTMLSpanElement | null>(null);
   const createOutlinePage = useArticleOutlinePageCreation();
   const title = useArticleEditorSessionSelector(selectArticleEditorTitle);
   const media = useArticleEditorSessionSelector(selectArticleEditorMedia);
@@ -78,34 +79,41 @@ function OutlineArticleWorkspace({
   return (
     <div data-article-editor data-outline-editor className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       <TooltipProvider delayDuration={300}>
-        <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
-          <ListTree className="size-4 shrink-0" />
-          <span className="text-xs text-muted-foreground">{copy.outline}</span>
-          <span className="min-w-0 flex-1 truncate font-semibold">{title || copy.untitledOutline}</span>
-          <ArticleSaveStatus
-            conflict={conflict}
-            dirty={dirty}
-            failed={failed}
-            saving={saving}
-            onRetry={() => void session.retry()}
-          />
-          {inputHistoryAction}
-          <ContentBacklinksButton spaceId={spaceId} articleId={article.id} beforeOpen={() => session.flush('manual')} />
-          <ArticleRevisionHistoryAction spaceId={spaceId} article={article} notify={notify} zh={zh} />
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={copy.export}
-            title={copy.export}
-            onClick={() => void onExport()}
-          >
-            <Download className="size-4" />
-          </Button>
-          <CopyAgentLinkButton
-            target={{ spaceId, target: 'article', entityId: article.id }}
-            beforeCopy={() => session.flush('manual')}
-            notify={notify}
-          />
+        <header className="flex min-h-9 shrink-0 items-start gap-2 border-b px-3">
+          <div className="flex min-h-9 min-w-0 flex-1 flex-wrap items-center gap-2">
+            <ListTree className="size-4 shrink-0" />
+            <span className="text-xs text-muted-foreground">{copy.outline}</span>
+            <span className="min-w-0 flex-1 truncate font-semibold">{title || copy.untitledOutline}</span>
+            <ArticleSaveStatus
+              conflict={conflict}
+              dirty={dirty}
+              failed={failed}
+              saving={saving}
+              onRetry={() => void session.retry()}
+            />
+            {inputHistoryAction}
+            <ContentBacklinksButton
+              spaceId={spaceId}
+              articleId={article.id}
+              beforeOpen={() => session.flush('manual')}
+            />
+            <ArticleRevisionHistoryAction spaceId={spaceId} article={article} notify={notify} zh={zh} />
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label={copy.export}
+              title={copy.export}
+              onClick={() => void onExport()}
+            >
+              <Download className="size-4" />
+            </Button>
+            <CopyAgentLinkButton
+              target={{ spaceId, target: 'article', entityId: article.id }}
+              beforeCopy={() => session.flush('manual')}
+              notify={notify}
+            />
+          </div>
+          <span ref={setSidebarToggleHost} className="flex h-9 shrink-0 items-center empty:hidden" />
         </header>
         {conflict && (
           <div role="status" className="flex items-center justify-between gap-2 border-b px-4 py-2 text-sm">
@@ -134,6 +142,7 @@ function OutlineArticleWorkspace({
           attachmentsPanel={null}
           attachmentCount={0}
           layoutToolbarRoot={null}
+          sidebarToggleHost={sidebarToggleHost}
           splitOpen={false}
           onSplitClose={() => undefined}
           onSplitToggle={() => undefined}

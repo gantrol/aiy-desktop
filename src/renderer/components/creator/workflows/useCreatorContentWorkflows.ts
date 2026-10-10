@@ -9,6 +9,7 @@ import { useCreatorImageVariantWorkflow } from '@/renderer/components/creator/wo
 import { useCreatorOutcomeWorkflow } from '@/renderer/components/creator/workflows/useCreatorOutcomeWorkflow';
 import { useCreatorSocialPostWorkflow } from '@/renderer/components/creator/workflows/useCreatorSocialPostWorkflow';
 import { useDerivedVisualWorkflow } from '@/renderer/components/creator/workflows/useDerivedVisualWorkflow';
+import { PROMPT_RECIPES_EXTENSION_ID } from '@/shared/extension-ids';
 import type {
   ArticleDto,
   AssetDto,
@@ -96,6 +97,7 @@ export function useCreatorContentWorkflows(options: Options) {
     creationItems: options.data.creationItems,
     getCreationDraftCommitIdentity: options.captureDraftCommitIdentity,
     inspirationStashes: options.data.inspirationStashes ?? [],
+    articles: options.data.articles,
     locale: options.locale,
     notify: options.notify,
     onDraftArticleCreated: finishDraftContent,
@@ -106,6 +108,7 @@ export function useCreatorContentWorkflows(options: Options) {
     onSaved: options.onSocialPostSaved,
     creationItems: options.data.creationItems,
     inspirationStashes: options.data.inspirationStashes ?? [],
+    articles: options.data.articles,
     locale: options.locale,
     notify: options.notify,
     onOpenArticle: openArticle,
@@ -153,6 +156,9 @@ export function useCreatorContentWorkflows(options: Options) {
     onOpenWorkspace: options.onOpenDerivedVisualWorkspace,
     preserveBeforeNavigation: options.preserveBeforeNavigation,
     promptTemplates: options.data.derivedVisualPrompts,
+    promptRecipesEnabled: options.data.extensions?.some(
+      (extension) => extension.manifest.id === PROMPT_RECIPES_EXTENSION_ID && extension.enabled && extension.compatible,
+    ),
     refresh: options.refresh,
     seriesIds,
     stayInWorkspace: (visualId) => options.editorDerivedVisualId === visualId,

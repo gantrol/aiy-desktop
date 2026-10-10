@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CodexService } from '@/main/assistant/codex-service';
 import { TrayMenuWindow } from '@/main/app/tray-menu-window';
+import type { DesktopApplicationShellOptions } from '@/main/app/application-shell-options';
 import { createMacTrayIcon } from '@/main/app/mac-tray-icon';
 import { BackgroundTaskNotification } from '@/main/app/background-task-notification';
 import { appShellMessages } from '@/shared/i18n/app-shell';
@@ -37,26 +38,10 @@ import {
 } from '@/main/app/window-placement';
 import { cancelArticleEditorDrain, drainArticleEditors } from '@/main/app/article-editor-drain';
 import { attachRendererDiagnostics, flushRendererDiagnostics } from '@/main/app/renderer-diagnostics';
+import { flushExtensionDiagnostics } from '@/main/extensions/process-diagnostics';
 
 const DEVELOPMENT_APP_USER_MODEL_ID = 'com.catai.aiy.dev';
-
-interface DesktopApplicationShellOptions {
-  backgroundColor: string;
-  title: string;
-  allowWindowPresentation: boolean;
-  onSecondInstanceArguments?(commandLine: string[]): void;
-  onOpenUrl?(url: string): void;
-  backgroundModelTasks?: {
-    readonly activeCount: number;
-    cancelAll(): Promise<void>;
-    abortAll(): void;
-  };
-  stopManagedLocalModels?(): Promise<void>;
-  stopBackgroundFileOperations?(): Promise<void>;
-  drainDesktopPetals?(): Promise<boolean>;
-  resumeDesktopPetals?(): void;
-  desktopPetals?(): { readonly ready: boolean; run(action: TrayPetalAction): Promise<void> } | null;
-}
+export const allowWindowPresentation = process.env.AIY_E2E !== '1' || process.env.AIY_E2E_OBSERVE === '1';
 
 export class DesktopApplicationShell {
   mainWindow: BrowserWindow | null = null;
@@ -85,6 +70,8 @@ export class DesktopApplicationShell {
   private readonly trayState = (): TrayMenuState => ({
     language: this.language,
     petalsReady: this.options.desktopPetals?.()?.ready ?? false,
+    captureReady: this.options.clipboardCapture?.()?.canCapture ?? false,
+    clipboardHistoryReady: this.options.clipboardCapture?.()?.canOpenHistory ?? false,
     windowReady:
       Boolean(this.mainWindow && !this.mainWindow.isDestroyed()) || this.activeLibraryContext?.state === 'ACTIVE',
     taskCount: this.pendingModelTaskCount(),
@@ -217,6 +204,7 @@ export class DesktopApplicationShell {
         }
       })
       .finally(flushRendererDiagnostics)
+      .finally(flushExtensionDiagnostics)
       .finally(() => {
         this.applicationShutdownComplete = true;
       });
@@ -450,6 +438,20 @@ export class DesktopApplicationShell {
     const copy = this.language.messages;
     return Menu.buildFromTemplate([
       { label: copy.open, enabled: state.windowReady, click: this.presentMainWindow },
+      {
+        label: copy.capture,
+        enabled: state.captureReady,
+        click: () => {
+          void this.options.clipboardCapture?.()?.capture();
+        },
+      },
+      {
+        label: copy['clipboard-history'],
+        enabled: state.clipboardHistoryReady,
+        click: () => {
+          void this.options.clipboardCapture?.()?.openHistory();
+        },
+      },
       { type: 'separator' },
       ...trayPetalActions.map((action) => ({
         label: copy[action],
@@ -560,6 +562,8 @@ export class DesktopApplicationShell {
         if (trayPetalActions.some((petalAction) => petalAction === action))
           await this.runTrayPetalAction(action as TrayPetalAction);
         if (action === 'open') this.showMainWindow();
+        if (action === 'capture') await this.options.clipboardCapture?.()?.capture();
+        if (action === 'clipboard-history') await this.options.clipboardCapture?.()?.openHistory();
         if (action === 'quit') await this.requestAppQuit();
         if (action === 'force-quit') await this.confirmForceQuit();
       },

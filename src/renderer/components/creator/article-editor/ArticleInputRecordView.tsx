@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import type { ArticleInputRecord } from '@/shared/contracts/article-input-history';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
@@ -38,7 +39,7 @@ export function ArticleInputRecordView({ record }: { record: ArticleInputRecord 
               return (
                 <li key={`${index}:${id}`} className="space-y-1">
                   {asset ? (
-                    <img
+                    <ScratchImage
                       src={asset.mediaUrl}
                       alt={copy.referenceImage}
                       loading="lazy"

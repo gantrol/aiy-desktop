@@ -1,4 +1,5 @@
 import { creationEntityExists } from '@/main/database/creations/creation-form-entity';
+import { articleCreationScope, isolateArticleCreation } from '@/main/database/creations/article-creation-management';
 import { ulid } from 'ulid';
 import { contentAuthors, contentAuthorsMany, initializeContentAuthors } from '@/main/database/me/content-authorship';
 import type { AuthorSummary } from '@/shared/contracts/authorship';
@@ -62,10 +63,20 @@ function formDto(db: LibraryStorage['db'], row: JsonMap, authors?: AuthorSummary
     kind: row.entity_type,
     id: row.entity_id,
   });
+  const sourceItemId =
+    row.source_form_id == null
+      ? null
+      : 'source_creation_item_id' in row
+        ? row.source_creation_item_id
+        : db
+            .prepare('SELECT creation_item_id FROM creation_forms WHERE id = ? AND deleted_at IS NULL')
+            .pluck()
+            .get(text(row.source_form_id));
   return creationFormSchema.parse({
     id: row.id,
     creationItemId: row.creation_item_id,
-    sourceFormId: row.source_form_id == null ? null : row.source_form_id,
+    sourceFormId: sourceItemId ? row.source_form_id : null,
+    ...(sourceItemId && sourceItemId !== row.creation_item_id ? { sourceCreationItemId: sourceItemId } : {}),
     role: row.role,
     entity,
     authors: authors ?? contentAuthors(db, entity),
@@ -425,6 +436,10 @@ export class CreationItemRepository {
     const parsed = creationItemSetPinnedInputSchema.parse(input);
     return this.db
       .transaction(() => {
+        if (parsed.articleFormId) {
+          const creationItemId = this.isolateArticleForm(parsed.creationItemId, parsed.articleFormId);
+          return this.setPinned({ creationItemId, pinned: parsed.pinned });
+        }
         const item = this.mutableItemRow(parsed.creationItemId);
         if (Boolean(item.pinned) === parsed.pinned) return this.get(parsed.creationItemId);
 
@@ -443,6 +458,20 @@ export class CreationItemRepository {
     const parsed = creationItemMoveInputSchema.parse(input);
     return this.db
       .transaction(() => {
+        if (parsed.articleFormId) {
+          this.assertAlbumAvailable(parsed.albumId);
+          const current = this.mutableItemRow(parsed.creationItemId);
+          const parentId = current.parent_creation_item_id == null ? null : text(current.parent_creation_item_id);
+          if (parsed.expectedParentCreationItemId !== undefined && parentId !== parsed.expectedParentCreationItemId) {
+            throw new Error('CREATION_PARENT_CHANGED');
+          }
+          const creationItemId = this.isolateArticleForm(parsed.creationItemId, parsed.articleFormId);
+          return this.move({
+            creationItemId,
+            albumId: parsed.albumId,
+            parentCreationItemId: parsed.parentCreationItemId,
+          });
+        }
         const current = this.mutableItemRow(parsed.creationItemId);
         this.assertAlbumAvailable(parsed.albumId);
         const previousParent = current.parent_creation_item_id == null ? null : text(current.parent_creation_item_id);
@@ -482,6 +511,14 @@ export class CreationItemRepository {
         return this.get(parsed.creationItemId);
       })
       .immediate();
+  }
+
+  private isolateArticleForm(creationItemId: string, formId: string) {
+    const form = this.getForm(formId);
+    if (form.role !== 'ARTICLE' || form.entity.kind !== 'ARTICLE' || form.creationItemId !== creationItemId) {
+      throw new Error('ARTICLE_MANAGEMENT_CHANGED');
+    }
+    return isolateArticleCreation(this.storage, articleCreationScope(this.storage, form.entity.id));
   }
 
   private itemRows(): CreationItemRow[] {
@@ -536,8 +573,9 @@ export class CreationItemRepository {
     const itemIds = rows.map((row) => text(row.id));
     const forms = this.db
       .prepare(
-        `SELECT form.* FROM creation_forms form
+        `SELECT form.*, source.creation_item_id AS source_creation_item_id FROM creation_forms form
         JOIN json_each(?) selected ON selected.value = form.creation_item_id
+        LEFT JOIN creation_forms source ON source.id = form.source_form_id AND source.deleted_at IS NULL
         WHERE form.deleted_at IS NULL
         ORDER BY form.creation_item_id, form.sort_order, form.created_at, form.id`,
       )
@@ -546,15 +584,9 @@ export class CreationItemRepository {
       this.db,
       forms.map((row) => creationFormEntityRefSchema.parse({ kind: row.entity_type, id: row.entity_id })),
     );
-    const activeFormIds = new Set(forms.map((row) => text(row.id)));
     const formsByItem = new Map<string, CreationFormDto[]>();
     for (const row of forms) {
-      const sourceFormId = row.source_form_id == null ? null : text(row.source_form_id);
-      const form = formDto(
-        this.db,
-        sourceFormId && !activeFormIds.has(sourceFormId) ? { ...row, source_form_id: null } : row,
-        authorsByTarget.get(`${row.entity_type}:${row.entity_id}`) ?? [],
-      );
+      const form = formDto(this.db, row, authorsByTarget.get(`${row.entity_type}:${row.entity_id}`) ?? []);
       const values = formsByItem.get(form.creationItemId);
       if (values) values.push(form);
       else formsByItem.set(form.creationItemId, [form]);

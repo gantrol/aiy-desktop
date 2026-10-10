@@ -1,5 +1,5 @@
-import { ArchiveIcon, PencilIcon, PinIcon, PinOffIcon, PlusIcon, SettingsIcon, Trash2Icon } from 'lucide-react';
-import { useState } from 'react';
+import { ArchiveIcon, PencilIcon, PinIcon, PinOffIcon, SettingsIcon, Trash2Icon } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 import type { AlbumDto, AssetDto } from '@/shared/contracts';
 import { AlbumCoverStack } from '@/renderer/components/albums/AlbumCoverStack';
 import { AlbumPreviewPopover } from '@/renderer/components/albums/AlbumPreviewPopover';
@@ -14,7 +14,6 @@ interface Labels extends AlbumNavigationLabels {
   materials?(count: number): string;
   creations?(count: number): string;
   childAlbums?(count: number): string;
-  newCreation?: string;
   settings?: string;
 }
 
@@ -29,7 +28,7 @@ interface Props {
   onDelete(album: AlbumDto): Promise<void>;
   onTogglePin(album: AlbumDto): Promise<void>;
   onArchive(album: AlbumDto): Promise<void>;
-  onCreateCreation?(): void;
+  newCreationAction?: ReactNode;
   onSettings?(): void;
   notify(message: string): void;
 }
@@ -45,7 +44,7 @@ export function AlbumDetailHeader({
   onDelete,
   onTogglePin,
   onArchive,
-  onCreateCreation,
+  newCreationAction,
   onSettings,
   notify,
 }: Props) {
@@ -114,12 +113,7 @@ export function AlbumDetailHeader({
           </div>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          {onCreateCreation && labels.newCreation && !archived && (
-            <Button type="button" size="sm" disabled={busy} onClick={onCreateCreation}>
-              <PlusIcon className="size-4" />
-              {labels.newCreation}
-            </Button>
-          )}
+          {!archived && newCreationAction}
           <Button
             type="button"
             variant="outline"

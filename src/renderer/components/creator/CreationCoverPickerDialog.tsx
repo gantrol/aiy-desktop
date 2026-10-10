@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import { itemReorderHandler } from '@/renderer/components/albums/itemDrag';
 import { CheckIcon, ImagesIcon, LoaderCircleIcon, XIcon } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -187,7 +188,7 @@ export function CreationCoverPickerDialog({
                       setDraggingAssetId(null);
                     })}
                   >
-                    <img
+                    <ScratchImage
                       src={thumbnailUrl}
                       alt=""
                       className="size-full bg-media-surround-light object-contain"
@@ -249,7 +250,7 @@ export function CreationCoverPickerDialog({
                   onSelect={() => toggleAsset(asset.id)}
                 >
                   <ImageAmbientBackdrop src={thumbnailUrl} loading="lazy" />
-                  <img
+                  <ScratchImage
                     src={thumbnailUrl}
                     alt=""
                     className="relative z-10 size-full object-contain"

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useI18n } from '@/renderer/i18n/useI18n';
 import type { ArticleCheckBlockInput, ArticleCheckInput, ArticleContentInput, Locale } from '@/shared/contracts';
 import type { useArticleEditorSession } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
 
@@ -29,6 +30,7 @@ export function useArticleCheck({
   onConfigureProvider(): void;
 }) {
   const [checking, setChecking] = useState(false);
+  const labels = useI18n().messages.recipe.task;
   const operationRef = useRef(0);
 
   async function run() {
@@ -42,7 +44,7 @@ export function useArticleCheck({
       const content = session.captureSnapshot();
       const blocks = copiedBlocks(session.getArticleCheckBlocksProjection());
       if (!blocks.length) {
-        notify(locale === 'zh' ? '没有可检查的正文' : 'There is no article body to check');
+        notify(labels.noBody);
         return;
       }
       const input: ArticleCheckInput = {
@@ -58,51 +60,35 @@ export function useArticleCheck({
       const currentArticle = session.capturePersistedArticle();
       const currentContent = session.captureSnapshot();
       if (checkIdentity(currentArticle.revisionId, currentContent) !== identity) {
-        notify(
-          locale === 'zh'
-            ? '文章已变化，检查结果已保留在 AI 中心'
-            : 'The article changed; the check result is available in AI Center',
-        );
+        notify(labels.changed);
         return;
       }
       if (!result.findings.length) {
-        notify(locale === 'zh' ? '未发现明确问题' : 'No clear issues found');
+        notify(labels.noIssues);
         return;
       }
       if (!(await session.flush('manual')) || operationRef.current !== operation) return;
       const finalArticle = session.capturePersistedArticle();
       const finalContent = session.captureSnapshot();
       if (checkIdentity(finalArticle.revisionId, finalContent) !== identity) {
-        notify(
-          locale === 'zh'
-            ? '文章已变化，检查结果已保留在 AI 中心'
-            : 'The article changed; the check result is available in AI Center',
-        );
+        notify(labels.changed);
         return;
       }
       const applied = await session.mutateComments(async (current) => {
-        if (checkIdentity(current.revisionId, session.captureSnapshot()) !== identity)
-          throw new Error(
-            locale === 'zh'
-              ? '文章已变化，检查结果已保留在 AI 中心'
-              : 'The article changed; the check result is available in AI Center',
-          );
+        if (checkIdentity(current.revisionId, session.captureSnapshot()) !== identity) throw new Error(labels.changed);
         return window.desktopApi.articleCheckRunApply({ runId: result.run.id });
       });
       if (operationRef.current !== operation) return;
       if (!applied) return;
-      notify(
-        locale === 'zh'
-          ? `${applied.createdCommentIds.length} 条检查意见已加入评论`
-          : `${applied.createdCommentIds.length} check findings added as comments`,
-      );
+      notify(labels.added.replace('{count}', new Intl.NumberFormat(locale).format(applied.createdCommentIds.length)));
     } catch (reason) {
       if (operationRef.current === operation) {
         if (articleCheckProviderConfigurationRequired(reason)) {
-          notify(locale === 'zh' ? '请先配置并授权 Codex Agent' : 'Configure and authorize Codex Agent first');
+          notify(labels.configure);
           onConfigureProvider();
         } else {
-          notify(reason instanceof Error ? reason.message : String(reason));
+          const message = reason instanceof Error ? reason.message : String(reason);
+          notify(message.includes('TASK_RECIPE_') ? labels.defaultUnavailable : message);
         }
       }
     } finally {

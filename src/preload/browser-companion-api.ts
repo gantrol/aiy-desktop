@@ -1,6 +1,11 @@
 import type { IpcRenderer } from 'electron';
 import type { DesktopApi } from '@/shared/contracts';
 import {
+  tablePublicationInputSchema,
+  tablePublicationResultSchema,
+  tablePublicationDiscardSchema,
+} from '@/shared/contracts/table-publication';
+import {
   browserCompanionDeleteInputSchema,
   browserCompanionDeleteResultSchema,
   browserCompanionDestinationSelectInputSchema,
@@ -14,6 +19,7 @@ import {
   browserCompanionBatchInvocationSchema,
   browserCompanionReopenInvocationSchema,
   browserCompanionBatchHistoryResultSchema,
+  browserCompanionBatchHistoryInputSchema,
   browserCompanionReopenInputSchema,
 } from '@/shared/contracts/browser-companion';
 
@@ -22,6 +28,8 @@ export function createBrowserCompanionPreloadApi(
 ): Pick<
   DesktopApi,
   | 'browserCompanionStage'
+  | 'browserCompanionPrepareTables'
+  | 'browserCompanionDiscardTablePreviews'
   | 'browserCompanionDestinations'
   | 'browserCompanionStageBatch'
   | 'browserCompanionBatchHistory'
@@ -32,6 +40,17 @@ export function createBrowserCompanionPreloadApi(
   | 'browserCompanionDelete'
 > {
   return {
+    browserCompanionDiscardTablePreviews: async (input) => {
+      await ipcRenderer.invoke('browser-companion:discard-table-previews', tablePublicationDiscardSchema.parse(input));
+    },
+    browserCompanionPrepareTables: async (input) => {
+      const result = await ipcRenderer.invoke(
+        'browser-companion:prepare-tables',
+        tablePublicationInputSchema.parse(input),
+      );
+      if (result && 'errorCode' in result) throw new Error(result.errorCode);
+      return tablePublicationResultSchema.parse(result);
+    },
     browserCompanionStage: async (input) => {
       const result = browserCompanionStageInvocationSchema.parse(
         await ipcRenderer.invoke('browser-companion:stage', browserCompanionStageInputSchema.parse(input)),
@@ -49,8 +68,13 @@ export function createBrowserCompanionPreloadApi(
         throw Object.assign(new Error(result.errorCode), { code: result.errorCode, admissionRejected: true });
       return result;
     },
-    browserCompanionBatchHistory: async () =>
-      browserCompanionBatchHistoryResultSchema.parse(await ipcRenderer.invoke('browser-companion:batch-history')),
+    browserCompanionBatchHistory: async (input) =>
+      browserCompanionBatchHistoryResultSchema.parse(
+        await ipcRenderer.invoke(
+          'browser-companion:batch-history',
+          browserCompanionBatchHistoryInputSchema.parse(input ?? {}),
+        ),
+      ),
     browserCompanionReopen: async (input) => {
       const result = browserCompanionReopenInvocationSchema.parse(
         await ipcRenderer.invoke('browser-companion:reopen', browserCompanionReopenInputSchema.parse(input)),

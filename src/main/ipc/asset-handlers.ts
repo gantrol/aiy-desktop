@@ -1,4 +1,5 @@
 import type { LibraryDatabase } from '@/main/database';
+import { imageVisibilityUpdateSchema } from '@/shared/contracts/image-visibility';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import type { AssetFileActions } from '@/main/media/asset-file-actions';
 import { createAssetFileDragIcon } from '@/main/media/asset-file-drag-icon';
@@ -27,12 +28,20 @@ export function registerAssetIpc(
   assetFiles: AssetFileActions,
   onTransitionPreviewSelectionChanged: () => void = () => undefined,
 ) {
+  ipcMain.handle('image-visibility:list', () => database.imageVisibility.list());
+  ipcMain.handle('image-visibility:set', (_event, raw) => {
+    database.imageVisibility.set(imageVisibilityUpdateSchema.parse(raw));
+    onTransitionPreviewSelectionChanged();
+  });
   ipcMain.handle('gallery:list', (_event, raw) => database.listGallery(galleryListSchema.parse(raw)));
   ipcMain.handle('gallery:material-get', (_event, rawId, rawLocale) =>
     database.getGalleryMaterial(id.parse(rawId), localeSchema.parse(rawLocale)),
   );
   ipcMain.handle('asset-relationship:get', (_event, rawId, rawLocale) =>
     database.getAssetRelationship(id.parse(rawId), localeSchema.parse(rawLocale)),
+  );
+  ipcMain.handle('asset-navigation:get', (_event, rawId, rawLocale) =>
+    database.getAssetNavigation(id.parse(rawId), localeSchema.parse(rawLocale)),
   );
   ipcMain.handle('asset-file:availability', (_event, rawId) => assetFiles.availability(id.parse(rawId)));
   ipcMain.handle('asset-file:copy', (_event, rawId) => assetFiles.copy(id.parse(rawId)));

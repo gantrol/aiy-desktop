@@ -1,6 +1,11 @@
 import { ipcRenderer } from 'electron';
 import { z } from 'zod';
 import {
+  projectCommandScanInputSchema,
+  projectCommandCancelInputSchema,
+  projectCommandScanSchema,
+} from '@/shared/contracts/project-commands';
+import {
   maintenanceDocumentSchema,
   maintenanceMutationSchema,
   maintenanceOpenInputSchema,
@@ -15,6 +20,14 @@ import {
 export function createMaintenanceGuideApi(): MaintenanceGuideApi {
   const stateResult = maintenanceResultSchema(maintenanceStateSchema);
   return {
+    scanCommands: async (input) =>
+      maintenanceResultSchema(
+        z.object({ state: maintenanceStateSchema, scan: projectCommandScanSchema }).nullable(),
+      ).parse(await ipcRenderer.invoke('maintenance-guide:scan-commands', projectCommandScanInputSchema.parse(input))),
+    cancelCommandScan: async (input) =>
+      maintenanceResultSchema(z.null()).parse(
+        await ipcRenderer.invoke('maintenance-guide:cancel-command-scan', projectCommandCancelInputSchema.parse(input)),
+      ),
     list: async () => stateResult.parse(await ipcRenderer.invoke('maintenance-guide:list')),
     mutate: async (input) =>
       stateResult.parse(await ipcRenderer.invoke('maintenance-guide:mutate', maintenanceMutationSchema.parse(input))),

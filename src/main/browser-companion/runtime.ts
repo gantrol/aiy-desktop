@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { prepareTablePublication } from '@/main/browser-companion/table-publication-service';
+import { preparedTablePublication, discardTablePublications } from '@/main/browser-companion/table-publication-cache';
+import type { TablePublicationInput } from '@/shared/contracts/table-publication';
 import { selectedWatermarkProfile, type NaturalWatermarkRuntime } from '@/main/extensions/natural-watermark/selection';
 import type { BrowserCompanionBatchRecord } from '@/main/browser-companion/batch-store';
 import { BrowserCompanionHandoffStore, type BrowserCompanionMediaSource } from '@/main/browser-companion/handoff-store';
@@ -48,7 +51,9 @@ const TARGET_URLS: Record<BrowserCompanionTarget, string> = {
 type BatchWatermark = { profile: NaturalWatermarkProfile | null } | { error: unknown };
 
 function usesWatermark(input: BrowserCompanionStageInput): boolean {
-  return Boolean(input.mediaAssetIds?.length && input.watermark && input.watermark.kind !== 'NONE');
+  return Boolean(
+    !input.tableConversion && input.mediaAssetIds?.length && input.watermark && input.watermark.kind !== 'NONE',
+  );
 }
 
 function launchUrl(
@@ -100,7 +105,32 @@ export class BrowserCompanionRuntime {
     private readonly resolveAssetFile: (assetId: string) => ResolvedAssetFile | null,
     private readonly naturalWatermark?: NaturalWatermarkRuntime,
     private readonly calendarLibraryId?: (source: BrowserCompanionStageInput['source']) => string,
+    private readonly resolveAssetFiles?: (ids: readonly string[]) => Promise<ReadonlyMap<string, ResolvedAssetFile>>,
   ) {}
+
+  async prepareTables(input: TablePublicationInput) {
+    return this.mutate(async () => {
+      this.assertExpectedSpace(input.expectedSpaceId, input.source);
+      if (!this.resolveAssetFiles) throw new Error('TABLE_RESOURCE_UNAVAILABLE');
+      const ids = [
+        ...new Set([
+          ...input.leadingMediaAssetIds,
+          ...input.mediaAssetIds,
+          ...input.mediaBindings.map((item) => item.assetId),
+        ]),
+      ];
+      const files = await this.resolveAssetFiles(ids);
+      this.assertExpectedSpace(input.expectedSpaceId, input.source);
+      try {
+        const result = await prepareTablePublication(input, (id) => files.get(id) ?? null, this.naturalWatermark);
+        this.assertExpectedSpace(input.expectedSpaceId, input.source);
+        return result;
+      } catch (reason) {
+        discardTablePublications([input.requestId], input.expectedSpaceId);
+        throw reason;
+      }
+    });
+  }
 
   private mutate<T>(operation: () => Promise<T>): Promise<T> {
     const pending = this.pendingMutation.then(operation);
@@ -134,6 +164,12 @@ export class BrowserCompanionRuntime {
     frozenWatermark?: NaturalWatermarkProfile | null,
   ): Promise<BrowserCompanionHistoryItem> {
     const calendarLibraryId = this.calendarLibraryId?.(input.source);
+    if (input.tableConversion) {
+      if (input.watermark && input.watermark.kind !== 'NONE' && !this.naturalWatermark?.isActivated())
+        throw new Error('TABLE_PREVIEW_EXPIRED');
+      const media = preparedTablePublication(input, calendarLibraryId ?? '');
+      return this.handoffs.stage(input, media, batchId, calendarLibraryId);
+    }
     const resolvedMedia = (input.mediaAssetIds ?? []).map((assetId) => {
       const file = this.resolveAssetFile(assetId);
       if (!file) throw new Error(`Browser companion image is unavailable: ${assetId}`);
@@ -249,7 +285,7 @@ export class BrowserCompanionRuntime {
       if (!canStage(candidate.target)) {
         item.errorCode = 'HANDOFF_NOT_ALLOWED';
         await this.handoffs.batches.save(batch);
-        continue;
+        return this.batchResult(batch);
       }
       let handoff: BrowserCompanionHistoryItem;
       try {
@@ -261,10 +297,16 @@ export class BrowserCompanionRuntime {
           browserCompanionStageErrorCodeSchema.safeParse(reason instanceof Error ? reason.message : reason).data ??
           'STAGE_FAILED';
         await this.handoffs.batches.save(batch);
-        continue;
+        return this.batchResult(batch);
       }
-      // Persist the exact handoff before opening it: interruption must not cause a new task on retry.
+      // Prepare every candidate before opening any editor. A media error must not
+      // start a partial batch; retained handoffs can still be reviewed or deleted.
       item.result = { handoff, browserOpened: false, browserOpenError: null };
+      item.errorCode = 'NOT_ATTEMPTED';
+      await this.handoffs.batches.save(batch);
+    }
+    for (const item of batch.items) {
+      const handoff = item.result!.handoff;
       item.errorCode = 'OPEN_NOT_CONFIRMED';
       await this.handoffs.batches.save(batch);
       try {
@@ -275,6 +317,7 @@ export class BrowserCompanionRuntime {
         item.errorCode = 'HANDOFF_NOT_ALLOWED';
       }
       await this.handoffs.batches.save(batch);
+      if (item.errorCode || !item.result?.browserOpened || item.result.browserOpenError) break;
     }
     return this.batchResult(batch);
   }
@@ -288,8 +331,11 @@ export class BrowserCompanionRuntime {
     });
   }
 
-  async batchHistory(): Promise<BrowserCompanionBatchResult[]> {
-    const [batches, history] = await Promise.all([this.handoffs.batches.list(), this.history()]);
+  async batchHistory(includeHistory = true): Promise<BrowserCompanionBatchResult[]> {
+    const [batches, history] = await Promise.all([
+      this.handoffs.batches.list(),
+      includeHistory ? this.history() : Promise.resolve([]),
+    ]);
     const byId = new Map(history.map((handoff) => [handoff.handoffId, handoff]));
     const byBatchTarget = new Map<string, BrowserCompanionHistoryItem | null>();
     for (const handoff of history) {

@@ -1,5 +1,7 @@
 import { assertPublicContentLinks } from '@/shared/content-public-links';
-import { prepareImagePostHandoff } from '@/renderer/features/browser-companion/prepareImagePostHandoff';
+import { assertPublicationTableDocument, assertPublicationTableReferences } from '@/shared/publication-tables';
+import { prepareTableImagePost } from '@/renderer/features/browser-companion/prepareTableImagePost';
+import type { BrowserCompanionWatermarkSelection } from '@/shared/contracts';
 import type { ArticleDto, BrowserCompanionSource, BrowserCompanionTarget } from '@/shared/contracts';
 import type { DesktopPetalMessages } from '@/shared/i18n/desktop-petals';
 import {
@@ -28,6 +30,9 @@ export async function prepareArticleHandoff({
   copy,
   notify,
   expandedContent,
+  watermark,
+  tableLabel,
+  signal,
 }: {
   article: ArticleDto;
   spaceId: string;
@@ -35,9 +40,14 @@ export async function prepareArticleHandoff({
   copy: DesktopPetalMessages['document'];
   notify(message: string): void;
   expandedContent?: ExpandedArticleContent;
+  watermark?: BrowserCompanionWatermarkSelection;
+  tableLabel?: string;
+  signal?: AbortSignal;
 }) {
   const content = article.content;
+  assertPublicationTableDocument(content.document);
   const expanded = expandedContent ?? (await window.desktopApi.contentLibrary.freeze(content.markdown, spaceId));
+  assertPublicationTableReferences(content.markdown, expanded.markdown);
   assertPublicContentLinks(expanded.markdown);
   const overrides = await loadPublishingMask({
     spaceId,
@@ -55,21 +65,27 @@ export async function prepareArticleHandoff({
     ],
     overrides,
   );
-  return prepareImagePostHandoff({
-    source: { kind: 'article', id: article.id },
-    title: fields.title,
-    body: expanded.markdown,
-    format: 'markdown',
-    // Use the cover, then images in document order. Removed editor assets are not attachments.
-    leadingMediaAssetIds: fields.coverAssetId ? [fields.coverAssetId] : [],
-    mediaAssetIds: [],
-    mediaBindings: [...content.mediaBindings, ...expanded.media],
-    target,
-    copy,
-    notify,
-    preferredMediaAssetIds: overrides?.mediaOrder,
-    titleInBody: overrides?.titleInBody,
-  });
+  return prepareTableImagePost(
+    {
+      source: { kind: 'article', id: article.id },
+      title: fields.title,
+      body: expanded.markdown,
+      format: 'markdown',
+      // Use the cover, then images in document order. Removed editor assets are not attachments.
+      leadingMediaAssetIds: fields.coverAssetId ? [fields.coverAssetId] : [],
+      mediaAssetIds: [],
+      mediaBindings: [...content.mediaBindings, ...expanded.media],
+      target,
+      copy,
+      notify,
+      preferredMediaAssetIds: overrides?.mediaOrder,
+      titleInBody: overrides?.titleInBody,
+    },
+    spaceId,
+    watermark,
+    tableLabel,
+    signal,
+  );
 }
 
 export interface WechatArticleHandoffCopy {

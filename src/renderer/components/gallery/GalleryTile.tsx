@@ -5,6 +5,7 @@ import { Badge } from '@/renderer/components/ui/badge';
 import { ImageEvaluationControls } from '@/renderer/components/gallery/ImageEvaluationControls';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { MediaCardCaption } from '@/renderer/components/media/MediaCardCaption';
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 
 interface Props {
   item: GalleryItemDto;
@@ -58,7 +59,7 @@ export function GalleryTile({ item, filter, visibleDimensions, ratingBusy, onOpe
       >
         <div className="relative isolate grid aspect-[3/4] place-items-center overflow-hidden bg-surface-sunken">
           <ImageAmbientBackdrop src={item.asset.mediaUrl} loading="lazy" />
-          <img
+          <ScratchImage
             className="relative z-10 size-full object-contain"
             src={item.asset.mediaUrl}
             alt=""

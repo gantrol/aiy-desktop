@@ -21,7 +21,7 @@ export const outlineDropPending = (editor: Editor) => pendingDrops.has(editor);
 /** Resolve the whole drop before changing the outline, and keep the insertion in one undo step. */
 export async function dropOutlineItems(
   editor: Editor,
-  targetId: string,
+  targetId: string | null,
   placement: OutlineDropPlacement,
   prepare: (assertCurrent: () => void) => Promise<BlockNode[]>,
 ) {
@@ -52,15 +52,31 @@ export async function dropOutlineItems(
     assertCurrent();
     if (!items.length) throw new Error('REFERENCE_LOCATION_MISSING');
     const view = outlineViewState(editor.state);
-    if (!outlinePlacementWithinFocus(editor.state.doc, view, [], targetId, placement))
+    if (
+      targetId
+        ? !outlinePlacementWithinFocus(editor.state.doc, view, [], targetId, placement)
+        : view.focus !== null || outlineItemRecords(before.toJSON()).size > 0
+    )
       throw new Error('REFERENCE_TARGET_CHANGED');
-    const next = insertOutlineStructure(before.toJSON(), items, targetId, placement);
-    if (!next || !outlineItemRecords(next).has(targetId)) throw new Error('REFERENCE_TARGET_CHANGED');
+    const next = targetId
+      ? insertOutlineStructure(before.toJSON(), items, targetId, placement)
+      : {
+          ...before.toJSON(),
+          content: [
+            ...(before.toJSON().content ?? []),
+            {
+              type: 'bulletList',
+              attrs: { blockId: crypto.randomUUID(), outlineRole: 'CHILDREN' },
+              content: items,
+            },
+          ],
+        };
+    if (!next || (targetId && !outlineItemRecords(next).has(targetId))) throw new Error('REFERENCE_TARGET_CHANGED');
     const document = editor.schema.nodeFromJSON(next);
     document.check();
     const ids = items.map((item) => String(item.attrs!.blockId));
     const folded = new Set(view.folded);
-    if (placement === 'INSIDE') folded.delete(targetId);
+    if (placement === 'INSIDE' && targetId) folded.delete(targetId);
     // An insertion must not mark every existing paragraph/comment as deleted.
     const start = before.content.findDiffStart(document.content);
     const end = before.content.findDiffEnd(document.content);

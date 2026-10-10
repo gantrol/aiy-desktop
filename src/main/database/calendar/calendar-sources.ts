@@ -152,7 +152,6 @@ const sourceQueries: Record<string, SourceQuery> = {
   IMAGE_BREAKDOWN: namedSource('image_breakdowns'),
   GIF_DOCUMENT: namedSource('gif_documents'),
   ARTICLE: revisionSource('articles', 'article_revisions'),
-  SOCIAL_POST_DRAFT: revisionSource('social_post_drafts', 'social_post_revisions'),
   EVALUATION_SUITE: revisionSource('evaluation_suites', 'evaluation_suite_revisions'),
   IMAGE_ASSET: {
     from: 'image_assets a',
@@ -376,11 +375,9 @@ export class CalendarSourceReader {
         type:
           typeof row.navigate_id === 'string' && typeof row.navigate_type === 'string'
             ? row.navigate_type
-            : type === 'SOCIAL_POST_DRAFT'
-              ? 'SOCIAL_POST'
-              : type === 'DOCUMENT'
-                ? 'VIDEO_DOCUMENT'
-                : type,
+            : type === 'DOCUMENT'
+              ? 'VIDEO_DOCUMENT'
+              : type,
         id: typeof row.navigate_id === 'string' ? row.navigate_id : ref.id,
       },
     };

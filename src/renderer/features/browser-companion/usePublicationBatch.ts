@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { discardTablePreviews } from '@/renderer/features/browser-companion/prepareTableImagePost';
+import { useTablePreviewReadiness } from '@/renderer/features/browser-companion/useTablePreviewReadiness';
 import type {
   BrowserCompanionBatchItemResult,
   BrowserCompanionStageInput,
@@ -19,14 +21,17 @@ export function usePublicationBatch({
   sourceKey,
   watermark,
   title,
+  spaceId,
 }: {
   prepare(
     targets: readonly BrowserCompanionTarget[],
     mode: 'article' | 'images',
+    signal?: AbortSignal,
   ): Promise<PublicationCandidate[] | null>;
   sourceKey: string;
   watermark: BrowserCompanionWatermarkSelection;
   title: string;
+  spaceId?: string;
 }) {
   const [rows, setRows] = useState<PublicationCandidate[]>([]);
   const [snapshotKey, setSnapshotKey] = useState<string | null>(null);
@@ -39,13 +44,30 @@ export function usePublicationBatch({
   const preparedWatermark = useRef<BrowserCompanionWatermarkSelection | null>(null);
   const epoch = useRef(0);
   const alive = useRef(true);
+  const preparing = useRef<AbortController | null>(null);
+  const previewFiles = useRef<PublicationCandidate[]>([]);
+  const keepPreviews = useRef(false);
+  const tablePreviews = useTablePreviewReadiness();
   useEffect(() => {
     alive.current = true;
     return () => {
       alive.current = false;
+      preparing.current?.abort();
+      if (spaceId && !keepPreviews.current)
+        discardTablePreviews(
+          spaceId,
+          previewFiles.current.flatMap((row) => (row.prepared ? [row.prepared] : [])),
+        );
     };
-  }, []);
+  }, [spaceId]);
   const stale = snapshotKey !== null && sourceKey !== snapshotKey && !submitted;
+  const canOpen =
+    !busy &&
+    !submitted &&
+    !stale &&
+    !fault &&
+    rows.length > 0 &&
+    rows.every((row) => row.prepared && !row.error && tablePreviews.ready(row.prepared));
   const pending = rows.some((row) => row.receipt?.result && row.receipt.result.handoff.state !== 'delivered');
 
   useEffect(() => {
@@ -93,6 +115,12 @@ export function usePublicationBatch({
 
   function reset() {
     if (busyRef.current || submitted) return;
+    if (spaceId)
+      discardTablePreviews(
+        spaceId,
+        previewFiles.current.flatMap((row) => (row.prepared ? [row.prepared] : [])),
+      );
+    previewFiles.current = [];
     epoch.current++;
     setRows([]);
     setSnapshotKey(null);
@@ -109,17 +137,34 @@ export function usePublicationBatch({
     const version = ++epoch.current;
     const key = sourceKey;
     const watermarkSnapshot = structuredClone(watermark);
+    const controller = new AbortController();
+    preparing.current = controller;
+    if (spaceId)
+      discardTablePreviews(
+        spaceId,
+        previewFiles.current.flatMap((row) => (row.prepared ? [row.prepared] : [])),
+      );
+    previewFiles.current = [];
     try {
-      const candidates = await prepare(targets, mode);
-      if (!alive.current || version !== epoch.current) return;
+      const candidates = await prepare(targets, mode, controller.signal);
+      if (!alive.current || version !== epoch.current || controller.signal.aborted) {
+        if (spaceId)
+          discardTablePreviews(
+            spaceId,
+            (candidates ?? []).flatMap((row) => (row.prepared ? [row.prepared] : [])),
+          );
+        return;
+      }
+      previewFiles.current = candidates ?? [];
       setRows(candidates ? structuredClone(candidates) : []);
       preparedWatermark.current = candidates ? watermarkSnapshot : null;
       setSnapshotKey(candidates ? (candidates[0]?.sourceKey ?? key) : null);
       if (!candidates) setFault('save');
     } catch {
-      if (alive.current && version === epoch.current) setFault('save');
+      if (alive.current && version === epoch.current && !controller.signal.aborted) setFault('save');
     } finally {
       busyRef.current = false;
+      preparing.current = null;
       if (alive.current) setBusy(false);
     }
   }
@@ -129,15 +174,17 @@ export function usePublicationBatch({
   }
 
   async function open() {
-    if (busyRef.current || submitted || stale) return;
+    if (busyRef.current || !canOpen) return;
     const ready = rows.filter((row) => row.prepared && !row.error);
     if (!ready.length) return;
     busyRef.current = true;
     setBusy(true);
     setSubmitted(true);
+    keepPreviews.current = true;
     const version = ++epoch.current;
     try {
       const batch = await window.desktopApi.browserCompanionStageBatch({
+        ...(spaceId ? { expectedSpaceId: spaceId } : {}),
         items: ready.map(input),
         ...(title.trim() ? { title: title.trim().slice(0, 80) } : {}),
       });
@@ -172,7 +219,12 @@ export function usePublicationBatch({
             result: await window.desktopApi.browserCompanionReopen({ handoffId: old.handoff.handoffId }),
             errorCode: null,
           }
-        : (await window.desktopApi.browserCompanionStageBatch({ items: [input(row)] })).items[0]!;
+        : (
+            await window.desktopApi.browserCompanionStageBatch({
+              items: [input(row)],
+              ...(spaceId ? { expectedSpaceId: spaceId } : {}),
+            })
+          ).items[0]!;
       if (!alive.current || version !== epoch.current) return;
       setRows((current) => current.map((item) => (item.target === row.target ? { ...item, receipt } : item)));
     } catch {
@@ -184,5 +236,24 @@ export function usePublicationBatch({
     }
   }
 
-  return { rows, busy, submitted, stale, fault, historyFailed, reset, preview, open, retry };
+  function update(target: BrowserCompanionTarget, prepared: NonNullable<PublicationCandidate['prepared']>) {
+    if (busyRef.current || submitted || stale) return;
+    setRows((current) => current.map((row) => (row.target === target ? { ...row, prepared } : row)));
+  }
+  return {
+    rows,
+    busy,
+    submitted,
+    stale,
+    canOpen,
+    fault,
+    historyFailed,
+    reset,
+    preview,
+    open,
+    retry,
+    update,
+    setTablePreviewReady: tablePreviews.update,
+    cancelPreparation: () => preparing.current?.abort(),
+  };
 }

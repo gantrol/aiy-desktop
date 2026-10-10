@@ -52,6 +52,7 @@ export const revision2RequiredTables = [
 ] as const;
 
 export const currentRequiredTables = [
+  'article_legacy_posts',
   ...revision2RequiredTables,
   'article_comment_replies',
   'article_check_runs',

@@ -12,6 +12,8 @@ export const trayMenuStateSchema = z
     language: appShellLanguageSchema,
     windowReady: z.boolean(),
     petalsReady: z.boolean(),
+    captureReady: z.boolean().optional(),
+    clipboardHistoryReady: z.boolean().optional(),
     taskCount: z.number().int().nonnegative(),
     quittingSoon: z.boolean(),
   })
@@ -19,7 +21,15 @@ export const trayMenuStateSchema = z
 export type TrayMenuState = z.infer<typeof trayMenuStateSchema>;
 export const trayPetalActions = ['petals-open', 'petals-show-all', 'petals-hide-all', 'petals-settings'] as const;
 export type TrayPetalAction = (typeof trayPetalActions)[number];
-export const trayMenuActionSchema = z.enum(['open', 'quit', 'force-quit', 'dismiss', ...trayPetalActions]);
+export const trayMenuActionSchema = z.enum([
+  'open',
+  'capture',
+  'clipboard-history',
+  'quit',
+  'force-quit',
+  'dismiss',
+  ...trayPetalActions,
+]);
 export type TrayMenuAction = z.infer<typeof trayMenuActionSchema>;
 
 export interface TrayMenuApi {

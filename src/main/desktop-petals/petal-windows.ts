@@ -8,10 +8,11 @@ import { PETAL_WINDOW_SIZES, type PetalHubView } from '@/shared/contracts/petal-
 import { desktopPetalMessages } from '@/shared/i18n/desktop-petals';
 import { petalError } from '@/shared/petal-errors';
 import { PetalHubPresentation, setPetalBounds } from '@/main/desktop-petals/petal-hub-presentation';
-import { clampFlowerBounds, clampPetalBounds } from '@/main/desktop-petals/petal-window-geometry';
+import { clampFlowerBounds, clampImagePinBounds, clampPetalBounds } from '@/main/desktop-petals/petal-window-geometry';
 import { PetalInputMonitor } from '@/main/desktop-petals/petal-input-monitor';
 import type { PetalLanguage } from '@/shared/contracts/petal-language';
 import { PetalCollectionHistory } from '@/main/desktop-petals/petal-collection-history';
+import { PetalCollectionPreview } from '@/main/desktop-petals/petal-collection-preview';
 import { PetalPluckMonitor } from '@/main/desktop-petals/petal-pluck-monitor';
 import { loadPetalWindow, type PetalWindowLoad } from '@/main/desktop-petals/petal-window-loading';
 import { PetalOverlayWindows } from '@/main/desktop-petals/petal-overlay-windows';
@@ -20,6 +21,8 @@ import { PetalWindowResidency } from '@/main/desktop-petals/petal-window-residen
 import { PetalRuntimeDiagnostics } from '@/main/desktop-petals/petal-runtime-diagnostics';
 import { PetalDesktopRecovery } from '@/main/desktop-petals/petal-desktop-recovery';
 import { PetalNotePanel } from '@/main/desktop-petals/petal-note-panel';
+import { PetalWindowTools } from '@/main/desktop-petals/petal-window-tools';
+import { PetalImageEditorWindow } from '@/main/desktop-petals/petal-image-editor-window';
 
 // WS_EX_TOOLWINDOW keeps desktop widgets out of Explorer's taskbar previews even
 // when the shell rebuilds its task list; skipTaskbar alone is not persistent.
@@ -39,9 +42,13 @@ export interface PetalWindow {
   instanceId: string | null;
   expanded: boolean;
   editEpoch: number;
+  imageEditRequest?: string;
   hubView: PetalHubView;
 }
 export class PetalWindows {
+  readonly imageEditor = new PetalImageEditorWindow();
+  readonly collectionPreview = new PetalCollectionPreview();
+  readonly tools = new PetalWindowTools();
   readonly notePanel = new PetalNotePanel();
   readonly overlays = new PetalOverlayWindows();
   readonly collectionHistory = new PetalCollectionHistory(
@@ -342,18 +349,19 @@ export class PetalWindows {
     const previous = this.layouts.get(libraryId, instanceId ?? 'hub');
     const isExpanded = instanceId ? (expanded ?? previous?.expanded ?? false) : false;
     let size =
-      instanceId && isExpanded ? (previous?.noteSize ?? PETAL_WINDOW_SIZES.note) : this.size(instanceId, isExpanded);
+      instanceId && isExpanded
+        ? (previous?.imageSize ?? previous?.noteSize ?? PETAL_WINDOW_SIZES.note)
+        : this.size(instanceId, isExpanded);
     const area = screen.getPrimaryDisplay().workArea;
     const position = point ?? previous ?? { x: area.x + area.width - size.width - 30, y: area.y + 100 };
-    const targetArea = screen.getDisplayNearestPoint(
-      instanceId
-        ? position
-        : {
-            x: position.x + size.width / 2,
-            y: position.y + size.height / 2,
-          },
-    ).workArea;
-    size = { width: Math.min(size.width, targetArea.width), height: Math.min(size.height, targetArea.height) };
+    const imagePin = Boolean(instanceId && isExpanded && previous?.imageSize);
+    const targetArea = imagePin
+      ? screen.getDisplayMatching({ ...position, ...size }).workArea
+      : screen.getDisplayNearestPoint(
+          instanceId ? position : { x: position.x + size.width / 2, y: position.y + size.height / 2 },
+        ).workArea;
+    if (!imagePin)
+      size = { width: Math.min(size.width, targetArea.width), height: Math.min(size.height, targetArea.height) };
     const url = new URL(
       !isPackagedApplication(app) && process.env.ELECTRON_RENDERER_URL
         ? process.env.ELECTRON_RENDERER_URL
@@ -364,7 +372,9 @@ export class PetalWindows {
       {
         ...size,
         ...(instanceId
-          ? this.clamp(position, size)
+          ? imagePin
+            ? clampImagePinBounds(position, size, targetArea)
+            : this.clamp(position, size)
           : clampFlowerBounds({ ...position, ...size }, this.layouts.hubSettings.flowerSize, targetArea)),
         frame: false,
         transparent: true,
@@ -529,6 +539,7 @@ export class PetalWindows {
   private present(entry: PetalWindow, restoring = false, handoff = false) {
     this.deferredRestores.delete(entry);
     if (!this.allowPresentation) return;
+    if (!restoring) this.tools.restorePointer(entry);
     // An explicit open of an editor must activate it even when another app is
     // foreground. A paint handoff stays inactive only for collapsed petals.
     if (restoring || (handoff && entry.instanceId !== null && !entry.expanded)) entry.window.showInactive();
@@ -560,6 +571,7 @@ export class PetalWindows {
     if (expanded) this.collectionHistory.clear(entry);
     this.presentation.endPreview(entry);
     this.remember(entry);
+    this.imageEditor.set(entry, false);
     try {
       return await this.openInstance(entry.libraryId, entry.instanceId, undefined, expanded, true, false, entry);
     } finally {
@@ -569,15 +581,19 @@ export class PetalWindows {
       }
     }
   }
-  async collect(entry: PetalWindow, origin: Rectangle) {
-    if (!entry.instanceId || entry.expanded || entry.window.isDestroyed() || !entry.window.isVisible()) return;
-    if (await this.hide(entry)) this.collectionHistory.record(entry, origin);
+  async collect(entry: PetalWindow, origin: Rectangle, collectionLibraryId = entry.libraryId) {
+    if (!entry.instanceId || entry.window.isDestroyed() || !entry.window.isVisible()) return;
+    const placement = this.imageEditor.placement(entry);
+    const bounds = entry.window.getBounds();
+    const restore = { ...placement, x: origin.x + placement.x - bounds.x, y: origin.y + placement.y - bounds.y };
+    if (!(await this.hide(entry))) throw petalError('unsaved');
+    this.collectionHistory.record(entry, restore, collectionLibraryId);
   }
   async undoCollection(libraryId: string, token: string) {
     const previous = this.collectionHistory.current(libraryId);
     if (!previous || previous.token !== token) throw petalError('sourceUnavailable');
     this.move(previous.entry, previous.bounds, undefined, previous.bounds);
-    const entry = await this.show(libraryId, previous.entry.instanceId, undefined, false);
+    const entry = await this.show(previous.entry.libraryId, previous.entry.instanceId, undefined, previous.expanded);
     this.remember(entry, true);
     await this.flush();
   }
@@ -614,6 +630,7 @@ export class PetalWindows {
 
   resizeNote(entry: PetalWindow, size: { width: number; height: number }) {
     if (!entry.instanceId || !entry.expanded) throw petalError('sourceUnavailable');
+    if (this.tools.locked(entry)) return;
     this.notePanel.moved(entry);
     this.resize(entry, { ...size, height: size.height + this.notePanel.height(entry) });
     this.remember(entry);
@@ -629,13 +646,16 @@ export class PetalWindows {
     setPetalBounds(entry, { ...this.clamp(entry.window.getBounds(), size), ...size });
   }
   move(entry: PetalWindow, point: Point, pointer?: Point, size?: { width: number; height: number }) {
+    if (this.tools.locked(entry)) return;
     const current = entry.window.getBounds();
     const bounds = { ...current, ...size };
     const area = screen.getDisplayNearestPoint(pointer ?? point).workArea;
     const position =
       !entry.instanceId && entry.hubView === 'flower'
         ? clampFlowerBounds({ ...bounds, ...point }, this.layouts.hubSettings.flowerSize, area)
-        : clampPetalBounds(point, bounds, area);
+        : entry.instanceId && this.layouts.get(entry.libraryId, entry.instanceId)?.imageSize
+          ? clampImagePinBounds(point, bounds, area)
+          : clampPetalBounds(point, bounds, area);
     // Reusing setPosition's rounded getBounds size grows transparent Windows
     // windows on fractional DPI. Keep the gesture's starting size unchanged.
     if (current.x !== position.x || current.y !== position.y) {
@@ -645,6 +665,7 @@ export class PetalWindows {
   }
   async hide(entry: PetalWindow) {
     if (!(await this.beforeHide(entry)) || entry.window.isDestroyed()) return false;
+    this.imageEditor.set(entry, false);
     this.notePanel.set(entry, 0);
     this.presentation.endPreview(entry);
     const previous = this.layouts.get(entry.libraryId, entry.instanceId ?? 'hub');
@@ -664,6 +685,7 @@ export class PetalWindows {
     const entries = [...this.entries.values()].filter((entry) => !keepHub || entry.instanceId !== null);
     for (const entry of entries) {
       this.presentation.endPreview(entry);
+      this.imageEditor.set(entry, false);
       this.remember(entry, false);
     }
     await this.flush();
@@ -673,11 +695,13 @@ export class PetalWindows {
   remember(entry: PetalWindow, visible?: boolean) {
     if (entry.drawer || entry.window.isDestroyed()) return;
     const previous = this.layouts.get(entry.libraryId, entry.instanceId ?? 'hub');
-    const { x, y } = this.notePanel.height(entry)
-      ? this.notePanel.placement(entry)
-      : this.presentation.placement(entry);
+    const { x, y } = this.layouts.get(entry.libraryId, entry.instanceId ?? 'hub')?.imageSize
+      ? this.imageEditor.placement(entry)
+      : this.notePanel.height(entry)
+        ? this.notePanel.placement(entry)
+        : this.presentation.placement(entry);
     const previousSize = this.layouts.get(entry.libraryId, entry.instanceId ?? 'hub')?.noteSize;
-    const bounds = this.notePanel.placement(entry);
+    const bounds = previous?.imageSize ? this.imageEditor.placement(entry) : this.notePanel.placement(entry);
     const noteSize =
       entry.instanceId && entry.expanded
         ? { width: Math.max(280, Math.min(640, bounds.width)), height: Math.max(300, Math.min(800, bounds.height)) }
@@ -691,6 +715,7 @@ export class PetalWindows {
       home: previous?.home ?? 'desktop',
       expanded: entry.expanded,
       noteSize,
+      ...(previous?.imageSize && entry.expanded ? { imageSize: { width: bounds.width, height: bounds.height } } : {}),
       dockEdge: this.presentation.dockEdge(entry),
     });
     if (this.saveTimer) clearTimeout(this.saveTimer);

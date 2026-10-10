@@ -1,4 +1,8 @@
 export const EXTENSION_PERMISSION = {
+  browserExecuteLocalHtml: 'browser.execute:local-html',
+  clipboardReadHistory: 'clipboard.read:history',
+  clipboardReadImageFiles: 'clipboard.read:image-files',
+  screenCaptureRegion: 'screen.capture:region',
   screenReadDesktopRegion: 'screen.read:desktop-region',
   accountReadCodexRateLimits: 'account.read:codex-rate-limits',
   accountReadOpenAiCosts: 'account.read:openai-costs',
@@ -17,9 +21,14 @@ export const EXTENSION_PERMISSION = {
   filesystemReadCodexThreadContent: 'filesystem.read:codex-thread-content',
   filesystemReadCodexVisualizations: 'filesystem.read:codex-visualizations',
   filesystemReadMaintenanceGuides: 'filesystem.read:maintenance-guides',
+  filesystemReadProjectCommands: 'filesystem.read:project-command-configs',
   integrationConnectCodexAppServer: 'integration.connect:codex-app-server',
   libraryCreateCreations: 'library.create:creations',
   libraryReadSelectedReferences: 'library.read:selected-references',
+  libraryReadActiveImages: 'library.read:active-images',
+  libraryReadActiveDocuments: 'library.read:active-documents',
+  libraryReadSelectedVideos: 'library.read:selected-videos',
+  libraryReadActiveVideos: 'library.read:active-videos',
   libraryReadSelectedContent: 'library.read:selected-content',
   processExecuteAntigravityCli: 'process.execute:antigravity-cli',
 } as const;

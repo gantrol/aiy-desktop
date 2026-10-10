@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDownIcon, CircleIcon, FileTextIcon, ImageIcon, PencilLineIcon } from 'lucide-react';
 import { AssetMedia, isVideoAsset } from '@/renderer/components/media/AssetMedia';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
+import { VirtualList } from '@/renderer/components/ui/virtual-list';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { cn } from '@/renderer/lib/utils';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -14,6 +14,7 @@ import type {
 } from '@/renderer/features/ai-center/outcomeOutlineProjection';
 
 interface Props {
+  active?: boolean;
   groups: AiActivityOutcomeGroup[];
   selectedId: string | null;
   currentDraftId: string | null;
@@ -44,55 +45,16 @@ function OutcomeIcon({ group }: { group: AiActivityOutcomeGroup }) {
   return <CircleIcon className="size-4" />;
 }
 
-interface NodeBranchProps extends Omit<Props, 'groups'> {
-  node: AiActivityOutlineNode;
-  depth: number;
-}
+type OutlineRow =
+  | { id: string; kind: 'GROUP'; group: AiActivityOutcomeGroup }
+  | { id: string; kind: 'RECORD'; record: AiActivityRecord; depth: number };
 
-function NodeBranch({
-  node,
-  depth,
-  selectedId,
-  currentDraftId,
-  modelNameByKey,
-  dateFormatter,
-  now,
-  onSelect,
-}: NodeBranchProps) {
-  return (
-    <div role="listitem">
-      <AiActivityRow
-        record={node.record}
-        selected={node.record.id === selectedId}
-        currentDraftId={currentDraftId}
-        modelNameByKey={modelNameByKey}
-        dateFormatter={dateFormatter}
-        now={now}
-        variant="OUTLINE"
-        onSelect={onSelect}
-      />
-      {node.children.length > 0 && (
-        <div role="list" className={cn('border-l border-selected-border/70 pl-2', depth < 2 ? 'ml-[22px]' : 'ml-2')}>
-          {node.children.map((child) => (
-            <NodeBranch
-              key={child.record.id}
-              node={child}
-              depth={depth + 1}
-              selectedId={selectedId}
-              currentDraftId={currentDraftId}
-              modelNameByKey={modelNameByKey}
-              dateFormatter={dateFormatter}
-              now={now}
-              onSelect={onSelect}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
+function rowKey(row: OutlineRow) {
+  return row.id;
 }
 
 export function AiActivityOutline({
+  active = true,
   groups,
   selectedId,
   currentDraftId,
@@ -102,6 +64,7 @@ export function AiActivityOutline({
   onSelect,
 }: Props) {
   const l = useI18n().messages.aiCenter;
+  const viewportRef = useRef<HTMLDivElement>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
   const revealedSelectionRef = useRef<string | null>(null);
 
@@ -139,26 +102,64 @@ export function AiActivityOutline({
     return l.outline.unassigned;
   }
 
+  const rows = useMemo(() => {
+    const result: OutlineRow[] = [];
+    function visit(nodes: readonly AiActivityOutlineNode[], depth: number) {
+      for (const node of nodes) {
+        result.push({ id: node.record.id, kind: 'RECORD', record: node.record, depth });
+        visit(node.children, depth + 1);
+      }
+    }
+    for (const group of groups) {
+      result.push({ id: 'group:' + group.id, kind: 'GROUP', group });
+      if (expandedIds.has(group.id)) visit(group.nodes, 0);
+    }
+    return result;
+  }, [groups, expandedIds]);
+
   return (
-    <ScrollArea className="min-h-0 flex-1">
-      <div role="list" aria-label={l.outline.ariaLabel} className="divide-y">
-        {groups.map((group) => {
-          const open = expandedIds.has(group.id);
-          const title = groupTitle(group);
-          const groupedRecords = groupRecords(group);
-          const runningCount = groupedRecords.filter((record) => activityStatusFilter(record) === 'RUNNING').length;
-          const attentionCount = groupedRecords.filter((record) => activityStatusFilter(record) === 'ATTENTION').length;
-          return (
-            <Collapsible
-              key={group.id}
-              role="listitem"
-              open={open}
-              onOpenChange={(nextOpen) => toggleGroup(group.id, nextOpen)}
-            >
-              <CollapsibleTrigger asChild>
+    <ScrollArea viewportRef={viewportRef} className="min-h-0 flex-1">
+      <div role="list" aria-label={l.outline.ariaLabel}>
+        <VirtualList
+          items={rows}
+          itemKey={rowKey}
+          viewportRef={viewportRef}
+          active={active}
+          estimatedHeight={88}
+          renderItem={(row) => {
+            if (row.kind === 'RECORD')
+              return (
+                <div
+                  role="listitem"
+                  className="border-l border-selected-border/70 bg-surface/35"
+                  style={{ marginLeft: 30 + Math.min(row.depth, 4) * 16 }}
+                >
+                  <AiActivityRow
+                    record={row.record}
+                    selected={row.record.id === selectedId}
+                    currentDraftId={currentDraftId}
+                    modelNameByKey={modelNameByKey}
+                    dateFormatter={dateFormatter}
+                    now={now}
+                    variant="OUTLINE"
+                    onSelect={onSelect}
+                  />
+                </div>
+              );
+            const group = row.group;
+            const open = expandedIds.has(group.id);
+            const title = groupTitle(group);
+            const groupedRecords = groupRecords(group);
+            const runningCount = groupedRecords.filter((record) => activityStatusFilter(record) === 'RUNNING').length;
+            const attentionCount = groupedRecords.filter(
+              (record) => activityStatusFilter(record) === 'ATTENTION',
+            ).length;
+            return (
+              <div role="listitem" className="border-b">
                 <button
                   type="button"
                   aria-expanded={open}
+                  onClick={() => toggleGroup(group.id, !open)}
                   className="group grid w-full grid-cols-[16px_38px_minmax(0,1fr)] items-center gap-2.5 px-3 py-3 text-left outline-none transition-colors hover:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   aria-label={open ? l.outline.collapse(title) : l.outline.expand(title)}
                 >
@@ -203,27 +204,10 @@ export function AiActivityOutline({
                     </span>
                   </span>
                 </button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="border-t bg-surface/35">
-                <div role="list" className="ml-[30px] border-l border-selected-border/70 pl-2">
-                  {group.nodes.map((node) => (
-                    <NodeBranch
-                      key={node.record.id}
-                      node={node}
-                      depth={0}
-                      selectedId={selectedId}
-                      currentDraftId={currentDraftId}
-                      modelNameByKey={modelNameByKey}
-                      dateFormatter={dateFormatter}
-                      now={now}
-                      onSelect={onSelect}
-                    />
-                  ))}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          );
-        })}
+              </div>
+            );
+          }}
+        />
       </div>
     </ScrollArea>
   );

@@ -10,6 +10,8 @@ import { useMaintenanceGuide } from '@/renderer/features/maintenance-guide/useMa
 import { MaintenanceProjectEditor } from '@/renderer/features/maintenance-guide/MaintenanceProjectEditor';
 import { MaintenanceDocuments } from '@/renderer/features/maintenance-guide/MaintenanceDocuments';
 import { MaintenanceResources } from '@/renderer/features/maintenance-guide/MaintenanceResources';
+import { ProjectCommands } from '@/renderer/features/maintenance-guide/ProjectCommands';
+import { EXTENSION_PERMISSION } from '@/shared/extension-permissions';
 
 const emptyProject: MaintenanceProjectDraft = {
   name: '',
@@ -26,7 +28,7 @@ export function MaintenanceGuideScreen({ active, extension }: { active: boolean;
     extension.enabled &&
     extension.compatible &&
     extension.permissions.every((permission) => !permission.required || permission.granted);
-  const { state, busy, error, update, run } = useMaintenanceGuide(active && authorized);
+  const { state, busy, error, update, run, acceptState } = useMaintenanceGuide(active && authorized);
   const [selectedId, setSelectedId] = useState('');
   const [editing, setEditing] = useState<{ projectId: string | null; draft: MaintenanceProjectDraft } | null>(null);
   const [removing, setRemoving] = useState(false);
@@ -133,12 +135,40 @@ export function MaintenanceGuideScreen({ active, extension }: { active: boolean;
               {l.removeProject}
             </Button>
           </div>
-          <Tabs defaultValue="guides">
+          <Tabs defaultValue="commands">
             <TabsList>
+              <TabsTrigger value="commands">{l.commands.title}</TabsTrigger>
               <TabsTrigger value="guides">{l.guides}</TabsTrigger>
               <TabsTrigger value="notes">{l.notes}</TabsTrigger>
               <TabsTrigger value="resources">{l.resources}</TabsTrigger>
             </TabsList>
+            <TabsContent value="commands">
+              <ProjectCommands
+                project={project}
+                busy={busy}
+                canScan={extension.permissions.some(
+                  (permission) =>
+                    permission.key === EXTENSION_PERMISSION.filesystemReadProjectCommands && permission.granted,
+                )}
+                onScan={(requestId, chooseDirectory, accept) =>
+                  run(
+                    () =>
+                      api.scanCommands({ projectId: project.id, revision: state.revision, requestId, chooseDirectory }),
+                    (result) => {
+                      if (result) {
+                        acceptState(result.state);
+                        accept(result.scan);
+                      }
+                    },
+                  )
+                }
+                onSave={(commands) =>
+                  update(() =>
+                    api.mutate({ kind: 'saveCommands', projectId: project.id, revision: state.revision, commands }),
+                  )
+                }
+              />
+            </TabsContent>
             <TabsContent value="guides">
               <MaintenanceDocuments
                 project={project}

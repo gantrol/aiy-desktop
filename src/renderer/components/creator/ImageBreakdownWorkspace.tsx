@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import { ClipboardCopyIcon, ImagePlusIcon, LoaderCircleIcon, ScanSearchIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type {
@@ -329,7 +330,7 @@ export function ImageBreakdownWorkspace({ breakdown, routes, locale, refresh, on
         <div className="flex min-h-0 flex-col border-b lg:border-r lg:border-b-0">
           <div className="grid min-h-48 flex-1 place-items-center overflow-hidden bg-surface-sunken p-4">
             <AssetFileContextMenu assetId={breakdown.sourceAsset.id} notify={notify}>
-              <img
+              <ScratchImage
                 src={breakdown.sourceAsset.mediaUrl}
                 alt={breakdown.title}
                 className="max-h-full max-w-full rounded-sm object-contain"

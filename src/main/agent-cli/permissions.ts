@@ -51,6 +51,7 @@ const required: Record<string, AgentPermission[]> = {
   'agent.creation.albums': ['readContent'],
   'agent.creation.ensure-album': ['writeContent'],
   'agent.creation.move': ['writeContent'],
+  'agent.creation.delete-empty-albums': ['writeContent'],
   'agent.content.update': ['writeContent'],
   'agent.album.ensure': ['writeContent'],
   'agent.album.add': ['writeContent'],

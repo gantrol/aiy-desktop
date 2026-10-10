@@ -10,17 +10,31 @@ import { ContentSearchResultRow } from '@/renderer/features/content-search/Conte
 import { ContentSearchStatus } from '@/renderer/features/content-search/ContentSearchStatus';
 import type { ContentLookupInput, ContentLookupResult } from '@/shared/contracts/content-search';
 import { contentSearchTerms } from '@/shared/content-search-highlights';
-import { useEffect, useMemo, useRef } from 'react';
+import { Fragment, useEffect, useMemo, useRef, type ReactNode } from 'react';
 
-type ResultsProps = {
+type ContentItem = ContentLookupResult['items'][number];
+export type SearchListState<T> = Omit<ReturnType<typeof useContentLookup>, 'result'> & {
+  result: (Omit<ContentLookupResult, 'items'> & { items: T[] }) | null;
+  statusCoverage?: ContentLookupResult['coverage'];
+  statusKind?: 'IMAGE_TEXT' | 'CONTENT_AND_IMAGE_TEXT';
+};
+type ResultsProps<T = ContentItem> = {
   query: string;
   type?: ContentLookupInput['type'];
   disabled?: boolean;
   selectedKey?: string;
-  onPreview?(item: ContentLookupResult['items'][number]): void;
-  onOpen?(item: ContentLookupResult['items'][number]): void;
+  onPreview?(item: T): void;
+  onOpen?(item: T): void;
   enabled?: boolean;
-  onSelect(item: ContentLookupResult['items'][number]): void;
+  onSelect(item: T): void;
+  renderRow?(
+    item: T,
+    options: { disabled: boolean; selected: boolean; onSelect(): void; onPreview?(): void; onOpen?(): void },
+  ): ReactNode;
+  itemKey?(item: T): string;
+  emptyAction?: ReactNode;
+  status?: ReactNode;
+  errorMessage?: string;
 };
 
 /** Embedded pickers own their lookup; the search screen passes one shared with its toolbar and status. */
@@ -29,7 +43,7 @@ export function ContentSearchResults(props: ResultsProps) {
   return <ContentSearchResultList {...props} search={search} />;
 }
 
-export function ContentSearchResultList({
+export function ContentSearchResultList<T = ContentItem>({
   query,
   disabled,
   enabled = true,
@@ -38,13 +52,18 @@ export function ContentSearchResultList({
   onPreview,
   onOpen,
   search,
-}: ResultsProps & { search: ReturnType<typeof useContentLookup> }) {
+  renderRow,
+  itemKey = (item) => contentSearchSourceKey((item as ContentItem).source),
+  emptyAction,
+  status,
+  errorMessage,
+}: ResultsProps<T> & { search: SearchListState<T> }) {
   const copy = useI18n().messages.referenceOutline.lookup;
   const terms = useMemo(() => contentSearchTerms(query), [query]);
   const { result, busy, error, hasMore, more, loadingMore } = search;
   const inactive = Boolean(disabled || !enabled);
-  const empty = !busy && !error && result && !result.coverage.pending && !result.items.length;
-  const waiting = !error && (!result || (result.coverage.pending > 0 && !result.items.length));
+  const empty = !error && result && !result.items.length;
+  const waiting = !error && !result;
   const scrollRoot = useRef<HTMLDivElement>(null);
   const loadMoreSentinel = useRef<HTMLDivElement>(null);
   const continuationFocus = useRef<number | null>(null);
@@ -80,7 +99,7 @@ export function ContentSearchResultList({
   }, [busy, result]);
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col" aria-label={copy.title} aria-busy={busy}>
+    <section className="flex min-h-0 flex-1 flex-col" aria-label={copy.title} aria-busy={busy && !result}>
       <div className="flex shrink-0 items-center gap-2 px-4 py-2">
         <h2 className="text-xs font-medium text-muted-foreground">{query.trim() ? copy.results : copy.RECENT}</h2>
         {result && (
@@ -109,7 +128,7 @@ export function ContentSearchResultList({
       </div>
       {error && (
         <p role="alert" className="px-4 py-3 text-sm text-destructive">
-          {error.includes('SEARCH_QUERY_INVALID') ? copy.invalid : copy.failure}
+          {errorMessage ?? (error.includes('SEARCH_QUERY_INVALID') ? copy.invalid : copy.failure)}
         </p>
       )}
       <div
@@ -143,18 +162,30 @@ export function ContentSearchResultList({
           buttons[next]?.scrollIntoView({ block: 'nearest' });
         }}
       >
-        {result?.items.map((item) => (
-          <ContentSearchResultRow
-            key={JSON.stringify([item.source.kind, item.source.id, item.source.branchId])}
-            item={item}
-            terms={terms}
-            disabled={inactive}
-            onSelect={onSelect}
-            selected={selectedKey === contentSearchSourceKey(item.source)}
-            onPreview={onPreview}
-            onOpen={onOpen}
-          />
-        ))}
+        {result?.items.map((item) =>
+          renderRow ? (
+            <Fragment key={itemKey(item)}>
+              {renderRow(item, {
+                disabled: inactive,
+                selected: selectedKey === itemKey(item),
+                onSelect: () => onSelect(item),
+                onPreview: onPreview ? () => onPreview(item) : undefined,
+                onOpen: onOpen ? () => onOpen(item) : undefined,
+              })}
+            </Fragment>
+          ) : (
+            <ContentSearchResultRow
+              key={itemKey(item)}
+              item={item as ContentItem}
+              terms={terms}
+              disabled={inactive}
+              onSelect={() => onSelect(item)}
+              selected={selectedKey === itemKey(item)}
+              onPreview={onPreview ? () => onPreview(item) : undefined}
+              onOpen={onOpen ? () => onOpen(item) : undefined}
+            />
+          ),
+        )}
         {waiting && !search.paused && (
           <div aria-hidden="true" className="space-y-6 px-3 py-4">
             {[0, 1, 2].map((row) => (
@@ -176,8 +207,11 @@ export function ContentSearchResultList({
           >
             <SearchIcon aria-hidden="true" className="size-6" strokeWidth={1.5} />
             <span className="text-sm">
-              {result.coverage.unavailable || result.coverage.limited ? copy.partialEmpty : copy.empty}
+              {result.coverage.pending || result.coverage.unavailable || result.coverage.limited
+                ? copy.partialEmpty
+                : copy.empty}
             </span>
+            {emptyAction}
           </div>
         )}
         {(hasMore || loadingMore) && (
@@ -207,12 +241,15 @@ export function ContentSearchResultList({
         )}
       </div>
       <ContentSearchStatus
-        result={result}
+        result={result ? { ...result, items: [] } : null}
+        statusCoverage={search.statusCoverage}
+        statusKind={search.statusKind}
         busy={busy}
         paused={search.paused}
         disabled={inactive}
         onPause={search.pause}
       />
+      {status}
     </section>
   );
 }

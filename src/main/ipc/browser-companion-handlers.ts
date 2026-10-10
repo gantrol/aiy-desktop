@@ -1,4 +1,11 @@
 import { BrowserCompanionRuntime } from '@/main/browser-companion/runtime';
+import {
+  tablePublicationInputSchema,
+  tablePublicationResultSchema,
+  tablePublicationDiscardSchema,
+} from '@/shared/contracts/table-publication';
+import { discardTablePublications } from '@/main/browser-companion/table-publication-cache';
+import { cancelTablePublication } from '@/main/browser-companion/table-publication-service';
 import type { ExtensionRegistry } from '@/main/extensions/registry';
 import type { IpcHandlerRegistrar } from '@/main/ipc/trusted-handlers';
 import {
@@ -15,6 +22,7 @@ import {
   browserCompanionBatchInputSchema,
   browserCompanionBatchResultSchema,
   browserCompanionBatchHistoryResultSchema,
+  browserCompanionBatchHistoryInputSchema,
   browserCompanionBatchInvocationSchema,
   browserCompanionReopenInvocationSchema,
   browserCompanionReopenInputSchema,
@@ -32,6 +40,21 @@ export function registerBrowserCompanionIpc(
     target !== 'weibo' ||
     (extensions.isActivated(WEIBO_CHANNEL_EXTENSION_ID) &&
       extensions.isPermissionGranted(WEIBO_CHANNEL_EXTENSION_ID, EXTENSION_PERMISSION.browserHandoffWeibo));
+  ipcMain.handle('browser-companion:prepare-tables', async (_event, rawInput) => {
+    const input = tablePublicationInputSchema.parse(rawInput);
+    if (!canStage(input.target)) throw new Error('HANDOFF_NOT_ALLOWED');
+    try {
+      return tablePublicationResultSchema.parse(await runtime.prepareTables(input));
+    } catch (reason) {
+      const code = browserCompanionStageErrorCodeSchema.safeParse(reason instanceof Error ? reason.message : reason);
+      return { errorCode: code.success ? code.data : 'TABLE_RENDER_FAILED' };
+    }
+  });
+  ipcMain.handle('browser-companion:discard-table-previews', async (_event, rawInput) => {
+    const input = tablePublicationDiscardSchema.parse(rawInput);
+    cancelTablePublication(input.ids, input.expectedSpaceId);
+    discardTablePublications(input.ids, input.expectedSpaceId);
+  });
   ipcMain.handle('browser-companion:stage-batch', async (_event, rawInput) => {
     try {
       return browserCompanionBatchResultSchema.parse(
@@ -44,8 +67,10 @@ export function registerBrowserCompanionIpc(
       throw reason;
     }
   });
-  ipcMain.handle('browser-companion:batch-history', async () =>
-    browserCompanionBatchHistoryResultSchema.parse(await runtime.batchHistory()),
+  ipcMain.handle('browser-companion:batch-history', async (_event, raw) =>
+    browserCompanionBatchHistoryResultSchema.parse(
+      await runtime.batchHistory(browserCompanionBatchHistoryInputSchema.parse(raw ?? {}).includeHistory),
+    ),
   );
   ipcMain.handle('browser-companion:reopen', async (_event, rawInput) => {
     const input = browserCompanionReopenInputSchema.parse(rawInput);

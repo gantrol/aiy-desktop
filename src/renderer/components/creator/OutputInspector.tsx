@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import { WorkbenchPaneToggle } from '@/renderer/components/workbench/WorkbenchPane';
 import {
   useCallback,
@@ -985,6 +986,8 @@ export function OutputInspector({
   const inspector = (
     <PasteDropSurface
       workbenchPane
+      accessibleName={messages.workbench.results}
+      respectEditableImagePaste
       className="relative flex min-h-0 min-w-0 flex-col bg-muted"
       disabled={importing}
       onImages={onImportFiles}
@@ -1320,7 +1323,7 @@ export function OutputInspector({
                               }}
                             >
                               {frame.needsEdgeFill && <ImageAmbientBackdrop src={thumbnailUrl} loading="lazy" />}
-                              <img
+                              <ScratchImage
                                 src={thumbnailUrl}
                                 alt=""
                                 width={item.width}

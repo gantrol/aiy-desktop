@@ -1,4 +1,7 @@
 import { AboutScreen } from '@/renderer/components/app/AboutScreen';
+import { AssetNavigationProvider } from '@/renderer/components/media/AssetNavigationProvider';
+import { assetNavigationLocation, currentMaterialAssetId } from '@/renderer/components/media/asset-navigation-location';
+import { WorkspaceSettingsScreen } from '@/renderer/components/workspace/WorkspaceSettingsScreen';
 import { WorkspacePaneScope } from '@/renderer/components/workspace/WorkspacePaneScope';
 import { WorkbenchScopeProvider } from '@/renderer/components/workbench/WorkbenchScope';
 import { appMaterialsReturnSummary } from '@/renderer/appPresentation';
@@ -18,7 +21,6 @@ import { appLocationToWorkspaceTarget } from '@/renderer/components/workspace/wo
 import type { AiActivityRecord } from '@/renderer/features/ai-center/AiCenterScreen';
 import { aiActivityNavigationTarget } from '@/renderer/features/ai-center/aiActivityNavigation';
 import { generationReEditLocation } from '@/renderer/features/ai-center/generationReEditNavigation';
-import { ContentManagementScreen } from '@/renderer/features/content-management/ContentManagementScreen';
 import { contentSearchLocation } from '@/renderer/features/content-search/content-search-navigation';
 import { CreationOutlineWorkspace } from '@/renderer/features/creation-outline/CreationOutlineWorkspace';
 import type { CodexImagesNavigationState } from '@/renderer/features/extensions/codexImageNavigation';
@@ -45,6 +47,7 @@ export interface WorkspaceTabSurfaceProps {
   dataRevision: number;
   locale: Locale;
   defaultPromptLocale: Locale | null;
+  onPromptLocaleChange(locale: Locale | null): void;
   comparisonFullWindow: boolean;
   creationPromptFullWindow: boolean;
   loadingPreviews: readonly TransitionPreviewDto[];
@@ -60,6 +63,7 @@ export interface WorkspaceTabSurfaceProps {
   onArticleLocationNavigate(tabId: string, articleId: string, location: ArticleEditorLocationDto): void;
   onLocationFlushChange(tabId: string, flush: (() => void) | null): void;
   onNewTab(sourceTabId: string, destination: AppLocation['view'] | AppLocation): void;
+  onMeNavigate: WorkspaceViewProps['onMeNavigate'];
   onOpenBeside(sourceTabId: string, destination: AppLocation['view'] | AppLocation): void;
   onCommitLocation(
     tabId: string,
@@ -184,8 +188,16 @@ export function WorkspaceTabSurface(props: WorkspaceTabSurfaceProps) {
         key={`${props.data.spaceId}:${props.tab.id}`}
         scope={`${props.data.spaceId}:${props.tab.id}`}
       >
-        <WorkspacePaneScope>
-          <WorkspaceTabContent {...props} />
+        <WorkspacePaneScope visible={props.visible ?? props.active}>
+          <AssetNavigationProvider
+            active={props.visible ?? props.active}
+            navigationKey={`${props.data.spaceId}:${entry.id}:${JSON.stringify(appLocationToWorkspaceTarget(entry.location))}`}
+            currentAssetId={currentMaterialAssetId(entry.location)}
+            notify={props.notify}
+            onNavigate={(target) => props.onNewTab(props.tab.id, assetNavigationLocation(entry.location, target))}
+          >
+            <WorkspaceTabContent {...props} />
+          </AssetNavigationProvider>
         </WorkspacePaneScope>
       </WorkbenchScopeProvider>
     </PopoverNavigationScope>
@@ -304,12 +316,12 @@ function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
     navigateCreator(next);
   }
 
-  function openGalleryResult(seriesId: string, assetId: string) {
+  function openGalleryResult(seriesId: string, assetId: string, versionId?: string) {
     onComparisonFullWindowChange(false);
     commit((current) => ({
       ...current,
       view: 'creator',
-      creator: { surface: 'existing-creation', seriesId, assetId },
+      creator: { surface: 'existing-creation', seriesId, assetId, ...(versionId ? { versionId } : {}) },
       materialsReturnContext: { destination: 'creator', seriesId },
     }));
   }
@@ -427,6 +439,7 @@ function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
             onSearchNavigate={(search) => commit((current) => ({ ...current, search }), 'replace')}
             onSearchResultOpen={(source, query) => onNewTab(tab.id, contentSearchLocation(source, query))}
             onCalendarOpenLocation={(location) => onNewTab(tab.id, location)}
+            onMeNavigate={props.onMeNavigate}
             onOpenGalleryResult={openGalleryResult}
             onOpenGalleryTerm={openGalleryTerm}
             onGalleryIntakeCommitted={finishIntake}
@@ -439,15 +452,7 @@ function WorkspaceTabContent(props: WorkspaceTabSurfaceProps) {
             onRetryGeneration={onRetryGeneration}
           />
           {location.view === 'about' && <AboutScreen active={visible} />}
-          {visible && view === 'contentManagement' && (
-            <ContentManagementScreen
-              active={visible}
-              canNavigateBack={tab.history.index > 0}
-              onNavigateBack={() => onGoBack(tab.id)}
-              onContentChange={refresh}
-              notify={notify}
-            />
-          )}
+          {(view === 'settings' || view === 'contentManagement') && <WorkspaceSettingsScreen {...props} />}
         </WorkspaceArticleEditorStateProvider>
       </GifWorkspaceScope>
     </div>

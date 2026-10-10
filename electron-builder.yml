@@ -22,8 +22,7 @@ files:
   - package.json
   - LICENSE
   - LICENSE-PLUGIN-EXCEPTION
-  # better-sqlite3 is the only external main-process dependency. Package only
-  # its JavaScript loader and the native binary for the Store target.
+  # Explicit native runtime allowlist; model weights are selected separately.
   - from: node_modules/better-sqlite3
     to: node_modules/better-sqlite3
     filter:
@@ -31,6 +30,33 @@ files:
       - LICENSE
       - lib/**
       - prebuilds/win32-x64.node
+  - from: node_modules/onnxruntime-node
+    to: node_modules/onnxruntime-node
+    filter:
+      - package.json
+      - dist/*.js
+      - '!dist/binding.js'
+  - from: .tmp/onnx-runtime-loader
+    to: node_modules/onnxruntime-node/dist
+    filter: [binding.js]
+  - from: node_modules/onnxruntime-common
+    to: node_modules/onnxruntime-common
+    filter: [package.json, dist/cjs/*.js, dist/cjs/package.json]
+  - from: node_modules/sharp
+    to: node_modules/sharp
+    filter: [package.json, dist/**, LICENSE]
+  - from: node_modules/@img/sharp-win32-x64
+    to: node_modules/@img/sharp-win32-x64
+    filter: [package.json, lib/**, LICENSE]
+  - from: node_modules/@img/colour
+    to: node_modules/@img/colour
+    filter: [package.json, '*.cjs', LICENSE.md]
+  - from: node_modules/detect-libc
+    to: node_modules/detect-libc
+    filter: [package.json, lib/**, LICENSE]
+  - from: node_modules/semver
+    to: node_modules/semver
+    filter: [package.json, '*.js', classes/**, functions/**, internal/**, ranges/**, LICENSE]
 asar: true
 electronFuses:
   runAsNode: false
@@ -45,9 +71,14 @@ asarUnpack:
   # Agents use Node.js to run the CLI and its shared chunks outside the Electron archive.
   - out/main/agent-cli.js
   - out/main/model-worker.js
+  - out/main/image-search-process.js
+  - out/main/image-search-worker.js
   - out/main/chunks/**
   - node_modules/better-sqlite3/prebuilds/win32-x64.node
+  - node_modules/onnxruntime-node/bin/**
+  - node_modules/@img/sharp-*/lib/**
 npmRebuild: false
+beforePack: scripts/prepare-onnx-runtime-loader.cjs
 extraResources:
   - from: LICENSE
     to: LICENSE
@@ -55,6 +86,10 @@ extraResources:
     to: LICENSE-PLUGIN-EXCEPTION
   - from: THIRD_PARTY_NOTICES.md
     to: THIRD_PARTY_NOTICES.md
+  - from: build/licenses/onnxruntime
+    to: licenses/onnxruntime
+  - from: node_modules/@huggingface/transformers/LICENSE
+    to: licenses/transformers-js.LICENSE
   - from: extensions
     to: extensions
     filter:

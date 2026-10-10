@@ -2,6 +2,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { CloudUploadIcon, LoaderCircleIcon, MessageCircleIcon } from 'lucide-react';
 import type { ComponentProps } from 'react';
 import { Button } from '@/renderer/components/ui/button';
+import { ResponsiveButton } from '@/renderer/components/ui/responsive-button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,12 +18,14 @@ export function CompanionHandoffButton({
   onHandoff,
   targets,
   variant = 'outline',
+  responsive = false,
 }: {
   disabled: boolean;
   busy: boolean;
   onHandoff(target: BrowserCompanionTarget): void;
   targets: readonly BrowserCompanionTarget[];
   variant?: ComponentProps<typeof Button>['variant'];
+  responsive?: boolean;
   zh?: boolean;
 }) {
   const copy = useI18n().messages.browserCompanion;
@@ -30,12 +33,15 @@ export function CompanionHandoffButton({
   const chatgpt = onlyTarget === 'chatgpt';
   const label = busy ? copy.uploading : chatgpt ? copy.askChatgpt : copy.upload;
   const primaryButton = (
-    <Button
+    <ResponsiveButton
       type="button"
       data-action="content-upload"
       variant={variant}
       size="sm"
       className="rounded-r-none"
+      label={label}
+      responsive={responsive}
+      shortLabel={chatgpt && !busy ? copy.targets.chatgpt : undefined}
       disabled={disabled || targets.length === 0}
       aria-busy={busy || undefined}
       onClick={onlyTarget ? () => onHandoff(onlyTarget) : undefined}
@@ -47,8 +53,7 @@ export function CompanionHandoffButton({
       ) : (
         <CloudUploadIcon className="size-4" />
       )}
-      {label}
-    </Button>
+    </ResponsiveButton>
   );
 
   return (

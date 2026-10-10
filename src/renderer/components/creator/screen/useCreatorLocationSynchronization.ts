@@ -1,5 +1,6 @@
 import { useEffect, type MutableRefObject } from 'react';
 import type { BootstrapDto, CreationDraftDto } from '@/shared/contracts';
+import { inspirationArticleIds } from '@/shared/article-summary';
 import {
   navigationLocationKey,
   type CreatorLocation,
@@ -96,7 +97,7 @@ export function useCreatorLocationSynchronization(options: Options) {
       evaluationSuites: (options.data.evaluationSuites ?? []).map((item) => item.id),
       ideaCreations: (options.data.creations ?? []).map((item) => item.id),
       imageBreakdowns: (options.data.imageBreakdowns ?? []).map((item) => item.id),
-      inspirationStashes: (options.data.inspirationStashes ?? []).map((item) => item.id),
+      inspirationStashes: inspirationArticleIds(options.data),
       socialPosts: (options.data.socialPosts ?? []).map((item) => item.id),
     },
     clearSelection: options.clearSelection,
@@ -172,7 +173,7 @@ export function useCreatorLocationSynchronization(options: Options) {
     else if (location.surface === 'inspiration-stash') void chooseArticle(location.stashId, 'replace');
     else if (location.surface === 'image-breakdown') void chooseImageBreakdown(location.breakdownId, null);
     else if (location.surface === 'evaluation-suite') void chooseEvaluationSuite(location.suiteId, null);
-    else if (location.surface === 'social-post') void chooseSocialPost(location.postId, null);
+    else if (location.surface === 'social-post') void chooseArticle(location.postId, 'replace');
     else if (location.surface === 'article') void chooseArticle(location.articleId, null);
     else if (location.surface === 'creation-draft') void resumeCreationDraft(location.draftId, application);
     else if (location.surface === 'new-creation') void startNewCreation(location.albumId, null);

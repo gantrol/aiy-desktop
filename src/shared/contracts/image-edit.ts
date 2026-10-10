@@ -8,7 +8,19 @@ export const imageEditPointSchema = z.object({ x: coordinate, y: coordinate }).s
 export const imageEditMarkSchema = z
   .object({
     id: z.string().uuid(),
-    kind: z.enum(['arrow', 'rectangle', 'text', 'cover', 'highlight', 'pen', 'number']),
+    kind: z.enum([
+      'arrow',
+      'line',
+      'rectangle',
+      'ellipse',
+      'text',
+      'cover',
+      'highlight',
+      'pen',
+      'number',
+      'mosaic',
+      'blur',
+    ]),
     x: coordinate,
     y: coordinate,
     width: coordinate,
@@ -16,6 +28,8 @@ export const imageEditMarkSchema = z
     color: z.string().regex(/^#[\da-f]{6}$/i),
     stroke: z.number().min(1).max(100),
     fontSize: z.number().min(8).max(240),
+    fontFamily: z.enum(['sans-serif', 'serif', 'monospace']).optional(),
+    wrap: z.boolean().optional(),
     text: z.string().max(2000),
     points: z.array(imageEditPointSchema).max(2000).optional(),
   })
@@ -31,12 +45,14 @@ export const imageEditDocumentSchema = z
     rotation: z.number().int().min(0).max(3),
     flipX: z.boolean(),
     flipY: z.boolean(),
+    output: z.object({ width: size, height: size }).strict().optional(),
     marks: z.array(imageEditMarkSchema).max(300),
   })
   .strict()
   .refine(
     (value) =>
       value.width * value.height <= IMAGE_EDIT_MAX_PIXELS &&
+      (!value.output || value.output.width * value.output.height <= IMAGE_EDIT_MAX_PIXELS) &&
       value.marks.reduce((total, mark) => total + (mark.points?.length ?? 0), 0) <= 12000 &&
       value.crop.x + value.crop.width <= value.width &&
       value.crop.y + value.crop.height <= value.height,

@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode, type ComponentProps } from 'react';
 import { FilePlus2, FolderOpen, ClipboardPaste, X } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
+import { CaptureToolButton } from '@/renderer/features/clipboard-capture/CaptureToolButton';
+import { temporaryImageTitle } from '@/renderer/features/desktop-petals/temporary-image-title';
 import { Input } from '@/renderer/components/ui/input';
 import { Label } from '@/renderer/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/renderer/components/ui/dialog';
@@ -8,8 +10,38 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { petalErrorText } from '@/shared/petal-errors';
 import type { TemporaryFilesCommand, TemporaryFilesSnapshot } from '@/shared/contracts/temporary-files';
 
-export function TemporaryFilesPanel({ settings = false }: { settings?: boolean }) {
-  const copy = useI18n().messages.desktopPetals;
+function TemporaryFileAction({
+  compact,
+  label,
+  children,
+  ...props
+}: ComponentProps<typeof CaptureToolButton> & { compact: boolean }) {
+  return compact ? (
+    <CaptureToolButton {...props} label={label} size="icon-sm">
+      {children}
+    </CaptureToolButton>
+  ) : (
+    <Button {...props}>
+      {children}
+      {label}
+    </Button>
+  );
+}
+
+export function TemporaryFilesPanel({
+  settings = false,
+  imageEditing = false,
+  leadingActions,
+  trailingActions,
+}: {
+  settings?: boolean;
+  imageEditing?: boolean;
+  leadingActions?: ReactNode;
+  trailingActions?: ReactNode;
+}) {
+  const { messages, locale } = useI18n();
+  const copy = messages.desktopPetals;
+  const tools = messages.clipboardCapture.tools;
   const labels = copy.temporary;
   const [snapshot, setSnapshot] = useState<TemporaryFilesSnapshot | null>(null);
   const [limit, setLimit] = useState('');
@@ -57,37 +89,47 @@ export function TemporaryFilesPanel({ settings = false }: { settings?: boolean }
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-3" aria-label={labels.title} aria-busy={busy}>
       <div className="flex flex-wrap gap-1">
-        <Button
+        {leadingActions}
+        <TemporaryFileAction
+          compact={imageEditing}
+          label={imageEditing ? tools.newNote : labels.newNote}
           variant="outline"
           size="sm"
           disabled={busy}
           onClick={() => void run({ kind: 'create', requestId: crypto.randomUUID() })}
         >
           <FilePlus2 />
-          {labels.newNote}
-        </Button>
-        <Button
+        </TemporaryFileAction>
+        <TemporaryFileAction
+          compact={imageEditing}
+          label={imageEditing ? tools.importImage : labels.import}
           variant="ghost"
           size="sm"
           disabled={busy}
-          onClick={() => void run({ kind: 'import', requestId: crypto.randomUUID() })}
+          onClick={() =>
+            void run({ kind: 'import', requestId: crypto.randomUUID(), ...(imageEditing && { edit: true }) })
+          }
         >
           <FolderOpen />
-          {labels.import}
-        </Button>
-        <Button
+        </TemporaryFileAction>
+        <TemporaryFileAction
+          compact={imageEditing}
+          label={imageEditing ? tools.clipboard : labels.clipboard}
           variant="ghost"
           size="sm"
           disabled={busy}
-          onClick={() => void run({ kind: 'clipboard', requestId: crypto.randomUUID() })}
+          onClick={() =>
+            void run({ kind: 'clipboard', requestId: crypto.randomUUID(), ...(imageEditing && { edit: true }) })
+          }
         >
           <ClipboardPaste />
-          {labels.clipboard}
-        </Button>
+        </TemporaryFileAction>
+        {trailingActions}
       </div>
       {snapshot && (
         <div className="text-xs text-muted-foreground" role="status">
-          {labels.used} {Math.ceil(snapshot.usedBytes / 1024 / 1024)} / {snapshot.limitBytes / 1024 / 1024} MiB
+          {labels.used} {Math.ceil(snapshot.usedBytes / 1024 / 1024).toLocaleString(locale)} /{' '}
+          {(snapshot.limitBytes / 1024 / 1024).toLocaleString(locale)} MiB
         </div>
       )}
       {settings && (
@@ -131,7 +173,11 @@ export function TemporaryFilesPanel({ settings = false }: { settings?: boolean }
               disabled={busy}
               onClick={() => void run({ kind: 'open', id: item.id })}
             >
-              <span className="truncate">{item.title || copy.contentEntry.untitled}</span>
+              <span className="truncate">
+                {(item.kind === 'IMAGE'
+                  ? temporaryImageTitle(item.title, item.updatedAt, locale, labels)
+                  : item.title) || copy.contentEntry.untitled}
+              </span>
             </Button>
             {item.protected && <span className="shrink-0 text-xs text-muted-foreground">{labels.protected}</span>}
             <Button

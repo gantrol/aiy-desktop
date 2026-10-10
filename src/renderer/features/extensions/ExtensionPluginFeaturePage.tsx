@@ -1,4 +1,7 @@
 import type { ArticleDto, BootstrapDto, ExtensionDto } from '@/shared/contracts';
+import { CLIPBOARD_CAPTURE_ID, CLIPBOARD_HISTORY_ID } from '@/shared/contracts/clipboard-capture';
+import { ClipboardCaptureScreen } from '@/renderer/features/clipboard-capture/ClipboardCaptureScreen';
+import { CaptureNotesScreen } from '@/renderer/features/clipboard-capture/CaptureNotesScreen';
 import {
   CODEX_EXTENSION_ID,
   FEATURE_DEMO_EXTENSION_ID,
@@ -13,6 +16,8 @@ import { MaintenanceGuideScreen } from '@/renderer/features/maintenance-guide/Ma
 import { WorkTrackingScreen } from '@/renderer/features/work-tracking/WorkTrackingScreen';
 
 const featureExtensionIds = new Set<string>([
+  CLIPBOARD_CAPTURE_ID,
+  CLIPBOARD_HISTORY_ID,
   MAINTENANCE_GUIDE_EXTENSION_ID,
   WORK_TRACKING_EXTENSION_ID,
   CODEX_EXTENSION_ID,
@@ -21,7 +26,10 @@ const featureExtensionIds = new Set<string>([
 ]);
 
 export function hasExtensionPluginFeature(extension: ExtensionDto) {
-  return extension.enabled && featureExtensionIds.has(extension.manifest.id);
+  return (
+    (extension.enabled || [CLIPBOARD_CAPTURE_ID, CLIPBOARD_HISTORY_ID].includes(extension.manifest.id)) &&
+    featureExtensionIds.has(extension.manifest.id)
+  );
 }
 
 interface Props {
@@ -31,6 +39,7 @@ interface Props {
   extension: ExtensionDto;
   extensions: readonly ExtensionDto[];
   notify(message: string): void;
+  onOpenPermissions?(): void;
   onOpenCreation(seriesId: string, assetId: string | null): Promise<void>;
   onArticleSaved(article: ArticleDto): void;
 }
@@ -42,11 +51,30 @@ export function ExtensionPluginFeaturePage({
   extension,
   extensions,
   notify,
+  onOpenPermissions,
   onOpenCreation,
   onArticleSaved,
 }: Props) {
   return (
     <div data-extension-plugin-feature className="grid gap-6">
+      {extension.manifest.id === CLIPBOARD_CAPTURE_ID && (
+        <CaptureNotesScreen
+          key={data.spaceId}
+          active={active}
+          spaceId={data.spaceId}
+          notify={notify}
+          onOpenPermissions={onOpenPermissions}
+        />
+      )}
+      {extension.manifest.id === CLIPBOARD_HISTORY_ID && (
+        <ClipboardCaptureScreen
+          key={data.spaceId}
+          active={active}
+          spaceId={data.spaceId}
+          notify={notify}
+          onOpenPermissions={onOpenPermissions}
+        />
+      )}
       {extension.manifest.id === WORK_TRACKING_EXTENSION_ID && (
         <WorkTrackingScreen
           key={data.spaceId}

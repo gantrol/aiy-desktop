@@ -5,6 +5,8 @@ import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type { ContentLookupResult } from '@/shared/contracts/content-search';
 import { ContentSearchHighlight } from '@/renderer/features/content-search/ContentSearchHighlight';
+import { videoDocumentSearchPreview } from '@/renderer/features/content-search/videoDocumentSearchPreview';
+import { SearchRelevance } from '@/renderer/features/content-search/SearchRelevance';
 
 const contentIcons = { ARTICLE: FileTextIcon, SOCIAL_POST: MessageSquareTextIcon, VIDEO_DOCUMENT: VideoIcon };
 
@@ -12,6 +14,7 @@ export function ContentSearchResultRow({
   item,
   disabled,
   terms,
+  snippetTerms = terms,
   onSelect,
   selected = false,
   onPreview,
@@ -23,12 +26,22 @@ export function ContentSearchResultRow({
   onPreview?(item: ContentLookupResult['items'][number]): void;
   onOpen?(item: ContentLookupResult['items'][number]): void;
   terms: readonly string[];
+  snippetTerms?: readonly string[];
   onSelect(item: ContentLookupResult['items'][number]): void;
 }) {
   const { locale, messages } = useI18n();
   const copy = messages.referenceOutline.lookup;
   const kind = item.source.kind === 'INSPIRATION_STASH' ? 'ARTICLE' : item.source.kind;
   const Icon = contentIcons[kind];
+  const video = kind === 'VIDEO_DOCUMENT';
+  const branches = messages.videoDocuments.branches;
+  const branch =
+    video && item.branchRole && Object.hasOwn(branches, item.branchRole)
+      ? branches[item.branchRole as keyof typeof branches]
+      : null;
+  const preview = video
+    ? videoDocumentSearchPreview(item.preview, item.branchRole, locale, snippetTerms)
+    : item.preview;
   const timestamp = new Date(item.updatedAt);
   const date = Number.isFinite(timestamp.getTime())
     ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(timestamp)
@@ -43,9 +56,8 @@ export function ContentSearchResultRow({
         data-search-result={contentSearchSourceKey(item.source)}
         aria-current={selected ? 'true' : undefined}
         className={cn(
-          'group h-auto w-full items-start justify-start gap-3 rounded-md border-l-2 border-l-transparent px-3 py-3 text-left font-normal whitespace-normal focus-visible:ring-inset focus-visible:ring-offset-0',
-          selected &&
-            'border-l-selected-foreground bg-selected text-selected-foreground hover:bg-selected active:bg-selected',
+          'group h-auto w-full items-start justify-start gap-3 rounded-md px-3 py-3 text-left font-normal whitespace-normal focus-visible:ring-inset focus-visible:ring-offset-0',
+          selected && 'bg-selected text-selected-foreground hover:bg-selected active:bg-selected',
         )}
         onClick={() => onSelect(item)}
         onFocus={() => onPreview?.(item)}
@@ -65,34 +77,40 @@ export function ContentSearchResultRow({
           }
         }}
       >
-        <Icon aria-hidden="true" className="mt-0.5 size-4 text-muted-foreground" />
+        <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <span className="flex min-w-0 flex-1 flex-col gap-1.5">
           <span className="line-clamp-2 break-words text-sm font-medium" title={item.title || copy.untitled}>
             <ContentSearchHighlight text={item.title || copy.untitled} terms={terms} />
           </span>
-          {item.preview && (
+          {preview && (
             <span className="line-clamp-2 whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground-secondary">
-              <ContentSearchHighlight text={item.preview} terms={terms} />
+              <ContentSearchHighlight text={preview} terms={terms} />
             </span>
           )}
           <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-muted-foreground">
-            <span>{copy[kind]}</span>
+            <span>{branch ?? copy[kind]}</span>
             {date && (
               <time dateTime={item.updatedAt} className="shrink-0">
                 {date}
               </time>
             )}
-            <span aria-hidden="true">·</span>
-            <span>{copy[item.match]}</span>
+            {item.match === 'SEMANTIC' ? (
+              <SearchRelevance score={item.score} channel="document" borderline={item.borderline} />
+            ) : (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>{copy[item.match]}</span>
+              </>
+            )}
+            {item.borderline && item.match !== 'SEMANTIC' && (
+              <SearchRelevance score={item.score} channel="document" borderline />
+            )}
             {!item.bodyIndexed && <span className="text-warning">{copy.titleOnly}</span>}
-            {item.source.branchId && (
+            {!video && item.source.branchId && (
               <span className="max-w-40 truncate" title={item.source.branchId}>
                 {copy.branch} {item.source.branchId}
               </span>
             )}
-            <span className="ml-auto max-w-32 truncate font-mono" title={`${copy.identity}: ${item.source.id}`}>
-              <ContentSearchHighlight text={item.source.id} terms={terms} />
-            </span>
           </span>
         </span>
         <ChevronRightIcon

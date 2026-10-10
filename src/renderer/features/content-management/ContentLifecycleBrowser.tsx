@@ -12,6 +12,7 @@ import {
   lifecycleExpiryLabel,
   lifecycleSubtypeLabel,
   lifecycleThumbnailUrl,
+  lifecycleTextPresentation,
 } from '@/renderer/features/content-management/contentLifecyclePresentation';
 
 interface Props {
@@ -71,7 +72,7 @@ export function ContentLifecycleBrowser({
                 disabled={index === albumStack.length - 1}
                 onClick={() => onReturnToAlbum(index)}
               >
-                <span className="truncate">{album.title}</span>
+                <span className="truncate">{lifecycleTextPresentation(album, messages).title}</span>
               </Button>
             </div>
           ))}
@@ -82,7 +83,7 @@ export function ContentLifecycleBrowser({
       )}
 
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto w-full max-w-5xl px-6 py-4">
+        <div className="w-full px-6 py-4">
           {loading && (
             <div className="divide-y border-y" aria-label={l.loading}>
               {Array.from({ length: 6 }, (_, index) => (
@@ -118,10 +119,11 @@ export function ContentLifecycleBrowser({
                 const expiry = lifecycleExpiryLabel(item, messages);
                 const isAlbum = item.kind === 'ALBUM' && Boolean(item.containerId);
                 const showActions = albumStack.length === 0;
+                const presentation = lifecycleTextPresentation(item, messages);
                 return (
                   <div
                     key={`${itemKey(item)}:${item.expectedChangedAt}`}
-                    className="grid min-h-[72px] grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-3 hover:bg-hover"
+                    className="grid min-h-[72px] grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 hover:bg-hover"
                   >
                     <button
                       type="button"
@@ -148,19 +150,21 @@ export function ContentLifecycleBrowser({
                       </span>
                       <span className="grid min-w-0 gap-1">
                         <span className="flex min-w-0 items-center gap-2">
-                          <strong className="truncate text-sm font-medium">{item.title}</strong>
+                          <strong className="truncate text-sm font-medium">{presentation.title}</strong>
                           {isAlbum && <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" />}
                         </span>
                         <span className="flex min-w-0 items-center gap-2">
                           <MetaText className="shrink-0">{lifecycleSubtypeLabel(item, messages)}</MetaText>
-                          {item.previewText && <MetaText className="truncate">{item.previewText}</MetaText>}
+                          <MetaText className="truncate">{lifecycleChangedAt(item, locale)}</MetaText>
                         </span>
+                        {presentation.previewText && (
+                          <MetaText className="truncate">{presentation.previewText}</MetaText>
+                        )}
                       </span>
                     </button>
 
                     <div className="flex items-center gap-3">
-                      <div className="hidden min-w-24 justify-items-end gap-1 sm:grid">
-                        <MetaText>{lifecycleChangedAt(item, locale)}</MetaText>
+                      <div className="grid justify-items-end gap-1">
                         {item.purgeState === 'FAILED' ? (
                           <StateTag tone="danger" icon={<AlertTriangleIcon />} title={item.purgeError ?? undefined}>
                             {l.cleanupFailed}

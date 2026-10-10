@@ -1,4 +1,6 @@
 import type { ExtensionContributionPoint, ExtensionManifestDto } from '@/shared/contracts';
+import { CLIPBOARD_CAPTURE_ID, CLIPBOARD_HISTORY_ID } from '@/shared/contracts/clipboard-capture';
+import { EMBEDDED_WEB_EXTENSION_ID } from '@/shared/contracts/embedded-web';
 import {
   CODEX_HISTORY_SEARCH_EXTENSION_ID,
   CODEX_IMAGE_DISCOVERY_EXTENSION_ID,
@@ -10,6 +12,7 @@ import {
   WORK_TRACKING_EXTENSION_ID,
   SCREEN_MAGNIFIER_EXTENSION_ID,
   NATURAL_WATERMARK_EXTENSION_ID,
+  IMAGE_SEARCH_EXTENSION_ID,
   WEIBO_CHANNEL_EXTENSION_ID,
 } from '@/shared/extension-ids';
 import { EXTENSION_PERMISSION } from '@/shared/extension-permissions';
@@ -99,6 +102,38 @@ interface HostRuntimeContract {
 }
 
 const hostRuntimeContracts: Readonly<Record<string, HostRuntimeContract>> = {
+  'embedded-web': {
+    extensionId: EMBEDDED_WEB_EXTENSION_ID,
+    permissions: [EXTENSION_PERMISSION.browserExecuteLocalHtml],
+    optionalPermissions: [],
+    contributes: { commands: ['embeddedWeb.run'] },
+  },
+  'clipboard-capture': {
+    extensionId: CLIPBOARD_CAPTURE_ID,
+    permissions: [],
+    optionalPermissions: [EXTENSION_PERMISSION.screenCaptureRegion, EXTENSION_PERMISSION.libraryCreateCreations],
+    contributes: { commands: ['clipboardCapture.open', 'clipboardCapture.capture'] },
+  },
+  'clipboard-history': {
+    extensionId: CLIPBOARD_HISTORY_ID,
+    permissions: [EXTENSION_PERMISSION.clipboardReadHistory],
+    optionalPermissions: [EXTENSION_PERMISSION.clipboardReadImageFiles, EXTENSION_PERMISSION.libraryCreateCreations],
+    contributes: { commands: ['clipboardHistory.open'] },
+  },
+  'image-search': {
+    extensionId: IMAGE_SEARCH_EXTENSION_ID,
+    permissions: [EXTENSION_PERMISSION.libraryReadActiveImages, EXTENSION_PERMISSION.libraryReadActiveDocuments],
+    optionalPermissions: [
+      'network:https://huggingface.co',
+      'network:https://unpkg.com',
+      EXTENSION_PERMISSION.libraryReadSelectedVideos,
+      EXTENSION_PERMISSION.libraryReadActiveVideos,
+    ],
+    contributes: {
+      searchProviders: ['library.semanticImages', 'library.semanticContent'],
+      commands: ['imageSearch.configure', 'imageSearch.downloadModel'],
+    },
+  },
   'screen-magnifier': {
     extensionId: SCREEN_MAGNIFIER_EXTENSION_ID,
     permissions: [EXTENSION_PERMISSION.screenReadDesktopRegion],
@@ -114,7 +149,7 @@ const hostRuntimeContracts: Readonly<Record<string, HostRuntimeContract>> = {
   'maintenance-guide': {
     extensionId: MAINTENANCE_GUIDE_EXTENSION_ID,
     permissions: [EXTENSION_PERMISSION.filesystemReadMaintenanceGuides],
-    optionalPermissions: [],
+    optionalPermissions: [EXTENSION_PERMISSION.filesystemReadProjectCommands],
     contributes: { commands: ['maintenanceGuide.open'] },
   },
   [CODEX_HISTORY_SEARCH_HOST_RUNTIME_ID]: {

@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import { Label } from '@/renderer/components/ui/label';
@@ -9,17 +9,29 @@ import { prepareProfileAvatar, profileAvatarAccept } from '@/renderer/features/m
 import { useSpaceProfile } from '@/renderer/features/me/SpaceProfileProvider';
 import type { UserProfile as Profile } from '@/shared/contracts/me';
 
-export function UserProfile({ spaceName }: { spaceName: string }) {
+export function UserProfile() {
   const copy = useI18n().messages.me;
   const { profile, failed, retry } = useSpaceProfile();
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const editButton = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef(false);
+  useEffect(() => {
+    if (!editing && restoreFocus.current) {
+      restoreFocus.current = false;
+      editButton.current?.focus({ preventScroll: true });
+    }
+  }, [editing]);
+
+  function finishEditing(didSave: boolean) {
+    setSaved(didSave);
+    restoreFocus.current = true;
+    setEditing(false);
+  }
   return (
-    <section className="space-y-8">
-      <header className="flex items-baseline justify-between gap-4">
-        <h1 className="text-xl font-semibold">{copy.profile}</h1>
-        <span className="truncate text-sm text-muted-foreground">{spaceName}</span>
-      </header>
-      {failed ? (
-        <div className="flex items-center gap-3">
+    <section aria-label={copy.profile} className="space-y-4">
+      {failed && (
+        <div className="flex flex-wrap items-center gap-3">
           <span role="alert" className="text-sm text-destructive">
             {copy.profileFailed}
           </span>
@@ -27,22 +39,45 @@ export function UserProfile({ spaceName }: { spaceName: string }) {
             {copy.refresh}
           </Button>
         </div>
-      ) : profile ? (
-        <ProfileForm profile={profile} />
-      ) : (
-        <Skeleton aria-label={copy.loading} className="h-52 w-full rounded-sm" />
+      )}
+      {profile ? (
+        editing ? (
+          <ProfileForm profile={profile} onDone={finishEditing} />
+        ) : (
+          <div className="flex flex-wrap items-center gap-4">
+            <ProfileAvatar src={profile.avatarDataUrl} className="size-16 shrink-0" />
+            <h2 className="min-w-0 flex-1 break-words text-base font-medium">{profile.authorName || copy.title}</h2>
+            <Button
+              ref={editButton}
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setSaved(false);
+                setEditing(true);
+              }}
+            >
+              {copy.editProfile}
+            </Button>
+          </div>
+        )
+      ) : !failed ? (
+        <Skeleton aria-label={copy.loading} className="h-16 w-full rounded-sm" />
+      ) : null}
+      {saved && (
+        <span role="status" className="block text-sm text-muted-foreground">
+          {copy.saved}
+        </span>
       )}
     </section>
   );
 }
 
-function ProfileForm({ profile }: { profile: Profile }) {
+function ProfileForm({ profile, onDone }: { profile: Profile; onDone(saved: boolean): void }) {
   const copy = useI18n().messages.me;
   const { saving, save } = useSpaceProfile();
   const [draft, setDraft] = useState<Profile | null>(null);
   const [error, setError] = useState('');
   const [reading, setReading] = useState(false);
-  const [saved, setSaved] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const id = useId();
   const value = draft ?? profile;
@@ -52,13 +87,11 @@ function ProfileForm({ profile }: { profile: Profile }) {
 
   function edit(next: Profile) {
     setDraft(next);
-    setSaved(false);
     setError('');
   }
   async function selectAvatar(file: File) {
     setReading(true);
     setError('');
-    setSaved(false);
     try {
       edit({ ...value, avatarDataUrl: await prepareProfileAvatar(file) });
     } catch {
@@ -70,11 +103,9 @@ function ProfileForm({ profile }: { profile: Profile }) {
   async function submit() {
     if (busy || !changed) return;
     setError('');
-    setSaved(false);
     try {
       if (await save({ ...value, authorName: value.authorName.trim() })) {
-        setDraft(null);
-        setSaved(true);
+        onDone(true);
       }
     } catch {
       setError(copy.saveFailed);
@@ -82,14 +113,15 @@ function ProfileForm({ profile }: { profile: Profile }) {
   }
   return (
     <form
-      className="space-y-6"
+      className="space-y-5"
+      aria-busy={busy}
       onSubmit={(event) => {
         event.preventDefault();
         void submit();
       }}
     >
-      <div className="flex items-center gap-4">
-        <ProfileAvatar src={value.avatarDataUrl} className="size-16" />
+      <div className="flex flex-wrap items-center gap-4">
+        <ProfileAvatar src={value.avatarDataUrl} className="size-16 shrink-0" />
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" disabled={busy} onClick={() => fileInput.current?.click()}>
             {copy.changeAvatar}
@@ -123,6 +155,7 @@ function ProfileForm({ profile }: { profile: Profile }) {
         <Label htmlFor={id}>{copy.username}</Label>
         <Input
           id={id}
+          autoFocus
           value={value.authorName}
           maxLength={200}
           autoComplete="nickname"
@@ -135,29 +168,13 @@ function ProfileForm({ profile }: { profile: Profile }) {
           {error}
         </p>
       )}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" disabled={busy || !changed}>
           {saving ? copy.saving : copy.save}
         </Button>
-        {draft && changed && (
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={busy}
-            onClick={() => {
-              setDraft(null);
-              setError('');
-              setSaved(false);
-            }}
-          >
-            {copy.cancel}
-          </Button>
-        )}
-        {saved && (
-          <span role="status" className="text-sm text-muted-foreground">
-            {copy.saved}
-          </span>
-        )}
+        <Button type="button" variant="ghost" disabled={busy} onClick={() => onDone(false)}>
+          {copy.cancel}
+        </Button>
       </div>
     </form>
   );

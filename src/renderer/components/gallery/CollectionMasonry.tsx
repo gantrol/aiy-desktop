@@ -2,6 +2,7 @@ import { useCallback, type ComponentProps } from 'react';
 import { useMaterialLayoutPreferences } from '@/renderer/components/gallery/materialLayoutPreferences';
 import { getSourceMediaAspectRatio } from '@/renderer/components/media/mediaAspectRatio';
 import { MasonrySurface } from '@/renderer/components/ui/masonry-surface';
+import { useWorkspaceVisible } from '@/renderer/components/workspace/WorkspacePaneScope';
 import { computeCollectionLayout, type CollectionLayoutItem } from '@/renderer/components/gallery/collectionLayout';
 import {
   CollectionMeasuredItem,
@@ -18,6 +19,7 @@ type Props = Pick<ComponentProps<typeof MasonrySurface>, 'renderItem' | 'viewpor
 };
 
 export function CollectionMasonry({ items, viewportRef, renderItem, ...props }: Props) {
+  const visible = useWorkspaceVisible();
   const { preferences } = useMaterialLayoutPreferences();
   const { size } = preferences;
   const { measurements, observe } = useCollectionItemMeasurements(items);
@@ -32,7 +34,7 @@ export function CollectionMasonry({ items, viewportRef, renderItem, ...props }: 
       computeLayout={computeLayout}
       layoutKind="COLUMNS"
       renderItem={(item, index, placement, layout) =>
-        items[index].textOnly ? (
+        !visible ? null : items[index].textOnly ? (
           <CollectionMeasuredItem id={item.id} observe={observe}>
             {renderItem(item, index, placement, layout)}
           </CollectionMeasuredItem>

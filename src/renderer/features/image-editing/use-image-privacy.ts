@@ -15,13 +15,16 @@ type Status = ImagePrivacyResult['status'] | 'idle' | 'scanning' | 'empty' | 'in
 type Preview = { base: ImageEditDocument; candidates: Candidate[]; selected: Set<string> };
 
 function candidate(region: ImagePrivacyRegion, document: ImageEditDocument): Candidate {
-  const inverse = new DOMMatrix(imageViewport(document).matrix).inverse();
+  const viewport = imageViewport(document);
+  const inverse = new DOMMatrix(viewport.matrix).inverse();
+  const scaleX = viewport.width / (document.output?.width ?? viewport.width);
+  const scaleY = viewport.height / (document.output?.height ?? viewport.height);
   const points = [
     [region.x, region.y],
     [region.x + region.width, region.y],
     [region.x, region.y + region.height],
     [region.x + region.width, region.y + region.height],
-  ].map(([x, y]) => inverse.transformPoint({ x, y }));
+  ].map(([x, y]) => inverse.transformPoint({ x: x * scaleX, y: y * scaleY }));
   const x = Math.max(0, Math.floor(Math.min(...points.map((point) => point.x))));
   const y = Math.max(0, Math.floor(Math.min(...points.map((point) => point.y))));
   return {

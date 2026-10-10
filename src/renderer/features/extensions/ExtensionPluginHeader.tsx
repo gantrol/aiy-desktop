@@ -30,7 +30,7 @@ export function ExtensionPluginHeader({
     <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-3 @4xl/extension-detail:grid-cols-[auto_minmax(0,1fr)_auto] @4xl/extension-detail:gap-x-4">
       <div className="flex items-center gap-2">
         {navigationAction}
-        <div className="grid size-10 shrink-0 place-items-center rounded-lg border bg-muted @xl/extension-detail:size-11">
+        <div className="grid size-9 shrink-0 place-items-center rounded-md bg-muted">
           {extension.manifest.kind === 'LANGUAGE' ? (
             <LanguagesIcon className="size-5" />
           ) : (
@@ -40,14 +40,16 @@ export function ExtensionPluginHeader({
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-semibold @xl/extension-detail:text-xl">{manifest.displayName}</h2>
-          <Badge variant="outline">{extension.manifest.version}</Badge>
-          <Badge variant="outline">{copy.kinds[extension.manifest.kind]}</Badge>
-          <Badge variant={extension.connectionState === 'READY' ? 'default' : 'secondary'}>
-            {copy.connectionStates[extension.connectionState]}
+          <h2 className="min-w-0 break-words text-lg font-semibold">{manifest.displayName}</h2>
+          <Badge variant="secondary">
+            {extension.enabled ? copy.connectionStates[extension.connectionState] : copy.disabled}
           </Badge>
         </div>
-        <p className="mt-2 text-sm text-muted-foreground">{manifest.description}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span className="tabular-nums">{extension.manifest.version}</span>
+          <span>{copy.kinds[extension.manifest.kind]}</span>
+          <span>{copy.source[extension.source]}</span>
+        </div>
         {showConnectionDetail && (
           <p className="mt-1 break-words text-xs text-muted-foreground">{extension.connectionMessage}</p>
         )}

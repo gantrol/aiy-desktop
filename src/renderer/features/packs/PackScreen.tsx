@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
 import type {
   PackCatalogItemDto,
   PackInstallationStateDto,
@@ -24,7 +24,10 @@ import {
   DialogTitle,
 } from '@/renderer/components/ui/dialog';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
-import { CollectionDetailLayout } from '@/renderer/components/workbench/CollectionDetailLayout';
+import {
+  CollectionDetailLayout,
+  type CollectionDetailLayoutHandle,
+} from '@/renderer/components/workbench/CollectionDetailLayout';
 import { cn } from '@/renderer/lib/utils';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type { NavigationMode } from '@/renderer/components/app/app-navigation';
@@ -34,6 +37,8 @@ import { PackImportDialog } from '@/renderer/features/packs/PackImportDialog';
 interface Props {
   active: boolean;
   embedded?: boolean;
+  collectionRef?: Ref<CollectionDetailLayoutHandle>;
+  collectionHeader?: ReactNode;
   requestedId: string | null;
   onSelectedIdChange(id: string, mode?: NavigationMode): void;
   notify(message: string): void;
@@ -103,7 +108,60 @@ function PackCatalogList({
   );
 }
 
-export function PackScreen({ active, embedded = false, requestedId, onSelectedIdChange, notify }: Props) {
+function PackToolbar({
+  embedded,
+  count,
+  busy,
+  loading,
+  toggleHostRef,
+  onImport,
+  onRefresh,
+}: {
+  embedded: boolean;
+  count: number;
+  busy: boolean;
+  loading: boolean;
+  toggleHostRef: Ref<HTMLDivElement>;
+  onImport(): void;
+  onRefresh(): void;
+}) {
+  const l = useI18n().messages.packs;
+  return (
+    <header className="flex min-h-9 flex-wrap items-center gap-2 border-b px-3">
+      <div ref={toggleHostRef} className="flex shrink-0" />
+      {!embedded && (
+        <>
+          <h1 className="text-base font-semibold">{l.title}</h1>
+          <Badge variant="secondary">{count}</Badge>
+        </>
+      )}
+      <Button className="ml-auto" type="button" variant="outline" size="sm" disabled={busy} onClick={onImport}>
+        <PackagePlusIcon className="size-4" />
+        {l.actions.import}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label={l.refresh}
+        disabled={loading || busy}
+        onClick={onRefresh}
+      >
+        <RefreshCwIcon className={cn('size-4', loading && 'animate-spin')} />
+      </Button>
+    </header>
+  );
+}
+
+export function PackScreen({
+  active,
+  embedded = false,
+  collectionRef,
+  collectionHeader,
+  requestedId,
+  onSelectedIdChange,
+  notify,
+}: Props) {
   const { messages } = useI18n();
   const l = messages.packs;
   const [catalog, setCatalog] = useState<PackCatalogItemDto[]>([]);
@@ -232,38 +290,28 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
     : '';
 
   return (
-    <div data-pack-screen className="grid size-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-background">
-      <header className={cn('flex items-center gap-3 border-b px-4', embedded ? 'h-12' : 'h-14 px-5')}>
-        <div ref={setToggleHost} className="flex shrink-0" />
-        {!embedded && (
-          <>
-            <h1 className="text-base font-semibold">{l.title}</h1>
-            <Badge variant="secondary">{catalog.length}</Badge>
-          </>
-        )}
-        <Button className="ml-auto" type="button" variant="outline" disabled={busy} onClick={() => setImportOpen(true)}>
-          <PackagePlusIcon className="mr-2 size-4" />
-          {l.actions.import}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={l.refresh}
-          disabled={loading || busy}
-          onClick={() => void loadCatalog()}
-        >
-          <RefreshCwIcon className={cn('size-4', loading && 'animate-spin')} />
-        </Button>
-      </header>
-      <div className="min-h-0 min-w-0">
+    <div data-pack-screen className="flex size-full min-h-0 flex-col bg-background">
+      <div className="min-h-0 min-w-0 flex-1">
         <CollectionDetailLayout
-          layoutKey="content-packs"
+          ref={collectionRef}
+          layoutKey={embedded ? 'extensions' : 'content-packs'}
           toggleHost={toggleHost}
           collectionLabel={l.title}
-          collectionWidth={320}
-          minimumDetailWidth={520}
+          collectionWidth={embedded ? 280 : 320}
+          minimumDetailWidth={embedded ? 480 : 520}
           selectionKey={requestedId}
+          collectionHeader={collectionHeader ? () => collectionHeader : undefined}
+          toolbar={
+            <PackToolbar
+              embedded={embedded}
+              count={catalog.length}
+              busy={busy}
+              loading={loading}
+              toggleHostRef={setToggleHost}
+              onImport={() => setImportOpen(true)}
+              onRefresh={() => void loadCatalog()}
+            />
+          }
           collection={({ revealDetail }) => (
             <ScrollArea className="min-h-0 flex-1">
               <PackCatalogList
@@ -278,32 +326,44 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
             </ScrollArea>
           )}
         >
-          {() => (
-            <ScrollArea className="min-h-0 min-w-0 flex-1">
-              {selected && selectedRelease && (
-                <PackDetails
-                  item={selected}
-                  selectedRelease={selectedRelease}
-                  release={release}
-                  busy={busy}
-                  onSelectRelease={setInspectedReleaseId}
-                  onAction={(kind, nextRelease) =>
-                    setPendingAction({ kind, packId: selected.pack.id, release: nextRelease })
-                  }
-                />
-              )}
-              {!selected && !loading && (
-                <div className="grid size-full place-items-center text-3xl tabular-nums text-muted-foreground">0</div>
-              )}
-              {error && (
-                <div
-                  role="alert"
-                  className="m-6 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
-                >
-                  {error}
-                </div>
-              )}
-            </ScrollArea>
+          {({ revealDetail }) => (
+            <>
+              <ScrollArea className="min-h-0 min-w-0 flex-1">
+                {selected && selectedRelease && (
+                  <PackDetails
+                    item={selected}
+                    selectedRelease={selectedRelease}
+                    release={release}
+                    busy={busy}
+                    onSelectRelease={setInspectedReleaseId}
+                    onAction={(kind, nextRelease) =>
+                      setPendingAction({ kind, packId: selected.pack.id, release: nextRelease })
+                    }
+                  />
+                )}
+                {!selected && !loading && (
+                  <div className="grid size-full place-items-center text-3xl tabular-nums text-muted-foreground">0</div>
+                )}
+                {error && (
+                  <div
+                    role="alert"
+                    className="m-6 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+                  >
+                    {error}
+                  </div>
+                )}
+              </ScrollArea>
+              <PackImportDialog
+                open={importOpen}
+                onOpenChange={setImportOpen}
+                onApplied={async (packId) => {
+                  await loadCatalog(packId);
+                  revealDetail();
+                  notify(l.actionComplete.import);
+                }}
+                notify={notify}
+              />
+            </>
           )}
         </CollectionDetailLayout>
       </div>
@@ -334,15 +394,6 @@ export function PackScreen({ active, embedded = false, requestedId, onSelectedId
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <PackImportDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        onApplied={async (packId) => {
-          await loadCatalog(packId);
-          notify(l.actionComplete.import);
-        }}
-        notify={notify}
-      />
     </div>
   );
 }

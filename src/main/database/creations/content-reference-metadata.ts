@@ -41,7 +41,7 @@ export function referenceMetadata(db: Database.Database, identities: readonly Id
             CAST(gif.revision AS TEXT), series.current_version_id, visual_series.current_version_id,
             material.content_hash) END AS revision_id
       FROM resolved target
-      LEFT JOIN articles article ON target.entity_kind IN ('ARTICLE','INSPIRATION_STASH')
+      LEFT JOIN articles article ON target.entity_kind IN ('ARTICLE','INSPIRATION_STASH','SOCIAL_POST')
         AND article.id = target.entity_id AND article.deleted_at IS NULL
       LEFT JOIN article_revisions article_revision ON article_revision.id = article.current_revision_id
       LEFT JOIN social_post_drafts post ON target.entity_kind = 'SOCIAL_POST' AND post.id = target.entity_id

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { TaskRecipeInput } from '@/shared/contracts/task-recipe';
 import type {
   ArticleContentInput,
   ArticleDto,
+  ArticleListItem,
   CanvasPresetDto,
   CreationItemDto,
   DerivedVisualAdoptInput,
@@ -15,6 +17,7 @@ import type {
 import { creationFormByEntity } from '@/renderer/components/creator/creationFormEntities';
 import {
   buildArticleHeaderPrompt,
+  buildCoverRecipePrompt,
   buildArticleInlinePrompt,
   buildSocialCoverPrompt,
 } from '@/renderer/components/creator/derivedVisualPrompt';
@@ -30,10 +33,11 @@ import type { DerivedVisualOperationRequest } from '@/shared/contracts/derived-v
 import { articleIllustrationInsertionOffset } from '@/shared/article-wechat-renderer';
 import { ARTICLE_COVER_PRESET_KEYS, type ArticleCoverRatio } from '@/shared/article-covers';
 import { useWorkspaceVisualResume } from '@/renderer/components/workspace/WorkspaceVisualResumeProvider';
+import { loadArticleDetails } from '@/renderer/components/creator/useArticleDetails';
 
 interface Options {
   spaceId: string;
-  articles: readonly ArticleDto[];
+  articles: readonly ArticleListItem[];
   socialPosts: readonly SocialPostDto[];
   canvasPresets: readonly CanvasPresetDto[];
   captureSelectionIdentity(): string;
@@ -46,6 +50,7 @@ interface Options {
   onOpenWorkspace(result: DerivedVisualWorkspaceOpenResult, view?: DerivedVisualWorkspaceViewState): void;
   preserveBeforeNavigation(): Promise<boolean>;
   promptTemplates: DerivedVisualPromptTemplatesDto | undefined;
+  promptRecipesEnabled?: boolean;
   refresh(): Promise<void>;
   seriesIds: ReadonlySet<string>;
   stayInWorkspace(visualId: string): boolean;
@@ -100,23 +105,10 @@ function requiredPromptTemplates(options: Options, unavailableMessage: string) {
   return templates;
 }
 
-export function useDerivedVisualWorkflow(options: Options) {
-  const findResumeView = useWorkspaceVisualResume(options.spaceId);
-  const labels = useI18n().messages.creator.derivedVisual;
-  const [creatingDerivedScheme, setCreatingDerivedScheme] = useState(false);
-  const [resumeFailure, setResumeFailure] = useState<ResumeFailure | null>(null);
-  const creatingDerivedSchemeRef = useRef(false);
+function useOperationLifetime(captureIdentity: () => string) {
+  const currentIdentity = useStableCallback(captureIdentity);
   const mountedRef = useRef(true);
   const operationGenerationRef = useRef(0);
-  const canvasPresets = useMemo(() => [...options.canvasPresets], [options.canvasPresets]);
-  const captureSelectionIdentity = useStableCallback(options.captureSelectionIdentity);
-  const notify = useStableCallback(options.notify);
-  const onKeepAdoptedWorkspace = useStableCallback(options.onKeepAdoptedWorkspace);
-  const onOpenWorkspace = useStableCallback(options.onOpenWorkspace);
-  const preserveBeforeNavigation = useStableCallback(options.preserveBeforeNavigation);
-  const refresh = useStableCallback(options.refresh);
-  const stayInWorkspace = useStableCallback(options.stayInWorkspace);
-
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -124,8 +116,54 @@ export function useDerivedVisualWorkflow(options: Options) {
       operationGenerationRef.current += 1;
     };
   }, []);
+  const isCurrent = (generation: number, identity: string) =>
+    mountedRef.current && operationGenerationRef.current === generation && currentIdentity() === identity;
+  return { mountedRef, operationGenerationRef, isCurrent };
+}
 
+function useCoverRecipe(options: Options) {
+  const unavailable = useI18n().messages.recipe.task.defaultUnavailable;
+  return async (recipe: TaskRecipeInput | null | undefined) => {
+    if (recipe !== undefined || !options.promptRecipesEnabled) return recipe;
+    try {
+      return await window.desktopApi.promptRecipeResolve('IMAGE_COVER', options.spaceId);
+    } catch {
+      throw new Error(unavailable);
+    }
+  };
+}
+
+function dispatchVisualOperation(request: DerivedVisualOperationRequest) {
+  if (request.kind === 'ADOPT') {
+    const { kind: _kind, ...input } = request;
+    return window.desktopApi.derivedVisualAdopt(input);
+  }
+  const { kind: _kind, ...input } = request;
+  return window.desktopApi.derivedVisualUndo(input);
+}
+
+function useVisualConfiguration(options: Options) {
+  const labels = useI18n().messages.creator.derivedVisual;
+  const canvasPresets = useMemo(() => [...options.canvasPresets], [options.canvasPresets]);
+  const coverRecipe = useCoverRecipe(options);
   const promptTemplates = () => requiredPromptTemplates(options, labels.promptConfigurationUnavailable);
+  return { labels, canvasPresets, coverRecipe, promptTemplates };
+}
+
+export function useDerivedVisualWorkflow(options: Options) {
+  const findResumeView = useWorkspaceVisualResume(options.spaceId);
+  const { labels, canvasPresets, coverRecipe, promptTemplates } = useVisualConfiguration(options);
+  const [creatingDerivedScheme, setCreatingDerivedScheme] = useState(false);
+  const [resumeFailure, setResumeFailure] = useState<ResumeFailure | null>(null);
+  const creatingDerivedSchemeRef = useRef(false);
+  const { mountedRef, operationGenerationRef, isCurrent } = useOperationLifetime(options.captureSelectionIdentity);
+  const captureSelectionIdentity = useStableCallback(options.captureSelectionIdentity);
+  const notify = useStableCallback(options.notify);
+  const onKeepAdoptedWorkspace = useStableCallback(options.onKeepAdoptedWorkspace);
+  const onOpenWorkspace = useStableCallback(options.onOpenWorkspace);
+  const preserveBeforeNavigation = useStableCallback(options.preserveBeforeNavigation);
+  const refresh = useStableCallback(options.refresh);
+  const stayInWorkspace = useStableCallback(options.stayInWorkspace);
 
   const finishOpen = useStableCallback(
     async (
@@ -136,12 +174,7 @@ export function useDerivedVisualWorkflow(options: Options) {
       view?: DerivedVisualWorkspaceViewState,
     ) => {
       await refresh();
-      if (
-        !mountedRef.current ||
-        operationGenerationRef.current !== operationGeneration ||
-        captureSelectionIdentity() !== selectionIdentity
-      )
-        return;
+      if (!isCurrent(operationGeneration, selectionIdentity)) return;
       const remembered = !view && result.kind === 'SERIES' ? findResumeView(result.visual.id) : undefined;
       const resumeView = remembered?.seriesId === result.visual.promptSeriesId ? remembered : undefined;
       try {
@@ -163,7 +196,12 @@ export function useDerivedVisualWorkflow(options: Options) {
   );
 
   const openArticleHeaderWorkspace = useStableCallback(
-    async (article: ArticleDto, content: ArticleContentInput, coverRatio?: ArticleCoverRatio) => {
+    async (
+      article: ArticleDto,
+      content: ArticleContentInput,
+      coverRatio?: ArticleCoverRatio,
+      recipe?: TaskRecipeInput | null,
+    ) => {
       const operationGeneration = ++operationGenerationRef.current;
       const selectionIdentity = captureSelectionIdentity();
       const source = creationFormByEntity(options.creationItems, 'ARTICLE', article.id);
@@ -173,11 +211,16 @@ export function useDerivedVisualWorkflow(options: Options) {
       );
       if (!preset) throw new Error(labels.heroCanvasUnavailable);
       const snapshot = articleContentSnapshot(content);
-      const prompt = buildArticleHeaderPrompt(promptTemplates(), snapshot.title, snapshot.markdown, preset);
+      recipe = await coverRecipe(recipe);
+      if (!isCurrent(operationGeneration, selectionIdentity)) return;
+      const prompt = recipe?.instructions.trim()
+        ? buildCoverRecipePrompt(recipe, snapshot.title, snapshot.markdown, preset)
+        : buildArticleHeaderPrompt(promptTemplates(), snapshot.title, snapshot.markdown, preset);
       const roleLabel = labels.targetRoles.ARTICLE_HEADER + (coverRatio ? ` ${coverRatio}` : '');
       const result = await window.desktopApi.derivedVisualWorkspaceOpen({
         mode: 'CREATE',
         role: 'ARTICLE_HEADER',
+        ...(recipe ? { recipe } : {}),
         ...(coverRatio ? { coverRatio } : {}),
         workspaceTitle: `${snapshot.title || labels.untitled} · ${roleLabel}`.slice(0, 300),
         sourceFormId: source.form.id,
@@ -242,16 +285,26 @@ export function useDerivedVisualWorkflow(options: Options) {
   );
 
   const openSocialCoverWorkspace = useStableCallback(
-    async (post: SocialPostDto, content: SocialPostContentInput, preset: CanvasPresetDto) => {
+    async (
+      post: SocialPostDto,
+      content: SocialPostContentInput,
+      preset: CanvasPresetDto,
+      recipe?: TaskRecipeInput | null,
+    ) => {
       const operationGeneration = ++operationGenerationRef.current;
       const selectionIdentity = captureSelectionIdentity();
       const source = creationFormByEntity(options.creationItems, 'SOCIAL_POST', post.id);
       if (!source) throw new Error(labels.coverSourceUnavailable);
       const snapshot = socialPostContentSnapshot(content);
-      const prompt = buildSocialCoverPrompt(promptTemplates(), preset, snapshot.title, snapshot.body);
+      recipe = await coverRecipe(recipe);
+      if (!isCurrent(operationGeneration, selectionIdentity)) return;
+      const prompt = recipe?.instructions.trim()
+        ? buildCoverRecipePrompt(recipe, snapshot.title, snapshot.body, preset)
+        : buildSocialCoverPrompt(promptTemplates(), preset, snapshot.title, snapshot.body);
       const result = await window.desktopApi.derivedVisualWorkspaceOpen({
         mode: 'CREATE',
         role: 'SOCIAL_POST_COVER',
+        ...(recipe ? { recipe } : {}),
         workspaceTitle: `${snapshot.title || labels.untitled} · ${labels.targetRoles.SOCIAL_POST_COVER}`.slice(0, 300),
         sourceFormId: source.form.id,
         socialPostId: post.id,
@@ -268,23 +321,23 @@ export function useDerivedVisualWorkflow(options: Options) {
     if (creatingDerivedSchemeRef.current) return;
     const visual = options.derivedVisuals.find((item) => item.id === visualId);
     if (!visual) return;
+    const recipe = visual.recipe ? { source: visual.recipe.source, instructions: visual.recipe.instructions } : null;
     creatingDerivedSchemeRef.current = true;
     setCreatingDerivedScheme(true);
     const selectionIdentity = captureSelectionIdentity();
     try {
       if (!(await preserveBeforeNavigation()) || captureSelectionIdentity() !== selectionIdentity) return;
-      if (visual.role === 'ARTICLE_INLINE') {
-        const article = options.articles.find((item) => item.id === visual.articleId);
-        if (!article || !visual.anchor || !visual.positionId) throw new Error(labels.sourceArticleUnavailable);
-        const preset = canvasPresets.find((candidate) => candidate.stableKey === 'landscape_4_3');
-        if (!preset) throw new Error(labels.illustrationCanvasUnavailable);
-        await openArticleIllustrationWorkspace(article, article.content, visual.anchor.selectedText, preset, visual);
-        return;
-      }
-      if (visual.role === 'ARTICLE_HEADER') {
-        const article = options.articles.find((item) => item.id === visual.articleId);
-        if (!article) throw new Error(labels.sourceArticleUnavailable);
-        await openArticleHeaderWorkspace(article, article.content, visual.coverRatio);
+      if (visual.role === 'ARTICLE_INLINE' || visual.role === 'ARTICLE_HEADER') {
+        const summary = options.articles.find((item) => item.id === visual.articleId);
+        if (!summary) throw new Error(labels.sourceArticleUnavailable);
+        const article = await loadArticleDetails(options.spaceId, summary);
+        if (captureSelectionIdentity() !== selectionIdentity) return;
+        if (visual.role === 'ARTICLE_INLINE') {
+          if (!visual.anchor || !visual.positionId) throw new Error(labels.sourceArticleUnavailable);
+          const preset = canvasPresets.find((candidate) => candidate.stableKey === 'landscape_4_3');
+          if (!preset) throw new Error(labels.illustrationCanvasUnavailable);
+          await openArticleIllustrationWorkspace(article, article.content, visual.anchor.selectedText, preset, visual);
+        } else await openArticleHeaderWorkspace(article, article.content, visual.coverRatio, recipe);
         return;
       }
       const post = options.socialPosts.find((item) => item.id === visual.socialPostId);
@@ -294,7 +347,7 @@ export function useDerivedVisualWorkflow(options: Options) {
         notify(labels.coverCanvasUnavailable);
         return;
       }
-      await openSocialCoverWorkspace(post, socialPostContent(post), preset);
+      await openSocialCoverWorkspace(post, socialPostContent(post), preset, recipe);
     } catch (reason) {
       notify(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -327,14 +380,7 @@ export function useDerivedVisualWorkflow(options: Options) {
     const selectionIdentity = captureSelectionIdentity();
     if (request.spaceId !== options.spaceId) throw new Error(labels.targetUnavailable);
     if (!(await preserveBeforeNavigation()) || captureSelectionIdentity() !== selectionIdentity) return null;
-    const result = await (async () => {
-      if (request.kind === 'ADOPT') {
-        const { kind: _kind, ...input } = request;
-        return window.desktopApi.derivedVisualAdopt(input);
-      }
-      const { kind: _kind, ...input } = request;
-      return window.desktopApi.derivedVisualUndo(input);
-    })();
+    const result = await dispatchVisualOperation(request);
     // The durable operation result remains valid even if refreshing the workspace fails.
     if (result.status === 'SUCCEEDED') {
       void refresh().catch((reason) => notify(String(reason)));

@@ -271,8 +271,8 @@ export const CreatorPromptComposer = forwardRef<CreatorPromptComposerHandle, Pro
       className: outlineMode
         ? 'aiy-outline-editor min-h-64 pl-4 pr-2 pt-2 pb-12'
         : presentation === 'document'
-          ? 'min-h-64 px-3 pt-2 pb-12'
-          : 'min-h-48 px-5 pt-2 pb-5',
+          ? 'min-h-64 px-0 pt-2 pb-12'
+          : 'min-h-48 pl-1 pr-8 pt-2 pb-5',
     },
     extensions,
     content: initialContent,

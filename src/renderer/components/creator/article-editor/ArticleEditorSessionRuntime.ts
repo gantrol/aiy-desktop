@@ -46,6 +46,10 @@ import { blockDocumentImportIds } from '@/shared/contracts/block-document';
 import type { RendererDiagnosticInput } from '@/shared/contracts/renderer-diagnostics';
 import { articleCoverAssetIds, type ArticleCoverRatio, type ArticleCoverVariant } from '@/shared/article-covers';
 import { articleReferenceAssetIds } from '@/shared/article-reference-assets';
+import {
+  readingQuoteDocument,
+  type ReadingTextCitation,
+} from '@/renderer/features/creation-reading/readingQuoteDocument';
 
 type RecoveryStatus = ArticleEditorRecoveryResult['kind'] | 'loading';
 type RevisionConflict = Extract<ArticleRevisionSaveResult, { status: 'CONFLICT' }>;
@@ -87,6 +91,8 @@ export interface ArticleEditorSessionRuntime {
   registerSharedInput(whenSettled: () => Promise<boolean>): () => void;
   articleElementsChanged(source?: VideoDocumentWysiwygEditorHandle | null): number;
   titleChanged(title: string): number;
+  readingChanged(reading: NonNullable<ArticleContentInput['reading']>): number;
+  appendReadingText(text: string, citation?: ReadingTextCitation): boolean;
   coverChanged(assetId: string | null): number;
   coverVariantChanged(
     ratio: ArticleCoverRatio,
@@ -585,6 +591,34 @@ class ArticleSession implements ArticleEditorSessionRuntime {
   titleChanged = (value: string) => {
     this.model.setTitle(value);
     return this.#recordChange();
+  };
+  readingChanged = (reading: NonNullable<ArticleContentInput['reading']>) => {
+    this.model.setReading(reading);
+    return this.#recordChange();
+  };
+  appendReadingText = (text: string, citation?: ReadingTextCitation) => {
+    if (
+      this.#disposed ||
+      this.#recoveryPending ||
+      !text.trim() ||
+      !this.#editorHandle ||
+      this.model.getSnapshot().editorPending
+    )
+      return false;
+    const snapshot = this.captureSnapshot();
+    const append = readingQuoteDocument(snapshot, this.capturePersistedArticle().id, text, citation);
+    if (!append) return false;
+    const previousReading = snapshot.reading;
+    // Include the source relation in the same save snapshot as the editor transaction.
+    // Keep it after undo so that redo can restore a working citation.
+    if (append.reading) this.model.setReading(append.reading);
+    let applied = false;
+    try {
+      applied = this.#editorHandle.applySharedDocument?.(append.before, append.next, true) ?? false;
+      return applied;
+    } finally {
+      if (!applied && append.reading) this.model.setReading(previousReading);
+    }
   };
   imageImported = (result: VideoDocumentEditorImageImport) => {
     this.model.addImportedImage(result.binding, result.media);

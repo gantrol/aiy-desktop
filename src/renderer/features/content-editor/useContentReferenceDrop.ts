@@ -72,7 +72,7 @@ export function useContentReferenceDrop(editor: Editor, source?: ContentSource) 
         const target = outlineEdgeDrop(editor, view, event.clientY);
         if (!target) throw new Error('REFERENCE_LOCATION_MISSING');
         if (linkSpaceId) await dropOutlineContentLinks(editor, payload, linkSpaceId, target.id, target.placement);
-        else await dropOutlineReferences(editor, payload, target.id, target.placement);
+        else await dropOutlineReferences(editor, payload, target.id, target.placement, { source, sessions });
       } else {
         const location = view.posAtCoords({ left: event.clientX, top: event.clientY });
         if (!location) throw new Error('REFERENCE_LOCATION_MISSING');

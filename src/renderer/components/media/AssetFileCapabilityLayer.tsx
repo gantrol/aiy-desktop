@@ -1,4 +1,5 @@
-import { CopyIcon, DownloadIcon, ExternalLinkIcon, FolderOpenIcon, LoaderCircleIcon, PinIcon } from 'lucide-react';
+import { CopyIcon, DownloadIcon, ExternalLinkIcon, FolderOpenIcon, LoaderCircleIcon } from 'lucide-react';
+import { PinToDesktopIcon } from '@/renderer/features/desktop-petals/PinToDesktopIcon';
 import {
   cloneElement,
   useRef,
@@ -223,7 +224,7 @@ export function AssetFileCapabilityLayer({
           >
             {actionButton('COPY', labels.copy, CopyIcon)}
             {actionButton('SAVE_AS', labels.saveAs, DownloadIcon)}
-            {imageSelected && actionButton('PIN', messages.desktopPetals.note.pin, PinIcon)}
+            {imageSelected && actionButton('PIN', messages.desktopPetals.note.pin, PinToDesktopIcon)}
             {targets.length > 1
               ? targets.map((target) => (
                   <Button

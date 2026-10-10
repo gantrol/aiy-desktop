@@ -192,6 +192,7 @@ export function DictionaryPicker({
         </div>
       )}
       <SaveWordPaletteDialog
+        initialTask="IMAGE_PROMPT"
         locale={locale}
         open={saveOpen}
         termIds={selectedTerms.map((term) => term.id)}

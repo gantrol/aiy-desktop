@@ -82,15 +82,19 @@ export function AiCenterScreen({
   notify,
 }: Props) {
   const l = useI18n().messages.aiCenter;
-  const videoDocumentActivities = useVideoDocumentAiActivities(active, notify);
-  const articleCheckRuns = useArticleCheckRuns(active, notify);
+  const [tab, setTab] = useState<AiCenterLocation['tab']>(location.tab);
+  const videoDocumentActivities = useVideoDocumentAiActivities(
+    active && tab !== 'capabilities',
+    notify,
+    tab === 'statistics',
+  );
+  const articleCheckRuns = useArticleCheckRuns(active && tab !== 'capabilities', notify, tab === 'statistics');
   const records = useMemo(
     () => projectAiActivities(data, videoDocumentActivities.items, articleCheckRuns.items),
     [articleCheckRuns.items, data, videoDocumentActivities.items],
   );
   const locationKey = navigationLocationKey(location);
   const appliedLocationKey = useRef(locationKey);
-  const [tab, setTab] = useState<AiCenterLocation['tab']>(location.tab);
   const [activityToggleHost, setActivityToggleHost] = useState<HTMLDivElement | null>(null);
   const [activityViewMode, setActivityViewMode] = useState<AiActivityViewMode>(initialActivityViewMode);
   const [categoryFilter, setCategoryFilter] = useState<AiActivityCategoryFilter>('ALL');
@@ -111,10 +115,22 @@ export function AiCenterScreen({
 
   useEffect(() => {
     if (!active || location.tab !== 'activity' || selected) return;
+    if (location.recordId) {
+      if (
+        (!videoDocumentActivities.loaded && !videoDocumentActivities.failed) ||
+        (!articleCheckRuns.loaded && !articleCheckRuns.failed)
+      )
+        return;
+      if (videoDocumentActivities.hasMore || articleCheckRuns.hasMore) {
+        if (!videoDocumentActivities.failed) void videoDocumentActivities.loadMore();
+        if (!articleCheckRuns.failed) void articleCheckRuns.loadMore();
+        return;
+      }
+    }
     const first = records.find((record) => activityMatchesFilters(record, categoryFilter, statusFilter)) ?? null;
     if (first) commit({ ...location, recordId: first.id }, 'replace');
     else if (location.recordId !== null) commit({ ...location, recordId: null }, 'replace');
-  }, [active, categoryFilter, location, records, selected, statusFilter]);
+  }, [active, categoryFilter, location, records, selected, statusFilter, videoDocumentActivities, articleCheckRuns]);
 
   function ensureFilteredSelection(nextCategory: AiActivityCategoryFilter, nextStatus: AiActivityStatusFilter) {
     if (selected && activityMatchesFilters(selected, nextCategory, nextStatus)) return;
@@ -183,9 +199,15 @@ export function AiCenterScreen({
           minimumDetailWidth={480}
           selectionKey={location.recordId}
           revealDetailOnSelection={false}
-          collection={({ revealDetail }) => (
+          collection={({ revealDetail, visible }) => (
             <AiActivityList
-              active={active}
+              active={active && visible && tab === 'activity'}
+              hasMore={videoDocumentActivities.hasMore || articleCheckRuns.hasMore}
+              loadingMore={videoDocumentActivities.loading || articleCheckRuns.loading}
+              onLoadMore={() => {
+                void videoDocumentActivities.loadMore();
+                void articleCheckRuns.loadMore();
+              }}
               records={records}
               categoryFilter={categoryFilter}
               statusFilter={statusFilter}

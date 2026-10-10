@@ -59,8 +59,7 @@ export function VideoDocumentNoteList({ notes, activeNoteId, renameLabel, onSele
               variant="ghost"
               className={cn(
                 'h-auto min-w-0 flex-1 justify-start rounded-none px-2 py-2 text-left font-normal',
-                note.id === activeNoteId &&
-                  'border-l-2 border-l-selected-foreground bg-selected/45 text-selected-foreground',
+                note.id === activeNoteId && 'bg-selected/45 text-selected-foreground',
               )}
               onClick={() => onSelect(note.id)}
             >

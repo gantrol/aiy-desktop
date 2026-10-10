@@ -8,6 +8,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { useGifMakerLauncher } from '@/renderer/features/gif-making/GifMakerProvider';
 import { CreatorWorkspaceRouter } from '@/renderer/components/creator/screen/CreatorWorkspaceRouter';
 import type { DerivedVisualWorkspaceViewState } from '@/renderer/components/creator/derivedVisualWorkspace';
+import { useCreatorNewActions } from '@/renderer/components/creator/screen/useCreatorNewActions';
 
 const MemoizedResultLibrary = memo(ResultLibrary);
 
@@ -18,6 +19,7 @@ interface Props {
 
 export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
   const animation = useGifMakerLauncher();
+  const newActions = useCreatorNewActions(model, null);
   const { animationWorkspace, app, library, navigation, projection, selection, workbench } = model;
   const selected = selection.contentSelection;
   const beginResize = useStableCallback(projection.panes.beginResultResize);
@@ -45,10 +47,6 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
     session.invalidateAutosaves();
   });
   const draftsDeleted = useStableCallback(navigation.creation.discardDeletedDraft);
-  const startNewCreation = useStableCallback(() => void navigation.creation.startNewCreation(null, 'push'));
-  const startNewDocument = useStableCallback(
-    (mode: 'outline' | 'manuscript') => void navigation.creation.startNewCreation(null, 'push', true, mode),
-  );
   const startNewCreationInAlbum = useStableCallback(
     (albumId: string) => void navigation.creation.startNewCreation(albumId, 'push'),
   );
@@ -125,7 +123,7 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
         resizeMin={projection.panes.resultResizeMin}
         resizeMax={projection.panes.resultResizeMax}
         showModeToggle={projection.panes.multiPane}
-        lifecycleBusy={library.busy}
+        lifecycleBusy={library.busy || newActions.busy}
         onModeChange={setLibraryMode}
         onResizeStart={beginResize}
         onResizeValueChange={setResultWidth}
@@ -145,8 +143,8 @@ export function CreatorLibraryWorkspace({ model }: Pick<Props, 'model'>) {
         onRenameDocument={library.setRenameDocument}
         onSelectAlbum={navigation.content.chooseAlbum}
         onMore={navigation.output.showMoreResults}
-        onNew={startNewCreation}
-        onNewDocument={startNewDocument}
+        onNew={newActions.onNewCreation}
+        onNewAnimation={newActions.onNewAnimation}
         onNewInAlbum={startNewCreationInAlbum}
         onRenameSeries={navigation.output.requestSeriesRename}
         onRenameAlbum={library.setRenameAlbum}
@@ -169,6 +167,7 @@ export function CreatorSpecializedWorkspace({ imageBreakdownSourceFormId, model 
   const { app, library, navigation, projection, selection, workbench, workflow } = model;
   const { messages } = useI18n();
   const selected = selection.contentSelection;
+  const newActions = useCreatorNewActions(model, selected.selectedAlbum?.id ?? null);
   return (
     <CreatorWorkspaceRouter
       article={workbench.editorDerivedVisual ? null : selected.selectedArticle}
@@ -231,7 +230,9 @@ export function CreatorSpecializedWorkspace({ imageBreakdownSourceFormId, model 
             target: { entityType: 'ALBUM', entityId: album.id },
             title: album.title,
           }),
-        createCreation: (albumId) => void navigation.creation.startNewCreation(albumId, 'push'),
+        createCreation: newActions.onNewCreation,
+        createAnimation: newActions.onNewAnimation,
+        createAlbum: () => library.requestCreateAlbum(selected.selectedAlbum),
         delete: (album) =>
           library.lifecycle.request({
             action: 'DELETE',
@@ -258,7 +259,7 @@ export function CreatorSpecializedWorkspace({ imageBreakdownSourceFormId, model 
       evaluationSuite={selected.selectedEvaluationSuite}
       imageBreakdown={selected.selectedImageBreakdown}
       imageBreakdownSourceFormId={imageBreakdownSourceFormId}
-      lifecycleBusy={library.busy}
+      lifecycleBusy={library.busy || newActions.busy}
       locale={app.locale}
       messages={{
         generated: messages.gallery.card.generated,

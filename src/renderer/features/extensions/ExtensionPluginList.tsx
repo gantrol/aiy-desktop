@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ExtensionDto } from '@/shared/contracts';
 import { BlocksIcon, ChevronDownIcon, CpuIcon, LanguagesIcon, PaletteIcon, SearchIcon, XIcon } from 'lucide-react';
 import { localizeExtensionManifest } from '@/shared/extension-localization';
+import { isBuiltinToolExtension } from '@/shared/builtin-tools';
+import { BuiltinToolsDirectory } from '@/renderer/features/extensions/BuiltinToolsDirectory';
+import { ExtensionPluginListItem } from '@/renderer/features/extensions/ExtensionPluginListItem';
 import {
   extensionMatchesFilter,
   extensionPermissionRows,
   type ExtensionListFilter,
 } from '@/shared/extension-permission-info';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
-import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/renderer/components/ui/collapsible';
 import { Input } from '@/renderer/components/ui/input';
@@ -57,6 +59,7 @@ export function ExtensionPluginList({ extensions, selectedId, onSelect }: Props)
         copy.description,
         extension.manifest.id,
         l.groups[group],
+        isBuiltinToolExtension(extension) ? l.builtinTools : '',
         l.kinds[extension.manifest.kind],
         l.source[extension.source],
         l.connectionStates[extension.connectionState],
@@ -78,46 +81,48 @@ export function ExtensionPluginList({ extensions, selectedId, onSelect }: Props)
   const selectedHidden = Boolean(selectedGroup && !filteredExtensions.some((item) => item.manifest.id === selectedId));
 
   return (
-    <div>
+    <div className="@container/extension-list">
       <div role="search" className="sticky top-0 z-10 border-b border-border bg-background p-3">
-        <div className="relative">
-          <SearchIcon
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            type="search"
-            value={query}
-            aria-label={l.search.placeholder}
-            placeholder={l.search.placeholder}
-            className="pl-9 pr-9 [&::-webkit-search-cancel-button]:appearance-none"
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          {query && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={l.search.clear}
-              className="absolute right-0.5 top-1/2 -translate-y-1/2"
-              onClick={() => setQuery('')}
-            >
-              <XIcon className="size-4" />
-            </Button>
-          )}
+        <div className="grid gap-2 @min-[16rem]/extension-list:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="relative min-w-0">
+            <SearchIcon
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              type="search"
+              value={query}
+              aria-label={l.search.placeholder}
+              placeholder={l.search.placeholder}
+              className="pl-9 pr-9 [&::-webkit-search-cancel-button]:appearance-none"
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            {query && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={l.search.clear}
+                className="absolute right-0.5 top-1/2 -translate-y-1/2"
+                onClick={() => setQuery('')}
+              >
+                <XIcon className="size-4" />
+              </Button>
+            )}
+          </div>
+          <Select value={filter} onValueChange={(value) => setFilter(value as ExtensionListFilter)}>
+            <SelectTrigger className="max-w-28 text-xs" aria-label={permissionCopy.listFilter}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(['all', 'enabled', 'attention', 'local'] as const).map((value) => (
+                <SelectItem key={value} value={value}>
+                  {permissionCopy.listFilters[value]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={filter} onValueChange={(value) => setFilter(value as ExtensionListFilter)}>
-          <SelectTrigger className="mt-2" aria-label={permissionCopy.listFilter}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {(['all', 'enabled', 'attention', 'local'] as const).map((value) => (
-              <SelectItem key={value} value={value}>
-                {permissionCopy.listFilters[value]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         {selectedHidden && (
           <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
             <p>{permissionCopy.currentFiltered}</p>
@@ -136,7 +141,7 @@ export function ExtensionPluginList({ extensions, selectedId, onSelect }: Props)
           </div>
         )}
       </div>
-      <div className="grid gap-2 p-3">
+      <div className="grid gap-3 px-2 py-3">
         {extensionPluginGroupOrder.map((group) => {
           const items = filteredExtensions.filter((extension) => extensionPluginGroup(extension) === group);
           if (!items.length) return null;
@@ -151,7 +156,7 @@ export function ExtensionPluginList({ extensions, selectedId, onSelect }: Props)
                 if (!filtering) setOpenGroups((current) => ({ ...current, [group]: open }));
               }}
               data-extension-group={group}
-              className="grid gap-2"
+              className="grid gap-1"
             >
               <h2 id={headingId}>
                 <CollapsibleTrigger asChild disabled={filtering}>
@@ -159,57 +164,39 @@ export function ExtensionPluginList({ extensions, selectedId, onSelect }: Props)
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="w-full justify-start px-1 text-foreground-secondary disabled:text-foreground-secondary"
+                    className="w-full justify-start px-2 text-muted-foreground disabled:text-muted-foreground"
                   >
                     <PluginIcon group={group} />
                     <span className="min-w-0 flex-1 truncate text-left font-semibold">{l.groups[group]}</span>
-                    <span className="font-normal text-muted-foreground">{items.length}</span>
+                    <span className="font-normal tabular-nums text-muted-foreground">{items.length}</span>
                     <ChevronDownIcon
-                      className={cn('size-4 text-muted-foreground transition-transform', !isOpen && '-rotate-90')}
+                      className={cn(
+                        'size-4 text-muted-foreground transition-transform motion-reduce:transition-none',
+                        !isOpen && '-rotate-90',
+                      )}
                     />
                   </Button>
                 </CollapsibleTrigger>
               </h2>
-              <CollapsibleContent aria-labelledby={headingId} className="grid gap-2">
-                {items.map((extension) => {
-                  const copy = localizeExtensionManifest(extension.manifest, locale);
-                  return (
-                    <Button
+              <CollapsibleContent aria-labelledby={headingId} className="grid gap-0.5">
+                {group === 'features' && (
+                  <BuiltinToolsDirectory
+                    extensions={items}
+                    selectedId={selectedId}
+                    filtering={filtering}
+                    onSelect={onSelect}
+                  />
+                )}
+                {items
+                  .filter((extension) => !isBuiltinToolExtension(extension))
+                  .map((extension) => (
+                    <ExtensionPluginListItem
                       key={extension.manifest.id}
-                      type="button"
-                      variant="ghost"
-                      data-extension-id={extension.manifest.id}
-                      aria-current={selectedId === extension.manifest.id ? 'true' : undefined}
-                      className={cn(
-                        'grid h-auto w-full justify-stretch gap-2 whitespace-normal rounded-sm border border-border p-3 text-left font-normal focus-visible:ring-inset focus-visible:ring-offset-0',
-                        selectedId === extension.manifest.id &&
-                          'border-selected-foreground bg-selected hover:bg-selected active:bg-selected',
-                      )}
-                      onClick={() => onSelect(extension.manifest.id)}
-                    >
-                      <span className="flex min-w-0 items-center gap-2">
-                        <strong className="min-w-0 flex-1 truncate text-sm">{copy.displayName}</strong>
-                        <Badge variant={extension.connectionState === 'READY' ? 'default' : 'outline'}>
-                          {l.connectionStates[extension.connectionState]}
-                        </Badge>
-                      </span>
-                      <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <span>{extension.manifest.version}</span>
-                        <span>{l.kinds[extension.manifest.kind]}</span>
-                        <span>{l.source[extension.source]}</span>
-                        <span className="ml-auto">{extension.enabled ? l.enabled : l.disabled}</span>
-                      </span>
-                      {extension.permissions.some((permission) => permission.required && !permission.granted) && (
-                        <span className="text-xs text-muted-foreground">
-                          {permissionCopy.missingCount(
-                            extension.permissions.filter((permission) => permission.required && !permission.granted)
-                              .length,
-                          )}
-                        </span>
-                      )}
-                    </Button>
-                  );
-                })}
+                      extension={extension}
+                      selectedId={selectedId}
+                      onSelect={onSelect}
+                    />
+                  ))}
               </CollapsibleContent>
             </Collapsible>
           );

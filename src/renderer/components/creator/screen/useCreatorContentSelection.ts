@@ -1,4 +1,8 @@
 import type { BootstrapDto } from '@/shared/contracts';
+import { useMemo } from 'react';
+import { articleDraftDto } from '@/shared/article-draft';
+import { useArticleDetails } from '@/renderer/components/creator/useArticleDetails';
+import { useWorkspaceVisible } from '@/renderer/components/workspace/WorkspacePaneScope';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { useCreationWorkIndex } from '@/renderer/components/creator/useCreationWorkIndex';
 import type { CreatorLocation } from '@/renderer/components/app/app-navigation';
@@ -10,14 +14,17 @@ import {
   derivedVisualParentLocation,
 } from '@/renderer/components/creator/derivedVisualWorkspace';
 
-export function useCreatorContentSelection(data: BootstrapDto, location: CreatorLocation) {
+export function useCreatorContentSelection(
+  data: BootstrapDto,
+  location: CreatorLocation,
+  notify: (message: string) => void,
+) {
+  const active = useWorkspaceVisible();
   const labels = useI18n().messages.creator.album;
   const index = useCreationWorkIndex(data);
   const locationSelection = useCreatorLocationSelection(
     derivedVisualParentLocation(derivedVisualForLocation(data, location)) ?? location,
   );
-  const selectedInspirationStash =
-    (data.inspirationStashes ?? []).find((stash) => stash.id === locationSelection.selectedInspirationStashId) ?? null;
   const selectedImageBreakdown =
     (data.imageBreakdowns ?? []).find((breakdown) => breakdown.id === locationSelection.selectedImageBreakdownId) ??
     null;
@@ -34,8 +41,20 @@ export function useCreatorContentSelection(data: BootstrapDto, location: Creator
   const selectedSocialPostForm = selectedSocialPost
     ? (creationFormByEntity(data.creationItems, 'SOCIAL_POST', selectedSocialPost.id)?.form ?? null)
     : null;
-  const selectedArticle =
-    (data.articles ?? []).find((article) => article.id === locationSelection.selectedArticleId) ?? null;
+  const articleSummary =
+    (data.articles ?? []).find(
+      (article) => article.id === (locationSelection.selectedArticleId ?? locationSelection.selectedInspirationStashId),
+    ) ?? null;
+  const details = useArticleDetails(data.spaceId, articleSummary, active, notify);
+  const selectedArticle = locationSelection.selectedArticleId ? details.article : null;
+  const selectedInspirationStash = useMemo(() => {
+    const id = locationSelection.selectedInspirationStashId;
+    if (!id) return null;
+    return (
+      (data.inspirationStashes ?? []).find((stash) => stash.id === id) ??
+      (details.article?.id === id ? articleDraftDto(details.article) : null)
+    );
+  }, [data.inspirationStashes, locationSelection.selectedInspirationStashId, details.article]);
   const selectedArticleForm = selectedArticle
     ? (creationFormByEntity(data.creationItems, 'ARTICLE', selectedArticle.id)?.form ?? null)
     : null;
@@ -45,6 +64,8 @@ export function useCreatorContentSelection(data: BootstrapDto, location: Creator
     articleRelations: creationRelationsForForm(data, selectedArticleForm, labels, index),
     selectedAlbum: data.albums.find((album) => album.id === locationSelection.selectedAlbumId) ?? null,
     selectedArticle,
+    articleLoadError: details.error,
+    retryArticleLoad: details.retry,
     selectedArticleForm,
     selectedEvaluationSuite,
     selectedEvaluationSuiteItem,

@@ -1,5 +1,10 @@
 import type { AppLocation, HistoryNavigationGuard, NavigationMode } from '@/renderer/components/app/app-navigation';
-import type { WorkspaceRuntimeGroup, WorkspaceRuntimeTab } from '@/renderer/components/workspace/workspace-state';
+import type {
+  WorkspaceRuntimeGroup,
+  WorkspaceRuntimeTab,
+  WorkspaceTabCloseScope,
+  WorkspaceTabMove,
+} from '@/renderer/components/workspace/workspace-state';
 import { activeNavigationEntry } from '@/renderer/components/workspace/workspace-state';
 import { WorkspaceTabStrip } from '@/renderer/components/workspace/WorkspaceTabStrip';
 import { WorkspaceHeader, WorkspaceHeaderTabScope } from '@/renderer/components/workspace/WorkspaceHeader';
@@ -11,7 +16,6 @@ import type { CodexImagesNavigationState } from '@/renderer/features/extensions/
 import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import { useWorkspaceGroupPresentation } from '@/renderer/components/workspace/useWorkspaceGroupPresentation';
-import { workspaceTabFocusSurfaces } from '@/renderer/commands/shortcut-context';
 import type {
   BootstrapDto,
   ImportedCreationOutputDto,
@@ -34,6 +38,7 @@ interface Props {
   dataRevision: number;
   locale: Locale;
   defaultPromptLocale: Locale | null;
+  onPromptLocaleChange(locale: Locale | null): void;
   comparisonFullWindow: boolean;
   creationPromptFullWindow: boolean;
   loadingPreviews: readonly TransitionPreviewDto[];
@@ -50,13 +55,17 @@ interface Props {
   onActivateTab(tabId: string): void;
   onCloseTab(tabId: string, committed?: () => void): void;
   onCloseOtherTabs(tabId: string): void;
-  onReorderTab(tabId: string, delta: -1 | 1): void;
+  onCloseTabs(tabId: string, scope: WorkspaceTabCloseScope, committed?: () => void): void;
+  onTabPinnedChange(tabId: string, pinned: boolean): void;
+  onReorderTab(tabId: string, move: WorkspaceTabMove): void;
   onNewTab(sourceTabId: string, destination: AppLocation['view'] | AppLocation): void;
+  onMeNavigate: TabSurfaceProps['onMeNavigate'];
   onOpenBeside(sourceTabId: string, destination: AppLocation['view'] | AppLocation): void;
   splitAxis: 'columns' | 'rows' | null;
   splitPosition: 'start' | 'end';
   onMergeGroups(): void;
   onMoveTabToOtherGroup(tabId: string): void;
+  canMoveTabToOtherGroup: boolean;
   onSplit(sourceTabId: string, axis: 'columns' | 'rows'): void;
   onReset(): void;
   onCommitLocation(
@@ -86,13 +95,9 @@ function activateFocusedWorkspaceGroup(event: FocusEvent<HTMLDivElement>, onActi
   onActivateGroup();
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
-  const pane = target.closest<HTMLElement>('[data-workspace-tab-id], [data-workspace-sidebar-tab-id]');
+  const pane = target.closest<HTMLElement>('[data-workspace-tab-id]');
   if (!pane || !event.currentTarget.contains(pane)) return;
-  const tabId = pane.dataset.workspaceTabId ?? pane.dataset.workspaceSidebarTabId;
-  if (!tabId) return;
-  for (const surface of workspaceTabFocusSurfaces(event.currentTarget, tabId)) {
-    surface.querySelector('[data-workspace-last-focus]')?.removeAttribute('data-workspace-last-focus');
-  }
+  pane.querySelector('[data-workspace-last-focus]')?.removeAttribute('data-workspace-last-focus');
   target.setAttribute('data-workspace-last-focus', 'true');
 }
 
@@ -107,6 +112,7 @@ function WorkspaceTabSession({
   const onArticleLocationNavigate = useStableCallback(props.onArticleLocationNavigate);
   const onLocationFlushChange = useStableCallback(props.onLocationFlushChange);
   const onNewTab = useStableCallback(props.onNewTab);
+  const onMeNavigate = useStableCallback(props.onMeNavigate);
   const onOpenBeside = useStableCallback(props.onOpenBeside);
   const onCommitLocation = useStableCallback(props.onCommitLocation);
   const onGoBack = useStableCallback(props.onGoBack);
@@ -145,6 +151,7 @@ function WorkspaceTabSession({
         onArticleLocationNavigate={onArticleLocationNavigate}
         onLocationFlushChange={onLocationFlushChange}
         onNewTab={onNewTab}
+        onMeNavigate={onMeNavigate}
         onOpenBeside={onOpenBeside}
         onCommitLocation={onCommitLocation}
         onGoBack={onGoBack}
@@ -177,6 +184,8 @@ export function AppWorkspaceGroup({
   onActivateTab,
   onCloseTab,
   onCloseOtherTabs,
+  onCloseTabs,
+  onTabPinnedChange,
   onReorderTab,
   onNewTab,
   onOpenBeside,
@@ -184,6 +193,7 @@ export function AppWorkspaceGroup({
   splitPosition,
   onMergeGroups,
   onMoveTabToOtherGroup,
+  canMoveTabToOtherGroup,
   onSplit,
   onReset,
   ...surfaceProps
@@ -212,8 +222,6 @@ export function AppWorkspaceGroup({
     >
       <WorkspaceHeader
         tabId={group.activeTabId}
-        mountedTabIds={mountedTabIdsRef.current}
-        enabled={tabsVisible && !collapsed}
         navigationKey={`${group.activeTabId}:${entry.id}:${entry.location.view}`}
         surfaceKey={`${group.activeTabId}:${entry.location.view}`}
         strip={
@@ -227,6 +235,8 @@ export function AppWorkspaceGroup({
               onActivate={onActivateTab}
               onClose={onCloseTab}
               onCloseOthers={onCloseOtherTabs}
+              onCloseTabs={onCloseTabs}
+              onPinnedChange={onTabPinnedChange}
               onReorder={onReorderTab}
               onNewTab={(destination) => onNewTab(group.activeTabId, destination)}
               onOpenBeside={(view) => onOpenBeside(group.activeTabId, view)}
@@ -234,6 +244,7 @@ export function AppWorkspaceGroup({
               splitPosition={splitPosition}
               onMerge={onMergeGroups}
               onMoveToOtherGroup={onMoveTabToOtherGroup}
+              canMoveToOtherGroup={canMoveTabToOtherGroup}
               onSplit={(axis) => onSplit(group.activeTabId, axis)}
               onReset={onReset}
             />

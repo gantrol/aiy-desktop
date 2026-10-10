@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type {
   AlbumDto,
-  ArticleDto,
+  ArticleListItem,
   Locale,
   VideoDocumentDto,
   VideoDocumentSummaryDto,
@@ -49,7 +49,7 @@ export function useCreatorLibraryRuntime({
   const [distilledPalette, setDistilledPalette] = useState<WordPaletteDto | null>(null);
   const [renameSeriesOpen, setRenameSeriesOpen] = useState(false);
   const [renameAlbum, setRenameAlbum] = useState<AlbumDto | null>(null);
-  const [renameArticle, setRenameArticle] = useState<ArticleDto | null>(null);
+  const [renameArticle, setRenameArticle] = useState<ArticleListItem | null>(null);
   const [renameDocument, setRenameDocument] = useState<VideoDocumentSummaryDto | null>(null);
   const [settingsAlbum, setSettingsAlbum] = useState<AlbumDto | null>(null);
   const [createAlbumRequest, setCreateAlbumRequest] = useState<CreationAlbumRequest | null>(null);

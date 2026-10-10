@@ -1,3 +1,4 @@
+import type { ClipboardCaptureApi } from '@/shared/contracts/clipboard-capture';
 import type {
   MaterialAlbumMembershipApplyInput,
   MaterialAlbumMembershipApplyResult,
@@ -71,6 +72,11 @@ import type {
 } from '@/shared/contracts/background-issue';
 import type { BlockDocument } from '@/shared/contracts/block-document';
 import type {
+  TablePublicationInput,
+  TablePublicationResult,
+  TablePublicationDiscard,
+} from '@/shared/contracts/table-publication';
+import type {
   BrowserCompanionDeleteInput,
   BrowserCompanionBatchInput,
   BrowserCompanionBatchResult,
@@ -114,6 +120,7 @@ import type {
   CodexVisualizationArtifactActionInput,
   CodexVisualizationExportResult,
   CodexVisualizationHtmlPreviewDto,
+  CodexVisualizationHtmlPreviewInput,
   CodexVisualizationHtmlPreviewReleaseInput,
   CodexVisualizationListInput,
   CodexVisualizationMermaidPreviewDto,
@@ -121,6 +128,9 @@ import type {
   CodexVisualizationSnapshotDto,
 } from '@/shared/contracts/codex-visualizations';
 import type { ContentImageImportsApi } from '@/shared/contracts/content-image-import';
+import type { EmbeddedWebApi } from '@/shared/contracts/embedded-web';
+import type { HtmlFileApi } from '@/shared/contracts/html-file';
+import type { CreationReadingApi } from '@/shared/contracts/creation-reading';
 import type {
   CreationDraftDto,
   CreationDraftLoadInput,
@@ -1058,7 +1068,7 @@ export interface ExtensionRevokePermissionsInput {
 export interface ExtensionInstallLocalResult {
   extensionId: string | null;
   extensions: ExtensionDto[];
-  errorCode?: 'UPDATE_UNAVAILABLE' | 'UPDATE_ID_MISMATCH' | 'UPDATE_INCOMPATIBLE';
+  errorCode?: 'UPDATE_UNAVAILABLE' | 'UPDATE_ID_MISMATCH' | 'UPDATE_INCOMPATIBLE' | 'BUILT_IN_IDENTITY';
 }
 
 export interface CodexGeneratedImageDto {
@@ -2894,7 +2904,7 @@ export interface BootstrapDto {
   imageBreakdownRoutes?: ImageBreakdownRouteDto[];
   inspirationStashes?: InspirationStashDto[];
   socialPosts?: SocialPostDto[];
-  articles?: ArticleDto[];
+  articles?: ArticleListItem[];
   derivedVisuals?: DerivedVisualDto[];
   derivedVisualPrompts?: DerivedVisualPromptTemplatesDto;
   styleExplorationBatches: StyleExplorationBatchDto[];
@@ -3038,6 +3048,19 @@ export interface ArticleDto {
   updatedAt: string;
 }
 
+/** Navigation and cover metadata; never accepted by editor/save APIs as a document. */
+export interface ArticleSummaryDto extends Omit<ArticleDto, 'content' | 'elements' | 'comments'> {
+  detailsLoaded: false;
+  hasCreationInput: boolean;
+  previewMarkdown: string;
+  content: Pick<
+    ArticleContentDto,
+    'title' | 'editorMode' | 'mediaAssets' | 'mediaBindings' | 'coverAssetId' | 'coverVariants'
+  >;
+}
+
+export type ArticleListItem = ArticleDto | ArticleSummaryDto;
+
 export interface DerivedVisualPromptTemplatesDto {
   articleHeader: string;
   articleInline: string;
@@ -3046,6 +3069,7 @@ export interface DerivedVisualPromptTemplatesDto {
 }
 
 export interface DerivedVisualDto {
+  recipe?: import('./contracts/task-recipe').TaskRecipeSnapshot;
   /** Absent on legacy shared-cover workspaces. */
   coverRatio?: import('@/shared/article-covers').ArticleCoverRatio;
   id: string;
@@ -3258,6 +3282,7 @@ export interface WordPaletteParameterDto {
 export type WordPaletteStatus = 'ACTIVE' | 'ARCHIVED';
 
 export interface WordPaletteRevisionDto {
+  method?: import('./contracts/task-recipe').TaskRecipeMethod;
   id: string;
   revisionNo: number;
   name: string;
@@ -3273,6 +3298,7 @@ export interface WordPaletteRevisionDto {
 }
 
 export interface WordPaletteDto {
+  method?: import('./contracts/task-recipe').TaskRecipeMethod;
   id: string;
   revisionId: string;
   revisionNo: number;
@@ -3307,6 +3333,7 @@ export interface WordPaletteParameterInput {
 }
 
 export interface CreateWordPaletteInput {
+  method?: import('./contracts/task-recipe').TaskRecipeMethod;
   locale: Locale;
   name: string;
   nameLocale: ContentLocale;
@@ -3319,6 +3346,7 @@ export interface CreateWordPaletteInput {
 
 export interface UpdateWordPaletteInput extends CreateWordPaletteInput {
   paletteId: string;
+  expectedRevisionId?: string;
 }
 
 export interface WordPaletteReferenceInput {
@@ -4240,6 +4268,9 @@ export type NavigationCommand = 'back' | 'forward';
 
 export interface DesktopApi
   extends
+    EmbeddedWebApi,
+    HtmlFileApi,
+    CreationReadingApi,
     ContentImageImportsApi,
     CreatorInputRecoveryApi,
     SocialPostRecoveryApi,
@@ -4253,6 +4284,7 @@ export interface DesktopApi
   openAiCostsConnection: import('@/shared/openai-costs').OpenAiCostsConnectionApi;
   maintenanceGuide: MaintenanceGuideApi;
   workTracking: WorkTrackingApi;
+  clipboardCapture: ClipboardCaptureApi;
   agentPermissions: AgentPermissionsApi;
   onArticleEditorDrain(listener: (draining: boolean) => Promise<boolean>): () => void;
   rendererDiagnosticRecord(input: RendererDiagnosticInput): void;
@@ -4286,6 +4318,14 @@ export interface DesktopApi
   appUpdateDownload(): Promise<AppUpdateStateDto>;
   appUpdateInstall(): Promise<AppUpdateStateDto>;
   extensionsList(): Promise<ExtensionDto[]>;
+  promptRecipesGet(spaceId: string): Promise<import('./contracts/prompt-recipes').PromptRecipeDefaults>;
+  promptRecipeSelect(
+    input: import('./contracts/prompt-recipes').PromptRecipeSelection,
+  ): Promise<import('./contracts/prompt-recipes').PromptRecipeDefaults>;
+  promptRecipeResolve(
+    task: import('./contracts/task-recipe').TaskRecipeTask,
+    spaceId: string,
+  ): Promise<import('./contracts/task-recipe').TaskRecipeInput | null>;
   extensionsReload(): Promise<ExtensionDto[]>;
   extensionLanguagePacksList(): Promise<ExtensionLanguagePackDto[]>;
   extensionInstallLocal(): Promise<ExtensionInstallLocalResult>;
@@ -4330,7 +4370,7 @@ export interface DesktopApi
   codexVisualizationsList(input: CodexVisualizationListInput): Promise<CodexVisualizationSnapshotDto>;
   codexVisualizationOpen(input: CodexVisualizationArtifactActionInput): Promise<void>;
   codexVisualizationPrepareHtmlPreview(
-    input: CodexVisualizationArtifactActionInput,
+    input: CodexVisualizationHtmlPreviewInput,
   ): Promise<CodexVisualizationHtmlPreviewDto>;
   codexVisualizationPrepareMermaidPreview(
     input: CodexVisualizationArtifactActionInput,
@@ -4487,8 +4527,10 @@ export interface DesktopApi
   socialPostMove(input: SocialPostMoveInput): Promise<SocialPostDto>;
   socialPostSetArchived(input: SocialPostSetArchivedInput): Promise<SocialPostDto>;
   browserCompanionStage(input: BrowserCompanionStageInput): Promise<BrowserCompanionStageResult>;
+  browserCompanionPrepareTables(input: TablePublicationInput): Promise<TablePublicationResult>;
+  browserCompanionDiscardTablePreviews(input: TablePublicationDiscard): Promise<void>;
   browserCompanionStageBatch(input: BrowserCompanionBatchInput): Promise<BrowserCompanionBatchResult>;
-  browserCompanionBatchHistory(): Promise<BrowserCompanionBatchResult[]>;
+  browserCompanionBatchHistory(input?: { includeHistory: boolean }): Promise<BrowserCompanionBatchResult[]>;
   browserCompanionReopen(input: BrowserCompanionReopenInput): Promise<BrowserCompanionStageResult>;
   browserCompanionDestinations(): Promise<BrowserCompanionDestinationsResult>;
   browserCompanionOpen(input: BrowserCompanionOpenInput): Promise<BrowserCompanionOpenResult>;
@@ -4669,8 +4711,14 @@ export interface DesktopApi
   annotationsReuseHistory(input: AnnotationHistoryReuseInput): Promise<AnnotationHistoryReuseResult | null>;
   annotationsSetStatus(input: AnnotationStatusInput): Promise<AnnotationDto>;
   galleryList(input: GalleryListInput): Promise<GalleryPageDto>;
+  imageSearch: import('@/shared/contracts/image-search').ImageSearchApi;
+  imageVisibility: import('@/shared/contracts/image-visibility').ImageVisibilityApi;
   galleryMaterialGet(materialId: string, locale: Locale): Promise<GalleryMaterialDto | null>;
   assetRelationshipGet(assetId: string, locale: Locale): Promise<AssetRelationshipDto>;
+  assetNavigationGet(
+    assetId: string,
+    locale: Locale,
+  ): Promise<import('@/shared/contracts/asset-navigation').AssetNavigationDto | null>;
   assetFileAvailability(assetId: string): Promise<AssetFileAvailabilityDto>;
   assetFileCopy(assetId: string): Promise<void>;
   assetFileSaveAs(assetId: string): Promise<AssetFileSaveResult>;

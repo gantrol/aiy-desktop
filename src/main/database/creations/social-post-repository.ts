@@ -445,7 +445,9 @@ export class SocialPostRepository {
         `SELECT draft.*, revision.id AS revision_id, revision.revision_no,
       revision.content_json, revision.content_hash FROM social_post_drafts draft
       JOIN social_post_revisions revision ON revision.draft_id = draft.id
-      WHERE draft.id = ? AND revision.id = ? AND draft.deleted_at IS NULL`,
+      WHERE draft.id = ? AND revision.id = ? AND (draft.deleted_at IS NULL OR EXISTS (
+        SELECT 1 FROM article_legacy_posts legacy JOIN articles article ON article.id=legacy.article_id
+        WHERE legacy.post_id=draft.id AND article.deleted_at IS NULL))`,
       )
       .get(postId, revisionId) as JsonMap | undefined;
     if (!row) throw new Error('Social post revision not found');

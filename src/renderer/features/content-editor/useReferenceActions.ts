@@ -60,7 +60,7 @@ export function useReferenceActions(props: ReferenceActionsProps) {
   const selector = reference.selector?.kind === 'BLOCK' ? reference.selector : undefined;
   const target = currentReferenceTarget(reference.source, selector?.blockId, selector?.section, selector?.scope);
   const canFollow =
-    reference.source.kind === 'ARTICLE' &&
+    target.source.kind === 'ARTICLE' &&
     Boolean(reference.selector) &&
     reference.selector?.kind !== 'MEMBERS' &&
     !(host.source?.kind === 'ARTICLE' && host.source.id === reference.source.id && !selector);

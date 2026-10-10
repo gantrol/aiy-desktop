@@ -108,9 +108,9 @@ function CommentRow({
   return (
     <div
       className={cn(
-        'group/item relative flex min-w-0 border-b border-l-2 border-l-transparent transition-colors duration-fast',
+        'group/item relative flex min-w-0 border-b transition-colors duration-fast',
         hovered && 'bg-warning-surface/20',
-        selected && 'border-l-warning bg-warning-surface/35',
+        selected && 'bg-warning-surface/35',
       )}
       onPointerEnter={() => onHover(comment.id)}
       onPointerLeave={() => onHover(null)}

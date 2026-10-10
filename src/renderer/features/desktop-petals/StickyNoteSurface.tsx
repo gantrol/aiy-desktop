@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from 'react';
+import type { ComponentProps, HTMLAttributes, ReactNode } from 'react';
 import { LockKeyhole } from 'lucide-react';
 import { noteAppearanceStyle, PetalNoteIcon } from '@/renderer/features/desktop-petals/petal-appearance';
 import type { PetalColor, PetalIcon } from '@/shared/contracts/desktop-petals';
@@ -15,6 +15,7 @@ export function StickyNoteSurface({
   closing = false,
   animate = true,
   nativeDrag = true,
+  headerDrag,
   fullWindow = false,
   appearance,
   actions,
@@ -30,6 +31,7 @@ export function StickyNoteSurface({
   closing?: boolean;
   animate?: boolean;
   nativeDrag?: boolean;
+  headerDrag?: HTMLAttributes<HTMLElement>;
   fullWindow?: boolean;
   appearance?: ReactNode;
   actions: ReactNode;
@@ -52,7 +54,9 @@ export function StickyNoteSurface({
           'flex shrink-0 cursor-move items-center gap-0.5 px-3 py-1.5 select-none [&_svg]:size-3.5',
           fullWindow && 'hidden',
           nativeDrag ? '[-webkit-app-region:drag]' : '[-webkit-app-region:no-drag]',
+          headerDrag && 'touch-none',
         )}
+        {...headerDrag}
       >
         {appearance ?? <PetalNoteIcon icon={icon} className="shrink-0 opacity-60" />}
         <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-[11px] opacity-60">
@@ -68,7 +72,16 @@ export function StickyNoteSurface({
         </span>
         {actions}
       </header>
-      {fullWindow && <div className="h-3 shrink-0 cursor-move [-webkit-app-region:drag]" title={copy.controls.drag} />}
+      {fullWindow && (
+        <div
+          className={cn(
+            'h-3 shrink-0 cursor-move touch-none',
+            nativeDrag ? '[-webkit-app-region:drag]' : '[-webkit-app-region:no-drag]',
+          )}
+          title={copy.controls.drag}
+          {...headerDrag}
+        />
+      )}
       {children}
     </section>
   );

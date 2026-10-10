@@ -5,6 +5,8 @@ import type { ContentSource } from '@/shared/contracts/content-source';
 import type { ContentLookupInput, ContentLookupResult } from '@/shared/contracts/content-search';
 import { contentSearchQuery, contentSearchSnippet } from '@/shared/content-search-query';
 import { ContentSearchIndex } from '@/main/database/search/content-search-index';
+import { candidateSource, type ContentSearchCandidate } from '@/main/database/search/content-search-candidates';
+import type { SemanticContentSource } from '@/main/image-search/content-protocol';
 
 const PAGE_SIZE = 30;
 type SearchRow = {
@@ -25,6 +27,39 @@ export class ContentSearchRepository {
     read: (source: ContentSource) => ContentDocument,
   ) {
     this.index = new ContentSearchIndex(db, read);
+  }
+
+  prepareSemanticSources(type: ContentLookupInput['type'], advance: boolean, retry: boolean) {
+    this.index.initialize();
+    this.db.transaction(() => {
+      this.index.refreshSources();
+      this.index.prepare(retry, type, advance);
+    })();
+    return this.index.generation;
+  }
+
+  listSemanticSources(after: string): SemanticContentSource[] {
+    const rows = this.db
+      .prepare(
+        `SELECT c.*,e.title,e.body,e.state FROM temp.aiy_search_sources c
+      LEFT JOIN temp.aiy_search_entries e ON c.key=e.key AND c.stamp=e.stamp
+      WHERE c.key>? ORDER BY c.key LIMIT 8`,
+      )
+      .all(after) as (ContentSearchCandidate & {
+      title: string | null;
+      body: string | null;
+      state: SemanticContentSource['state'] | null;
+    })[];
+    return rows.map((row) => ({
+      key: row.key,
+      stamp: row.stamp,
+      source: candidateSource(row),
+      title: row.title ?? '',
+      body: row.body ?? '',
+      state: row.state ?? 'pending',
+      updatedAt: row.updated_at,
+      branchRole: row.branch_role,
+    }));
   }
 
   lookup(input: ContentLookupInput): ContentLookupResult {

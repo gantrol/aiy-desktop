@@ -1,10 +1,10 @@
 import { Columns3Icon, Rows3Icon } from 'lucide-react';
 import { useId } from 'react';
 import { useMaterialLayoutPreferences } from '@/renderer/components/gallery/materialLayoutPreferences';
-import { Button } from '@/renderer/components/ui/button';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { Label } from '@/renderer/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
+import { ResponsiveButton } from '@/renderer/components/ui/responsive-button';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { Slider } from '@/renderer/components/ui/slider';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -25,12 +25,11 @@ export function MaterialLayoutControl({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-9" aria-label={l.viewLabel} title={l.viewLabel}>
+        <ResponsiveButton variant="outline" size="sm" className="h-9" label={l.arrangement} aria-label={l.viewLabel}>
           <Icon className="size-4" />
-          {l.arrangement}
-        </Button>
+        </ResponsiveButton>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-64 space-y-4">
+      <PopoverContent align="end" className="w-64 max-w-[calc(100vw-2rem)] space-y-4">
         {showArrangementControl && (
           <Segmented
             type="single"

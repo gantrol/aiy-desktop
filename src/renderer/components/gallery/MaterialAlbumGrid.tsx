@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type RefObject } from 'react';
 import type { MaterialAlbumDto, MaterialSelectionTargetInput } from '@/shared/contracts';
 import { CollectionAlbumCard } from '@/renderer/components/gallery/CreationAlbumGrid';
 import type { MaterialAlbumBrowseSummary } from '@/renderer/components/gallery/materialAlbumBrowse';
@@ -6,6 +6,7 @@ import { CollectionMasonry, collectionCoverRatio } from '@/renderer/components/g
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
+  viewportRef?: RefObject<HTMLDivElement | null>;
   title: string;
   albums: readonly MaterialAlbumBrowseSummary[];
   busy?: boolean;
@@ -27,6 +28,7 @@ function albumForCard(summary: MaterialAlbumBrowseSummary): MaterialAlbumDto {
 }
 
 export function MaterialAlbumGrid({
+  viewportRef,
   title,
   albums,
   busy,
@@ -58,6 +60,7 @@ export function MaterialAlbumGrid({
         <span className="text-xs tabular-nums text-muted-foreground">{albums.length}</span>
       </div>
       <CollectionMasonry
+        viewportRef={viewportRef}
         items={layoutItems}
         renderItem={(_item, index) => {
           const summary = albums[index];

@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ArticleDto, BootstrapDto, ExtensionDto } from '@/shared/contracts';
 import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
-import { Badge } from '@/renderer/components/ui/badge';
 import {
   navigationLocationKey,
   type ExtensionsLocation,
   type NavigationMode,
 } from '@/renderer/components/app/app-navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
+import type { CollectionDetailLayoutHandle } from '@/renderer/components/workbench/CollectionDetailLayout';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { PackScreen } from '@/renderer/features/packs/PackScreen';
 import { CodexArtifactsScreen } from '@/renderer/features/extensions/CodexArtifactsScreen';
@@ -49,6 +49,9 @@ export function ExtensionCenterScreen({
   const locationKey = navigationLocationKey(location);
   const appliedLocationKeyRef = useRef(locationKey);
   const [tab, setTab] = useState<'plugins' | 'contentPacks'>(location.tab);
+  const root = useRef<HTMLDivElement>(null);
+  const collectionRef = useRef<CollectionDetailLayoutHandle>(null);
+  const restoreNavigationFocus = useRef(false);
 
   function commitExtensionsLocation(nextLocation: ExtensionsLocation, mode: NavigationMode = 'push') {
     appliedLocationKeyRef.current = navigationLocationKey(nextLocation);
@@ -61,6 +64,18 @@ export function ExtensionCenterScreen({
     setTab(location.tab);
   }, [activeSurface, locationKey]);
 
+  useLayoutEffect(() => {
+    if (!restoreNavigationFocus.current) return;
+    restoreNavigationFocus.current = false;
+    collectionRef.current?.revealCollection();
+    const frame = requestAnimationFrame(() => {
+      root.current
+        ?.querySelector<HTMLButtonElement>('[data-extension-center-tabs] [data-state="active"]')
+        ?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [tab]);
+
   if (activeSurface === 'discovery') {
     return (
       <CodexArtifactsScreen
@@ -72,28 +87,41 @@ export function ExtensionCenterScreen({
     );
   }
 
+  const collectionHeader = (
+    <TabsList
+      data-extension-center-tabs
+      density="compact"
+      aria-label={l.title}
+      className="grid h-8 flex-1 grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] border-b-0"
+    >
+      <TabsTrigger value="plugins" className="min-w-0 px-2" title={l.tabs.plugins}>
+        <span className="truncate">{l.tabs.plugins}</span>
+      </TabsTrigger>
+      <TabsTrigger value="contentPacks" className="min-w-0 px-2" title={l.tabs.contentPacks}>
+        <span className="truncate">{l.tabs.contentPacks}</span>
+      </TabsTrigger>
+    </TabsList>
+  );
+
   return (
     <Tabs
+      ref={root}
       value={tab}
       onValueChange={(value) => {
         const nextTab = value as typeof tab;
+        if (nextTab === tab) return;
+        restoreNavigationFocus.current = true;
         setTab(nextTab);
         commitExtensionsLocation({ ...location, tab: nextTab });
       }}
       className="size-full bg-background"
     >
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b px-5">
-        <h1 className="text-base font-semibold">{l.title}</h1>
-        <Badge variant="secondary">{extensions.length}</Badge>
-        <TabsList className="ml-4 self-end border-0">
-          <TabsTrigger value="plugins">{l.tabs.plugins}</TabsTrigger>
-          <TabsTrigger value="contentPacks">{l.tabs.contentPacks}</TabsTrigger>
-        </TabsList>
-      </header>
       <TabsContent value="plugins" className="min-h-0 flex-1">
         <ExtensionPluginScreen
           key={data.spaceId}
           active={active && tab === 'plugins'}
+          collectionRef={collectionRef}
+          collectionHeader={collectionHeader}
           data={data}
           dataRevision={dataRevision}
           onArticleSaved={onArticleSaved}
@@ -112,6 +140,8 @@ export function ExtensionCenterScreen({
         <PackScreen
           active={active && tab === 'contentPacks'}
           embedded
+          collectionRef={collectionRef}
+          collectionHeader={collectionHeader}
           requestedId={location.packId}
           onSelectedIdChange={(packId, mode) =>
             commitExtensionsLocation({ ...location, tab: 'contentPacks', packId }, mode)

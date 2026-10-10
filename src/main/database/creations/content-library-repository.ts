@@ -60,6 +60,7 @@ export class ContentLibraryRepository {
   }
 
   read(source: ContentSource): ContentDocument {
+    if (source.kind === 'SOCIAL_POST') return this.read({ ...source, kind: 'ARTICLE' });
     let body: ContentBody;
     if (source.kind === 'ARTICLE') {
       const article = source.revisionId
@@ -84,16 +85,6 @@ export class ContentLibraryRepository {
               ]
             : [];
         }),
-      };
-    } else if (source.kind === 'SOCIAL_POST') {
-      const post = source.revisionId
-        ? this.repositories.socialPosts.getRevision(source.id, source.revisionId)
-        : this.repositories.socialPosts.get(source.id);
-      body = {
-        title: post.content.title,
-        revisionId: post.revisionId,
-        markdown: post.content.format === 'markdown' ? post.content.body : plainTextMarkdown(post.content.body),
-        media: this.media(post.content.mediaAssetIds),
       };
     } else if (source.kind === 'INSPIRATION_STASH') {
       const revision = source.revisionId
@@ -178,6 +169,7 @@ export class ContentLibraryRepository {
   }
 
   private assertCurrentSourceAvailable(source: ContentSource) {
+    if (source.kind === 'SOCIAL_POST') source = { ...source, kind: 'ARTICLE' };
     let available: unknown;
     if (source.kind === 'ARTICLE') {
       available = this.db
@@ -186,15 +178,6 @@ export class ContentLibraryRepository {
           JOIN article_revisions revision
             ON revision.id = article.current_revision_id AND revision.article_id = article.id
           WHERE article.id = ? AND article.status = 'ACTIVE' AND article.deleted_at IS NULL`,
-        )
-        .get(source.id);
-    } else if (source.kind === 'SOCIAL_POST') {
-      available = this.db
-        .prepare(
-          `SELECT 1 FROM social_post_drafts draft
-          JOIN social_post_revisions revision
-            ON revision.id = draft.current_revision_id AND revision.draft_id = draft.id
-          WHERE draft.id = ? AND draft.status = 'ACTIVE' AND draft.deleted_at IS NULL`,
         )
         .get(source.id);
     } else if (source.kind === 'VIDEO_DOCUMENT' && source.branchId) {
@@ -220,7 +203,6 @@ export class ContentLibraryRepository {
       .prepare(
         `SELECT * FROM (
       SELECT 'ARTICLE' kind, id, NULL branch_id, updated_at FROM articles WHERE deleted_at IS NULL AND status = 'ACTIVE'
-      UNION ALL SELECT 'SOCIAL_POST', id, NULL, updated_at FROM social_post_drafts WHERE deleted_at IS NULL AND status = 'ACTIVE'
       UNION ALL SELECT 'VIDEO_DOCUMENT', d.id, b.id, d.updated_at FROM documents d JOIN document_branches b ON b.document_id = d.id WHERE d.deleted_at IS NULL AND d.status = 'ACTIVE' AND b.deleted_at IS NULL AND EXISTS(SELECT 1 FROM document_drafts draft JOIN document_draft_revisions r ON r.draft_id = draft.id WHERE draft.branch_id = b.id)
     ) ORDER BY updated_at DESC, kind, id, branch_id LIMIT 41 OFFSET ?`,
       )
@@ -378,12 +360,23 @@ export class ContentLibraryRepository {
     if (!ids.length) return [];
     const unique = [...new Set(ids)];
     const rows = this.db
-      .prepare(`SELECT snapshot_json FROM content_block_references WHERE id IN (${unique.map(() => '?').join(',')})`)
-      .all(...unique) as { snapshot_json: string }[];
+      .prepare(
+        `SELECT ref.snapshot_json,legacy.post_id FROM content_block_references ref
+        LEFT JOIN article_legacy_posts legacy ON legacy.post_id=ref.source_id
+          AND ref.source_kind IN ('ARTICLE','SOCIAL_POST')
+        WHERE ref.id IN (${unique.map(() => '?').join(',')})`,
+      )
+      .all(...unique) as { snapshot_json: string; post_id: string | null }[];
+    const spaceId = rows.some((row) => row.post_id)
+      ? (this.db.prepare('SELECT id FROM local_spaces WHERE singleton_key=1').pluck().get() as string | undefined)
+      : undefined;
     const byId = new Map(
       rows.map((row) => {
         const ref = contentReferenceSchema.parse(JSON.parse(row.snapshot_json));
-        return [ref.id, ref] as const;
+        return [
+          ref.id,
+          !ref.spaceId && ref.source.kind === 'SOCIAL_POST' && row.post_id && spaceId ? { ...ref, spaceId } : ref,
+        ] as const;
       }),
     );
     return unique.flatMap((id) => byId.get(id) ?? []);
@@ -396,7 +389,7 @@ export class ContentLibraryRepository {
       )
       .run(
         reference.id,
-        reference.source.kind,
+        reference.source.kind === 'SOCIAL_POST' ? 'ARTICLE' : reference.source.kind,
         reference.source.id,
         reference.revisionId,
         JSON.stringify(reference),

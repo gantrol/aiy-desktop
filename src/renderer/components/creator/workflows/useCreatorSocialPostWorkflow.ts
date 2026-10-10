@@ -7,10 +7,12 @@ import { creationFormByEntity } from '@/renderer/components/creator/creationForm
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import { blockDocumentMarkdown } from '@/shared/block-document-codecs';
+import { inspirationArticleIds } from '@/shared/article-summary';
 import { contentAssetPath } from '@/shared/content-document';
 import { contentMarkdownMediaPaths, replaceMarkdownMedia } from '@/shared/content-markdown';
 import type {
   ArticleDto,
+  ArticleListItem,
   AssetDto,
   CreationItemDto,
   InspirationStashDto,
@@ -24,6 +26,7 @@ import type { SocialPostRevisionSaveInput } from '@/shared/contracts/social-post
 interface Options {
   creationItems: readonly CreationItemDto[];
   inspirationStashes: readonly InspirationStashDto[];
+  articles?: readonly ArticleListItem[];
   locale: Locale;
   notify(message: string): void;
   onSaved(post: SocialPostDto): void;
@@ -46,7 +49,7 @@ export function useCreatorSocialPostWorkflow(options: Options) {
   const refresh = useStableCallback(options.refresh);
 
   function activeSourceId(sourceId: string | null) {
-    return sourceId && options.inspirationStashes.some((stash) => stash.id === sourceId) ? sourceId : null;
+    return sourceId && inspirationArticleIds(options).includes(sourceId) ? sourceId : null;
   }
 
   function formId(entityId: string) {

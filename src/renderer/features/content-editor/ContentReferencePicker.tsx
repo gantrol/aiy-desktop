@@ -28,7 +28,10 @@ export function currentReferenceTarget(
     ? source
     : { ...source, revisionId: undefined };
   return {
-    source: current,
+    source:
+      current.kind === 'SOCIAL_POST' || current.kind === 'INSPIRATION_STASH'
+        ? { ...current, kind: 'ARTICLE' }
+        : current,
     blockId,
     section,
     scope,

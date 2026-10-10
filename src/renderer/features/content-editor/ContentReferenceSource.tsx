@@ -25,7 +25,7 @@ export function ContentReferenceSource({
     labels = messages.desktopPetals.document;
   const [open, setOpen] = useState(false);
   const navigate = useReferenceNavigation(originBlockId, open);
-  const canOpenEditor = reference.source.kind === 'ARTICLE' || reference.source.kind === 'INSPIRATION_STASH';
+  const canOpenEditor = ['ARTICLE', 'INSPIRATION_STASH', 'SOCIAL_POST'].includes(reference.source.kind);
   const [current, setCurrent] = useState<ReferencePreview | null>(null);
   const [showUses, setShowUses] = useState(false);
   const [error, setError] = useState(''),

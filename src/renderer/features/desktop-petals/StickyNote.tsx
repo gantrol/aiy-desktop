@@ -15,6 +15,7 @@ import type { PetalNoteMenuActions } from '@/renderer/features/desktop-petals/Pe
 import { PetalNoteRecovery } from '@/renderer/features/desktop-petals/PetalNoteRecovery';
 import { StickyNoteSurface } from '@/renderer/features/desktop-petals/StickyNoteSurface';
 import { usePetalReferences } from '@/renderer/features/desktop-petals/use-petal-references';
+import { usePetalDrag } from '@/renderer/features/desktop-petals/use-petal-drag';
 import { usePetalFiles } from '@/renderer/features/desktop-petals/use-petal-files';
 import { PetalFileAttachments } from '@/renderer/features/desktop-petals/PetalFileAttachments';
 import { NoteFileInput } from '@/renderer/features/desktop-petals/NoteFileInput';
@@ -58,6 +59,7 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
   const editorHandle = useRef<VideoDocumentWysiwygEditorHandle | null>(null);
   const scrollRoot = useRef<HTMLDivElement | null>(null);
   const onError = useCallback((reason: unknown) => setAppearanceError(String(reason)), []);
+  const moveNote = usePetalDrag(undefined, onError);
   const references = usePetalReferences(session, onError);
   const { settle } = references;
   const fileInput = useRef<HTMLInputElement>(null);
@@ -170,10 +172,28 @@ function StickyNoteSession({ initialNote, snapshot }: { initialNote: DesktopNote
         icon={state.note.icon}
         editable={state.note.editable}
         closing={closing}
+        nativeDrag={false}
+        headerDrag={{
+          ...moveNote.handlers,
+          onPointerDown: (event) => {
+            if (
+              !snapshot.suspended &&
+              !closing &&
+              !(event.target as HTMLElement).closest('button, input, textarea, a, [role=menu]')
+            )
+              moveNote.handlers.onPointerDown(event);
+          },
+        }}
         fullWindow={fullWindow}
         appearance={<PetalNoteOperations {...noteActions} />}
         actions={fullWindow ? null : windowActions}
         onDragOver={references.onDragOver}
+        onPointerDownCapture={(event) => {
+          if (event.altKey && !snapshot.suspended && !closing) {
+            event.stopPropagation();
+            moveNote.handlers.onPointerDown(event);
+          }
+        }}
         {...noteFileCapture(files.importFiles)}
         onAnimationEnd={(event) => {
           if (event.target === event.currentTarget && event.animationName === 'note-close') void finishCollapse();

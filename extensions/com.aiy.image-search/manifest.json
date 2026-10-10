@@ -1,0 +1,28 @@
+{
+  "manifestVersion": 1,
+  "kind": "CAPABILITY",
+  "id": "com.aiy.image-search",
+  "version": "0.1.0",
+  "displayName": "Semantic Search",
+  "description": "Local semantic search for images and saved documents",
+  "engines": { "aiy": "^0.3.10" },
+  "runtime": { "kind": "HOST", "id": "image-search" },
+  "contributes": {
+    "searchProviders": ["library.semanticImages", "library.semanticContent"],
+    "commands": ["imageSearch.configure", "imageSearch.downloadModel"]
+  },
+  "permissions": ["library.read:active-images", "library.read:active-documents"],
+  "optionalPermissions": [
+    "network:https://huggingface.co",
+    "network:https://unpkg.com",
+    "library.read:selected-videos",
+    "library.read:active-videos"
+  ],
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": { "displayName": "Semantic Search", "description": "Local semantic search for images and saved documents" },
+      "zh": { "displayName": "语义搜索", "description": "本地搜索图片画面与已保存文稿的语义" }
+    }
+  }
+}

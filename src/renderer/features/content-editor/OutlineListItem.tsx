@@ -100,7 +100,7 @@ function OutlineItem({ node, editor, getPos, view: editorView }: NodeViewProps) 
   }
   return (
     <NodeViewWrapper
-      className={`aiy-outline-item relative ${visibility === 'path' ? 'pl-0' : 'pl-6'} ${selected ? 'bg-muted/40' : ''}`}
+      className={`aiy-outline-item relative ${visibility === 'path' ? 'pl-0' : 'pl-6'} ${selected ? 'bg-selected/55' : ''}`}
       data-outline-id={id}
       data-outline-editing={editing}
       data-outline-folded={folded ? 'true' : undefined}

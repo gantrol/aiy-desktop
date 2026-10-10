@@ -34,6 +34,7 @@ export function articleEditorMetadataFromContent(input: ArticleContentInput): Ar
     ...(content.coverVariants?.length ? { coverVariants: content.coverVariants } : {}),
     ...(content.creationInput ? { creationInput: content.creationInput } : {}),
     ...(content.files ? { files: content.files } : {}),
+    ...(content.reading ? { reading: content.reading } : {}),
   };
 }
 

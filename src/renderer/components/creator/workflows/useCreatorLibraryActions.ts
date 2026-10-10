@@ -4,6 +4,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import type { AlbumDto, Locale, VideoDocumentDto } from '@/shared/contracts';
 import { createSerialTaskQueue } from '@/renderer/lib/serialTaskQueue';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
+import { articleManagementError } from '@/renderer/components/creator/articleManagementError';
 
 type AlbumDestination = 'LIBRARY' | 'NEW_CREATION';
 
@@ -22,12 +23,9 @@ interface Options {
   refreshAlbums(): Promise<void>;
 }
 
-function messageFor(reason: unknown) {
-  return reason instanceof Error ? reason.message : String(reason);
-}
-
 export function useCreatorLibraryActions(options: Options) {
   const { messages } = useI18n();
+  const messageFor = (reason: unknown) => articleManagementError(reason, messages.creator.album);
   const [busy, setBusy] = useState(false);
   const [moveQueue] = useState(createSerialTaskQueue);
   const busyRef = useRef(false);
@@ -96,11 +94,12 @@ export function useCreatorLibraryActions(options: Options) {
     }),
   );
 
-  const toggleCreationItemPin = useStableCallback(async (creationItemId: string, pinned: boolean) =>
-    runBusy(async () => {
-      await window.desktopApi.creationItemSetPinned({ creationItemId, pinned });
-      await refresh();
-    }),
+  const toggleCreationItemPin = useStableCallback(
+    async (creationItemId: string, pinned: boolean, articleFormId?: string) =>
+      runBusy(async () => {
+        await window.desktopApi.creationItemSetPinned({ creationItemId, pinned, articleFormId });
+        await refresh();
+      }),
   );
 
   const moveAlbum = useStableCallback(async (albumId: string, parentAlbumId: string | null, copy = false) => {
@@ -119,27 +118,29 @@ export function useCreatorLibraryActions(options: Options) {
     });
   });
 
-  const moveCreationItem = useStableCallback(async (creationItemId: string, albumId: string | null, copy = false) => {
-    if (busyRef.current || blocked()) return;
-    return moveQueue.enqueue(async () => {
-      try {
-        if (copy) await copyCreationTarget('CREATION_ITEM', creationItemId, albumId);
-        else await window.desktopApi.creationItemMove({ creationItemId, albumId });
-        await refresh();
-        notify(
-          copy
-            ? messages.creator.outline.copied(1)
-            : albumId
-              ? options.albumMemberAddedMessage
-              : options.albumMemberRemovedMessage,
-        );
-      } catch (reason) {
-        await refresh().catch(() => undefined);
-        notify(`${options.operationFailedMessage}: ${messageFor(reason)}`);
-        throw reason;
-      }
-    });
-  });
+  const moveCreationItem = useStableCallback(
+    async (creationItemId: string, albumId: string | null, copy = false, articleFormId?: string) => {
+      if (busyRef.current || blocked()) return;
+      return moveQueue.enqueue(async () => {
+        try {
+          if (copy) await copyCreationTarget('CREATION_ITEM', creationItemId, albumId);
+          else await window.desktopApi.creationItemMove({ creationItemId, albumId, articleFormId });
+          await refresh();
+          notify(
+            copy
+              ? messages.creator.outline.copied(1)
+              : albumId
+                ? options.albumMemberAddedMessage
+                : options.albumMemberRemovedMessage,
+          );
+        } catch (reason) {
+          await refresh().catch(() => undefined);
+          notify(`${options.operationFailedMessage}: ${messageFor(reason)}`);
+          throw new Error(messageFor(reason));
+        }
+      });
+    },
+  );
 
   return {
     busy,

@@ -4,8 +4,15 @@ import type {
   ComposerMediaSnapshot,
   TextControl,
 } from '@/lib/composer-adapters/contract';
-import { isComposerElement, isVisible, normalizeDraft, readComposerText } from '@/lib/composer-adapters/dom';
+import {
+  isComposerElement,
+  isVisible,
+  normalizeDraft,
+  readComposerText,
+  setMediaFiles,
+} from '@/lib/composer-adapters/dom';
 import { splitXThread } from '@/lib/x-thread';
+import { X_HANDOFF_MEDIA_LIMIT, X_POST_MEDIA_LIMIT } from '../../../../src/shared/x-thread-media';
 
 const EDITOR_SELECTOR =
   '[data-testid^="tweetTextarea_"][contenteditable="true"], [data-testid^="tweetTextarea_"] [contenteditable="true"]';
@@ -176,7 +183,21 @@ function clickXControl(element: HTMLElement): void {
   element.click();
 }
 
-async function appendDraft(editor: ComposerElement, drafts: readonly string[]): Promise<boolean> {
+function findMediaInput(editor: ComposerElement): HTMLInputElement | null {
+  const scope = composerScope(editor);
+  const inputs = scope
+    ? [...scope.querySelectorAll<HTMLInputElement>('input[type="file"][data-testid="fileInput"]')].filter(
+        (input) => !input.disabled,
+      )
+    : [];
+  return inputs.length === 1 ? (inputs[0] ?? null) : null;
+}
+
+async function appendDraft(
+  editor: ComposerElement,
+  drafts: readonly string[],
+  files: readonly File[],
+): Promise<boolean> {
   const fail = (phase: string): false => {
     console.warn(`[AIY Companion] X thread stopped: ${phase}`);
     return false;
@@ -187,7 +208,11 @@ async function appendDraft(editor: ComposerElement, drafts: readonly string[]): 
   const surface = editor.closest('[role="dialog"]') ?? composerScope(editor);
   if (!surface) return fail('surface-missing');
   ownedThreads.set(editor, { editors: owned, texts: expected, ids });
-  for (const draft of drafts) {
+  // The composer was verified empty before filling. Count every attachment after
+  // each post, including earlier uploads whose preview nodes X may remount.
+  const mediaSnapshot: ComposerMediaSnapshot = { elements: new Set() };
+  mediaOwners.set(mediaSnapshot, editor);
+  for (const [index, draft] of drafts.entries()) {
     const deadline = Date.now() + 5_000;
     let add: HTMLButtonElement | undefined;
     while (Date.now() < deadline) {
@@ -273,7 +298,14 @@ async function appendDraft(editor: ComposerElement, drafts: readonly string[]): 
     owned.push(next);
     expected.push(draft);
     ids.push(next.getAttribute('data-testid'));
-    if (!(await writeText(next, draft, false))) return fail('paste-not-confirmed');
+    if (draft && !(await writeText(next, draft, false))) return fail('paste-not-confirmed');
+    const mediaEnd = (index + 2) * X_POST_MEDIA_LIMIT;
+    const media = files.slice(mediaEnd - X_POST_MEDIA_LIMIT, mediaEnd);
+    if (media.length) {
+      const input = findMediaInput(editor);
+      if (!input || !setMediaFiles(input, media)) return fail('media-input-unavailable');
+      if (!(await confirmMedia(files.slice(0, mediaEnd), mediaSnapshot, 90_000))) return fail('media-not-confirmed');
+    }
   }
   const candidates = findEditors();
   return (
@@ -290,10 +322,11 @@ export const xComposerAdapter: ComposerAdapter = {
   findEditors,
   readText: readXText,
   splitDraft: splitXThread,
+  mediaPerPost: X_POST_MEDIA_LIMIT,
   writeText,
   appendDraft,
   acceptsMedia(files) {
-    if (files.length > 4) return false;
+    if (files.length > X_HANDOFF_MEDIA_LIMIT) return false;
     return files.every((file) =>
       file.type === 'image/gif'
         ? file.size <= 15 * 1024 * 1024
@@ -304,15 +337,7 @@ export const xComposerAdapter: ComposerAdapter = {
     const scope = composerScope(editor);
     return Boolean(scope?.querySelector(`${ATTACHMENT_SELECTOR}, [data-testid="removeMedia"]`));
   },
-  findMediaInput(editor) {
-    const scope = composerScope(editor);
-    const inputs = scope
-      ? [...scope.querySelectorAll<HTMLInputElement>('input[type="file"][data-testid="fileInput"]')].filter(
-          (input) => !input.disabled,
-        )
-      : [];
-    return inputs.length === 1 ? (inputs[0] ?? null) : null;
-  },
+  findMediaInput,
   requestMediaInput() {
     // X renders its file input with the composer. Never fall back to a page-wide button search.
   },

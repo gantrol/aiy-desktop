@@ -9,9 +9,11 @@ export function NoteResizeHandle({
   disabled,
   onError,
   extraHeight = 0,
+  image = false,
 }: {
   disabled?: boolean;
   extraHeight?: number;
+  image?: boolean;
   onError(reason: unknown): void;
 }) {
   const copy = useI18n().messages.desktopPetals;
@@ -23,16 +25,22 @@ export function NoteResizeHandle({
   const error = useRef(onError);
   error.current = onError;
   const resize = (size: Size) => {
-    pending.current = petalNoteSizeSchema.parse({
-      width: Math.max(280, Math.min(640, Math.round(size.width))),
-      height: Math.max(300, Math.min(800, Math.round(size.height))),
-    });
+    pending.current = image
+      ? {
+          width: Math.max(32, Math.min(16384, Math.round(size.width))),
+          height: Math.max(32, Math.min(16384, Math.round(size.height))),
+        }
+      : petalNoteSizeSchema.parse({
+          width: Math.max(280, Math.min(640, Math.round(size.width))),
+          height: Math.max(300, Math.min(800, Math.round(size.height))),
+        });
     if (moving.current) return;
     moving.current = (async () => {
       while (pending.current) {
         const next = pending.current;
         pending.current = null;
-        await window.desktopPetals.resize(next);
+        if (image) await window.desktopPetals.windowTools({ kind: 'imageSize', ...next });
+        else await window.desktopPetals.resize(next);
       }
     })()
       .catch((reason) => {

@@ -31,8 +31,14 @@ import { gifOutputExists } from '@/main/database/creations/creation-output-prese
 import { derivedVisualCanvasPresetKeys } from '@/shared/derived-visual-presets';
 import { ARTICLE_COVER_PRESET_KEYS, articleCoverAspectRatio } from '@/shared/article-covers';
 import { articleReferenceAssetIds } from '@/shared/article-reference-assets';
+import { resolveTaskRecipe } from '@/main/database/dictionary/task-recipe';
+import { taskRecipeSnapshotSchema, type TaskRecipeSnapshot } from '@/shared/contracts/task-recipe';
 
 const maxDraftReferenceAssets = 8;
+const visualProjection = `visual.id, visual.role, visual.article_id, visual.article_revision_id,
+  visual.social_post_id, visual.social_post_revision_id, visual.anchor_json, visual.creation_draft_id,
+  visual.prompt_series_id, visual.selected_image_asset_id, visual.created_at, visual.updated_at,
+  visual.adopted_at, visual.position_id, json_extract(visual.recipe_input_json, '$.recipe') AS recipe_json`;
 
 function articleContent(article: ArticleDto): ArticleContentInput {
   const { mediaAssets: _mediaAssets, ...content } = article.content;
@@ -86,7 +92,7 @@ export class DerivedVisualRepository {
     return (
       this.db
         .prepare(
-          `SELECT visual.*, position.anchor_json AS position_anchor_json, position.ever_adopted
+          `SELECT ${visualProjection}, position.anchor_json AS position_anchor_json, position.ever_adopted
       FROM derived_visuals visual LEFT JOIN article_visual_positions position ON position.id = visual.position_id
       ORDER BY visual.created_at DESC, visual.id DESC`,
         )
@@ -203,6 +209,7 @@ export class DerivedVisualRepository {
     input: DerivedVisualWorkspaceCreateInput,
     target: DerivedVisualWorkspaceTarget,
     id: string | null,
+    recipe?: TaskRecipeSnapshot,
   ) {
     const referenceAssetIds = target.socialPost
       ? socialPostReferenceAssetIds(target.socialPost)
@@ -215,7 +222,10 @@ export class DerivedVisualRepository {
       title: input.workspaceTitle,
       text: input.prompt,
       promptNodes: [{ kind: 'TEXT', text: input.prompt }],
-      referenceAssetIds,
+      referenceAssetIds: [...new Set([...(recipe?.referenceAssetIds ?? []), ...referenceAssetIds])].slice(
+        0,
+        maxDraftReferenceAssets,
+      ),
       termPromptLocale: input.locale,
       termIds: [],
       wordPaletteReferences: [],
@@ -233,7 +243,11 @@ export class DerivedVisualRepository {
     target: DerivedVisualWorkspaceTarget,
     positionId: string | null,
   ): DerivedVisualWorkspaceOpenResult {
-    const draft = this.saveWorkspaceDraft(input, target, null);
+    const recipe =
+      input.role !== 'ARTICLE_INLINE' && input.recipe
+        ? resolveTaskRecipe(this.db, 'IMAGE_COVER', input.recipe)
+        : undefined;
+    const draft = this.saveWorkspaceDraft(input, target, null, recipe);
     const id = ulid();
     const timestamp = now();
     this.db
@@ -241,8 +255,8 @@ export class DerivedVisualRepository {
         `INSERT INTO derived_visuals
           (id, role, article_id, article_revision_id, social_post_id, social_post_revision_id,
             anchor_json, creation_draft_id, prompt_series_id, selected_image_asset_id,
-            created_at, updated_at, adopted_at, position_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, NULL, ?)`,
+            created_at, updated_at, adopted_at, position_id, recipe_input_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, NULL, ?, ?)`,
       )
       .run(
         id,
@@ -262,6 +276,7 @@ export class DerivedVisualRepository {
         timestamp,
         timestamp,
         positionId,
+        recipe ? JSON.stringify({ recipe, prompt: input.prompt }) : null,
       );
     this.storage.recordChange('DERIVED_VISUAL', id, 'CREATE', {
       role: input.role,
@@ -461,7 +476,7 @@ export class DerivedVisualRepository {
   private get(id: string) {
     const row = this.db
       .prepare(
-        `SELECT visual.*, position.anchor_json AS position_anchor_json, position.ever_adopted
+        `SELECT ${visualProjection}, position.anchor_json AS position_anchor_json, position.ever_adopted
       FROM derived_visuals visual LEFT JOIN article_visual_positions position ON position.id = visual.position_id
       WHERE visual.id = ?`,
       )
@@ -487,6 +502,7 @@ export class DerivedVisualRepository {
       throw new Error('ARTICLE_VISUAL_POSITION_UNAVAILABLE');
     return {
       id: text(row.id),
+      ...(row.recipe_json ? { recipe: taskRecipeSnapshotSchema.parse(JSON.parse(text(row.recipe_json))) } : {}),
       positionId: row.position_id == null ? null : text(row.position_id),
       positionWasUsed: Boolean(row.ever_adopted),
       role,

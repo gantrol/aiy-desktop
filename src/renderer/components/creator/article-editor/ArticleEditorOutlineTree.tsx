@@ -145,10 +145,9 @@ export function ArticleEditorOutlineTree({
                   aria-level={node.depth + 1}
                   tabIndex={node.item.id === focusId ? 0 : -1}
                   className={cn(
-                    'flex min-h-8 w-full items-start border-l-2 border-l-transparent py-1.5 pr-3 text-left text-sm leading-5 text-foreground outline-none transition-colors duration-fast hover:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                    'flex min-h-8 w-full items-start py-1.5 pr-3 text-left text-sm leading-5 text-foreground outline-none transition-colors duration-fast hover:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                     node.depth > 0 && 'text-muted-foreground',
-                    active &&
-                      'border-l-selected-foreground bg-selected/55 font-medium text-selected-foreground hover:bg-selected/55',
+                    active && 'bg-selected/55 font-medium text-selected-foreground hover:bg-selected/55',
                   )}
                   style={{ paddingLeft: 8 + node.depth * 14 }}
                   onClick={(event) => handleClick(event, node)}

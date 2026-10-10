@@ -2,6 +2,7 @@ import { BlockIdentity } from '@/renderer/features/content-editor/blockIdentityE
 import { ContentInlineMath, ContentBlockMath } from '@/renderer/features/content-editor/contentMathExtensions';
 import { referenceDragType } from '@/renderer/lib/itemReferenceDrag';
 import { ContentLinkCardExtension } from '@/renderer/features/content-editor/contentLinkCardExtension';
+import { ContentHtmlFileExtension } from '@/renderer/features/content-editor/contentHtmlFileExtension';
 import { createContentLinkPasteExtension } from '@/renderer/features/content-editor/contentLinkPasteExtension';
 import { useContentLinkProviders } from '@/renderer/features/content-editor/ContentLinkProviders';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
@@ -78,6 +79,7 @@ export function createContentEditorExtensions(
     ContentInlineMath,
     ContentBlockMath,
     ContentLinkCardExtension,
+    ContentHtmlFileExtension,
     Details.configure({
       persist: false,
       HTMLAttributes: { class: 'my-4 border-l-2 border-border pl-3' },

@@ -1,4 +1,4 @@
-import type { ArticleDto } from '@/shared/contracts';
+import type { ArticleListItem } from '@/shared/contracts';
 import { CreationLibraryAuthorSelect } from '@/renderer/components/creator/CreationLibraryAuthorSelect';
 import { authorDisplayName } from '@/renderer/features/me/AuthorNames';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -8,7 +8,7 @@ export function ContentAuthorFilter({
   value = 'ALL',
   onChange,
 }: {
-  articles: ArticleDto[];
+  articles: ArticleListItem[];
   value?: string;
   onChange(value: string): void;
 }) {

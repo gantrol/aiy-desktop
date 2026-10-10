@@ -61,6 +61,7 @@ interface Props {
   media: readonly VideoDocumentRevisionMediaDto[];
   mediaBindings: ArticleContentInput['mediaBindings'];
   layoutToolbarRoot: HTMLElement | null;
+  sidebarToggleHost?: HTMLElement | null;
   splitOpen: boolean;
   title: string;
   titleMetadata?: ReactNode;
@@ -556,6 +557,7 @@ export function ArticleEditorDocument(props: Props) {
     >
       {articleEditorLayoutAction(leftSidebar, rightSidebar, props)}
       <ArticleEditorDocumentPanes
+        sidebarToggleHost={props.sidebarToggleHost}
         outlineMode={props.outlineMode}
         createOutlinePage={props.createOutlinePage}
         outlinePreferenceKey={props.outlinePreferenceKey}

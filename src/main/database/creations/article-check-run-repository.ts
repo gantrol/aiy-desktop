@@ -14,11 +14,15 @@ import {
 import type { LibraryStorage } from '@/main/database/core/storage';
 import { type JsonMap, now, text } from '@/main/database/core/values';
 import type { ArticleRepository } from '@/main/database/creations/article-repository';
+import { articleCheckInputSchema, type ArticleCheckInput } from '@/shared/contracts/article';
+import { buildArticleCheckPromptProfile } from '@/main/assistant-models/prompts/article-check-prompt';
+import { resolveTaskRecipe } from '@/main/database/dictionary/task-recipe';
 
 const ARTICLE_CHECK_RUN_PROJECTION = `
   id, article_id, input_revision_id, article_title, locale,
   provider_key, requested_model, reasoning_effort, status, finding_count,
-  comment_ids_json, error_code, error_message, started_at, finished_at, applied_at`;
+  comment_ids_json, error_code, error_message, started_at, finished_at, applied_at,
+  json_extract(input_json, '$.recipe') AS recipe_json`;
 
 function encodeOffsetCursor(offset: number) {
   return Buffer.from(JSON.stringify({ offset }), 'utf8').toString('base64url');
@@ -52,6 +56,7 @@ function stringArray(value: unknown) {
 
 export function articleCheckRunDto(row: JsonMap): ArticleCheckRunDto {
   return articleCheckRunSchema.parse({
+    ...(row.recipe_json ? { recipe: JSON.parse(text(row.recipe_json)) } : {}),
     id: text(row.id),
     articleId: text(row.article_id),
     inputRevisionId: text(row.input_revision_id),
@@ -108,6 +113,7 @@ export class ArticleCheckRunRepository {
   }
 
   start(input: {
+    request?: ArticleCheckInput;
     articleId: string;
     expectedRevisionId: string;
     locale: Locale;
@@ -128,14 +134,32 @@ export class ArticleCheckRunRepository {
 
         const id = ulid();
         const startedAt = now();
+        const request = input.request ? articleCheckInputSchema.parse(input.request) : undefined;
+        if (
+          request &&
+          (request.articleId !== input.articleId || request.expectedRevisionId !== input.expectedRevisionId)
+        )
+          throw new Error('ARTICLE_CHECK_INPUT_MISMATCH');
+        const recipe = request?.recipe ? resolveTaskRecipe(this.db, 'ARTICLE_COMMENT', request.recipe) : undefined;
+        const profile = request ? buildArticleCheckPromptProfile(request) : undefined;
+        const snapshot =
+          request && profile
+            ? {
+                request,
+                ...(recipe ? { recipe } : {}),
+                promptProfile: profile.id,
+                prompt: profile.prompt,
+                developerInstructions: profile.developerInstructions,
+              }
+            : undefined;
         this.db
           .prepare(
             `INSERT INTO article_check_runs (
             id, article_id, input_revision_id, article_title, locale,
             provider_key, requested_model, reasoning_effort, status,
             finding_count, result_json, comment_ids_json, error_code, error_message,
-            started_at, finished_at, applied_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', NULL, NULL, '[]', NULL, NULL, ?, NULL, NULL)`,
+            started_at, finished_at, applied_at, input_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', NULL, NULL, '[]', NULL, NULL, ?, NULL, NULL, ?)`,
           )
           .run(
             id,
@@ -147,6 +171,7 @@ export class ArticleCheckRunRepository {
             input.requestedModel,
             input.reasoningEffort,
             startedAt,
+            snapshot ? JSON.stringify(snapshot) : null,
           );
         this.storage.recordChange('ARTICLE_CHECK_RUN', id, 'CREATE', {
           articleId: input.articleId,

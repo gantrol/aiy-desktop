@@ -15,6 +15,8 @@ const allowedMainRuntimeExternals = new Set([
   ...builtinModules.map((id) => `node:${id}`),
   'better-sqlite3',
   'electron',
+  'onnxruntime-node',
+  'sharp',
 ]);
 
 function applyElectronRollupOptions(): Plugin {
@@ -37,6 +39,28 @@ function preserveVFileNodeInterop(): Plugin {
         // Rolldown beta.53 drops the CJS default-import adapter when these
         // re-export-only modules are tree-shaken (process.default is undefined).
         return { code, moduleSideEffects: 'no-treeshake' };
+      },
+    },
+  };
+}
+
+function supportTransformersImportMetaDetection(): Plugin {
+  return {
+    name: 'aiy-transformers-import-meta-detection',
+    enforce: 'pre',
+    transform: {
+      filter: { id: /[/\\]@huggingface[/\\]transformers[/\\]dist[/\\]transformers\.node\.mjs$/ },
+      handler(code, id) {
+        // import.meta always exists in ESM. Keep the URL lookup so electron-vite
+        // can convert it to the current CommonJS file URL without a bare-meta warning.
+        const lookup = 'typeof import.meta !== "undefined" && import.meta.url';
+        const index = code.indexOf(lookup);
+        if (index < 0 || code.indexOf(lookup, index + lookup.length) >= 0) {
+          this.error('Transformers import.meta detection changed; review the CommonJS compatibility adapter.');
+        }
+        const output = new MagicString(code);
+        output.overwrite(index, index + lookup.length, 'import.meta.url');
+        return { code: output.toString(), map: output.generateMap({ source: id, hires: true }) };
       },
     },
   };
@@ -216,18 +240,26 @@ export default defineConfig(({ command }) => {
   return {
     main: {
       resolve: { alias: sourceAlias },
-      plugins: [applyElectronRollupOptions(), preserveVFileNodeInterop(), enforceMainRuntimeDependencyBoundary()],
+      plugins: [
+        applyElectronRollupOptions(),
+        preserveVFileNodeInterop(),
+        supportTransformersImportMetaDetection(),
+        enforceMainRuntimeDependencyBoundary(),
+      ],
       build: {
         ...productionOutput,
-        // Package pure JavaScript dependencies; only the native SQLite loader ships separately.
+        // Bundle JavaScript; native SQLite, inference and image-decoder loaders ship separately.
         externalizeDeps: false,
         rollupOptions: {
-          external: ['better-sqlite3'],
+          external: ['better-sqlite3', 'onnxruntime-node', 'sharp'],
           input: {
             index: path.resolve(__dirname, 'src/main/index.ts'),
             'agent-cli': path.resolve(__dirname, 'src/main/agent-cli-entry.ts'),
             'model-worker': path.resolve(__dirname, 'src/main/model-worker-entry.ts'),
+            'database-upgrade-worker': path.resolve(__dirname, 'src/main/database-upgrade-worker-entry.ts'),
             'codex-usage-worker': path.resolve(__dirname, 'src/main/codex-usage-worker-entry.ts'),
+            'image-search-worker': path.resolve(__dirname, 'src/main/image-search-worker-entry.ts'),
+            'image-search-process': path.resolve(__dirname, 'src/main/image-search-process-entry.ts'),
           },
           output: { entryFileNames: '[name].js' },
         },

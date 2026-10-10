@@ -15,6 +15,8 @@ import { derivedVisualAppliedAssetId } from '@/shared/derived-visual-media';
 import { derivedVisualSchemes } from '@/renderer/components/creator/screen/creatorScreenProjection';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { creatorInputOwner } from '@/renderer/components/creator/screen/creatorInputOwnership';
+import { useArticleDetails } from '@/renderer/components/creator/useArticleDetails';
+import { useWorkspaceVisible } from '@/renderer/components/workspace/WorkspacePaneScope';
 
 type CreationMode = 'existing' | 'new';
 
@@ -23,6 +25,7 @@ interface Options {
   creationMode: CreationMode;
   creationSessions: readonly CreationSessionProjection[];
   data: BootstrapDto;
+  notify(message: string): void;
   locale: Locale;
   selectedAlbumId: string | null;
   selectedArticle: ArticleDto | null;
@@ -77,8 +80,18 @@ function useOutputProjection(options: Options) {
   return { outputPrimarySeries, outputProjection, outputSeries, setOutputSeriesId };
 }
 
-function useDerivedVisualTarget(visual: DerivedVisualDto | null, data: BootstrapDto) {
-  const article = (data.articles ?? []).find((item) => item.id === visual?.articleId);
+function useDerivedVisualTarget(
+  visual: DerivedVisualDto | null,
+  data: BootstrapDto,
+  selectedArticle: ArticleDto | null,
+  notify: (message: string) => void,
+) {
+  const active = useWorkspaceVisible();
+  const summary =
+    selectedArticle?.id === visual?.articleId
+      ? selectedArticle
+      : ((data.articles ?? []).find((item) => item.id === visual?.articleId) ?? null);
+  const article = useArticleDetails(data.spaceId, summary, active, notify).article ?? undefined;
   const post = (data.socialPosts ?? []).find((item) => item.id === visual?.socialPostId);
   const appliedAssetId = useMemo(() => derivedVisualAppliedAssetId(visual, article, post), [visual, article, post]);
   return {
@@ -111,7 +124,12 @@ function useDerivedVisualProjection(options: Options, outputSeries: BootstrapDto
       ? activeDerivedVisual
       : null;
   const schemes = derivedVisualSchemes(editorDerivedVisual, options.data);
-  const target = useDerivedVisualTarget(editorDerivedVisual ?? outputDerivedVisual, options.data);
+  const target = useDerivedVisualTarget(
+    editorDerivedVisual ?? outputDerivedVisual,
+    options.data,
+    options.selectedArticle,
+    options.notify,
+  );
   return {
     ...target,
     activeDerivedVisual,

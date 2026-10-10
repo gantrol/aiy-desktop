@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
-import type { ArticleDto, BootstrapDto } from '@/shared/contracts';
+import type { ArticleDto, ArticleListItem, BootstrapDto } from '@/shared/contracts';
 import type { WorkCommand, WorkSnapshot } from '@/shared/contracts/work-tracking';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { indexWorkItemExecutions, type ItemExecution } from '@/renderer/features/work-tracking/workItemExecutions';
@@ -12,7 +12,7 @@ interface Editing {
   error?: string;
   mutate(command: WorkCommand, revision: number): Promise<boolean>;
   onArticleSaved(article: ArticleDto): void;
-  article(id: string): ArticleDto | undefined;
+  article(id: string): ArticleListItem | undefined;
   rename(id: string, title: string, revision: string): Promise<string | null>;
 }
 const Context = createContext<Editing | null>(null);

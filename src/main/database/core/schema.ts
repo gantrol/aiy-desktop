@@ -1,4 +1,5 @@
 import { articleDraftShape, ensureArticleDrafts } from '@/main/database/creations/article-draft-schema';
+import { ensureSocialPostArticles, socialPostArticleShape } from '@/main/database/creations/social-post-article-schema';
 import { creationAuthorSchemaComplete, ensureCreationAuthorSchema } from '@/main/database/me/creation-author-schema';
 import {
   releasedRevision1RequiredTables,
@@ -86,10 +87,11 @@ import * as assistantRunSchema from '@/main/database/assistant/assistant-run-sch
 import { backgroundIssueAcknowledgementShape } from '@/main/database/background-issues/background-issue-schema';
 import { ensureWorkTracking, workTrackingShape } from '@/main/database/creations/work-tracking-schema';
 import retireReadingSql from '@/main/database/sql/v03-revision-010-retire-reading.sql?raw';
+import { ensureTaskRecipeSchema, taskRecipeSchemaComplete } from '@/main/database/dictionary/task-recipe-schema';
 
 export const DATABASE_PRODUCT_BASELINE = '0.3.0';
-// AIY 0.5.9 retires reader recovery data without rewriting released migrations.
-export const DATABASE_SCHEMA_REVISION = 10;
+// AIY 0.5.10 adds task recipes and normalizes legacy posts without replaying completed data upgrades.
+export const DATABASE_SCHEMA_REVISION = 11;
 
 const canonicalTitleColumns = [
   { table: 'albums', columns: ['title', 'title_locale'] },
@@ -580,7 +582,7 @@ const preVideoDocumentAiActivityRequiredTables = revision2RequiredTables.filter(
 );
 // Released revisions and the current release candidate only. Discarded development
 // revisions are not migration sources.
-const supportedSchemaRevisions = [2, 3, 4, 5, 6, 7, 8, 9, DATABASE_SCHEMA_REVISION] as const;
+const supportedSchemaRevisions = [2, 3, 4, 5, 6, 7, 8, 9, 10, DATABASE_SCHEMA_REVISION] as const;
 type SupportedSchemaRevision = (typeof supportedSchemaRevisions)[number];
 
 function isCurrentSchemaShapeBeforePromptSourceImport(db: Database.Database) {
@@ -615,6 +617,8 @@ function isRevision3SchemaShape(db: Database.Database) {
 }
 
 const currentFeatureShapeChecks = [
+  socialPostArticleShape,
+  taskRecipeSchemaComplete,
   assistantRunSchema.assistantRunReasoningEffortShape,
   creationLibraryShape,
   imageBreakdownShape,
@@ -760,6 +764,8 @@ function migrateReleasedDatabase(db: Database.Database) {
       creationOrganization.ensureCreationOrganizationSchema(db);
       ensureCreationAuthorSchema(db);
       if (storedRevision < 10) db.exec(retireReadingSql);
+      ensureTaskRecipeSchema(db);
+      ensureSocialPostArticles(db);
       if (!isCurrentSchemaShape(db)) unsupportedSchema();
 
       if (storedRevision !== DATABASE_SCHEMA_REVISION) {

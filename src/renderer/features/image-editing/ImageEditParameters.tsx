@@ -1,9 +1,13 @@
 import { Input } from '@/renderer/components/ui/input';
-import { Textarea } from '@/renderer/components/ui/textarea';
 import { Button } from '@/renderer/components/ui/button';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/renderer/components/ui/select';
 import { useI18n } from '@/renderer/i18n/useI18n';
-import type { ImageEditDocument, ImageEditMark } from '@/shared/contracts/image-edit';
+import {
+  IMAGE_EDIT_MAX_EDGE,
+  IMAGE_EDIT_MAX_PIXELS,
+  type ImageEditDocument,
+  type ImageEditMark,
+} from '@/shared/contracts/image-edit';
 import type { ImageEditTool } from '@/renderer/features/image-editing/image-edit-geometry';
 
 function EditNumber({
@@ -41,6 +45,43 @@ function EditNumber({
     />
   );
 }
+export function ImageOutputSize({
+  document,
+  onChange,
+}: {
+  document: ImageEditDocument;
+  onChange(document: ImageEditDocument): void;
+}) {
+  const copy = useI18n().messages.desktopPetals.imageEditor;
+  const rotated = document.rotation % 2 !== 0;
+  const output = document.output ?? {
+    width: rotated ? document.crop.height : document.crop.width,
+    height: rotated ? document.crop.width : document.crop.height,
+  };
+  return (
+    <>
+      <span className="text-xs">{copy.outputSize}</span>
+      <EditNumber
+        value={output.width}
+        min={1}
+        max={Math.min(IMAGE_EDIT_MAX_EDGE, Math.floor(IMAGE_EDIT_MAX_PIXELS / output.height))}
+        label={copy.width}
+        onChange={(width) => onChange({ ...document, output: { ...output, width } })}
+      />
+      <span aria-hidden="true">×</span>
+      <EditNumber
+        value={output.height}
+        min={1}
+        max={Math.min(IMAGE_EDIT_MAX_EDGE, Math.floor(IMAGE_EDIT_MAX_PIXELS / output.width))}
+        label={copy.height}
+        onChange={(height) => onChange({ ...document, output: { ...output, height } })}
+      />
+      <Button size="sm" variant="ghost" onClick={() => onChange({ ...document, output: undefined })}>
+        {copy.resetOutput}
+      </Button>
+    </>
+  );
+}
 interface Props {
   document: ImageEditDocument;
   tool: ImageEditTool;
@@ -48,11 +89,11 @@ interface Props {
   color: string;
   stroke: number;
   fontSize: number;
+  fontFamily: ImageEditMark['fontFamily'];
   disabled: boolean;
   onSelect(id: string | null): void;
   onChange(document: ImageEditDocument): void;
-  onStyle(patch: Partial<Pick<ImageEditMark, 'color' | 'stroke' | 'fontSize'>>): void;
-  onComposing(value: boolean): void;
+  onStyle(patch: Partial<Pick<ImageEditMark, 'color' | 'stroke' | 'fontSize' | 'fontFamily'>>): void;
 }
 export function ImageEditParameters(props: Props) {
   const { messages } = useI18n(),
@@ -60,13 +101,10 @@ export function ImageEditParameters(props: Props) {
   const mark = props.document.marks.find((value) => value.id === props.selected);
   const crop = props.document.crop;
   const rotated = props.document.rotation % 2 !== 0;
-  const text = mark && ['text', 'number'].includes(mark.kind);
   const active = mark?.kind ?? props.tool;
+  if (['select', 'pan'].includes(active) && !mark) return null;
   return (
-    <fieldset
-      disabled={props.disabled}
-      className="flex flex-wrap items-center gap-2 border-t border-border px-2 py-1.5"
-    >
+    <fieldset disabled={props.disabled} className="flex flex-wrap items-center gap-2 px-2 py-1.5">
       <span className="text-xs text-muted-foreground">{copy[active]}</span>
       {props.tool === 'crop' ? (
         <>
@@ -105,7 +143,7 @@ export function ImageEditParameters(props: Props) {
         </>
       ) : (
         <>
-          {(props.tool !== 'select' || mark) && (
+          {((props.tool !== 'select' && props.tool !== 'pan') || mark) && (
             <>
               <Input
                 type="color"
@@ -124,6 +162,25 @@ export function ImageEditParameters(props: Props) {
                 />
               )}
               {['text', 'number'].includes(active) && (
+                <Select
+                  value={mark?.fontFamily ?? props.fontFamily ?? 'sans-serif'}
+                  onValueChange={(fontFamily) =>
+                    props.onStyle({ fontFamily: fontFamily as ImageEditMark['fontFamily'] })
+                  }
+                >
+                  <SelectTrigger className="h-8 w-32" aria-label={copy.fontFamily}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(['sans-serif', 'serif', 'monospace'] as const).map((font) => (
+                      <SelectItem key={font} value={font}>
+                        {copy.fonts[font]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {['text', 'number'].includes(active) && (
                 <EditNumber
                   value={mark?.fontSize ?? props.fontSize}
                   min={8}
@@ -134,54 +191,7 @@ export function ImageEditParameters(props: Props) {
               )}
             </>
           )}
-          {props.document.marks.length > 0 && (
-            <Select
-              value={props.selected ?? 'none'}
-              onValueChange={(value) => props.onSelect(value === 'none' ? null : value)}
-              disabled={props.disabled}
-            >
-              <SelectTrigger className="ml-auto h-8 w-36" aria-label={copy.selectObject}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">{copy.noSelection}</SelectItem>
-                {props.document.marks.map((value, index) => (
-                  <SelectItem key={value.id} value={value.id}>{`${index + 1} · ${copy[value.kind]}`}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
         </>
-      )}
-      {text && (
-        <Textarea
-          key={mark.id}
-          autoFocus
-          rows={2}
-          className="min-h-12 w-full resize-none"
-          aria-label={copy.text}
-          value={mark.text}
-          maxLength={2000}
-          onCompositionStart={() => props.onComposing(true)}
-          onCompositionEnd={() => props.onComposing(false)}
-          onChange={(event) =>
-            props.onChange({
-              ...props.document,
-              marks: props.document.marks.map((value) =>
-                value.id === mark.id
-                  ? {
-                      ...value,
-                      text: event.target.value,
-                      height: Math.max(
-                        mark.fontSize * 1.25,
-                        event.target.value.split('\n').length * mark.fontSize * 1.25,
-                      ),
-                    }
-                  : value,
-              ),
-            })
-          }
-        />
       )}
     </fieldset>
   );

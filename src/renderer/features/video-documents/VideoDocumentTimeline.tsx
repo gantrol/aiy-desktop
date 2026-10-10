@@ -511,7 +511,7 @@ export function VideoDocumentTimeline({
           />
           <span
             className={cn(
-              'pointer-events-none absolute left-9 z-40 w-64 -translate-y-1/2 rounded-sm border border-selected-border border-l-2 border-l-selected-foreground bg-overlay/95 px-3 py-2 text-left shadow-overlay backdrop-blur-sm transition-[opacity,transform] duration-150 ease-out',
+              'pointer-events-none absolute left-9 z-40 w-64 -translate-y-1/2 rounded-sm border border-border bg-overlay/95 px-3 py-2 text-left shadow-overlay backdrop-blur-sm transition-[opacity,transform] duration-150 ease-out',
               hoverDetailsVisible ? 'translate-x-0 opacity-100' : '-translate-x-1 opacity-0',
             )}
             style={{

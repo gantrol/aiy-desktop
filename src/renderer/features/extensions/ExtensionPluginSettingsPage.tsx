@@ -1,5 +1,4 @@
-import { BlocksIcon } from 'lucide-react';
-import type { ExtensionContributionPoint, ExtensionDto } from '@/shared/contracts';
+import type { BootstrapDto, ExtensionDto } from '@/shared/contracts';
 import {
   ANTIGRAVITY_CLI_EXTENSION_ID,
   CODEX_EXTENSION_ID,
@@ -7,13 +6,13 @@ import {
   DEEPSEEK_API_EXTENSION_ID,
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
   NATURAL_WATERMARK_EXTENSION_ID,
+  IMAGE_SEARCH_EXTENSION_ID,
   SCREEN_MAGNIFIER_EXTENSION_ID,
   OPENAI_IMAGE_API_EXTENSION_ID,
+  PROMPT_RECIPES_EXTENSION_ID,
   TRANSITION_SHOWCASE_EXTENSION_ID,
 } from '@/shared/extension-ids';
-import { EXTENSION_HOST_ENGINE_KEY } from '@/shared/product';
 import { EXTENSION_PERMISSION } from '@/shared/extension-permissions';
-import { Badge } from '@/renderer/components/ui/badge';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { AntigravityCliConfiguration } from '@/renderer/features/extensions/AntigravityCliConfiguration';
 import { ArticleDeliveryConfiguration } from '@/renderer/features/extensions/ArticleDeliveryConfiguration';
@@ -27,23 +26,15 @@ import { NaturalWatermarkConfigurationPanel } from '@/renderer/features/extensio
 import { ScreenMagnifierConfiguration } from '@/renderer/features/extensions/ScreenMagnifierConfiguration';
 import type { TransitionShowcaseNavigationState } from '@/renderer/features/extensions/transitionShowcaseNavigation';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { ImageSearchModelConfiguration } from '@/renderer/features/content-search/ImageSearchModelConfiguration';
+import { ExtensionPackageDetails } from '@/renderer/features/extensions/ExtensionPackageDetails';
+import { PromptRecipeConfiguration } from '@/renderer/features/extensions/PromptRecipeConfiguration';
 
 const externalImageApiExtensionIds = new Set<string>(EXTERNAL_IMAGE_API_EXTENSION_IDS);
-const contributionOrder: ExtensionContributionPoint[] = [
-  'contentApplications',
-  'deliveryChannels',
-  'modelProviders',
-  'metricProviders',
-  'tools',
-  'workflows',
-  'commands',
-  'searchProviders',
-  'filters',
-  'fields',
-  'themes',
-];
 
 interface Props {
+  data: BootstrapDto;
+  onRecipesChanged(): void;
   active: boolean;
   busyKey: string;
   extension: ExtensionDto;
@@ -88,6 +79,8 @@ function ExtensionNavigationPreference({
 }
 
 export function ExtensionPluginSettingsPage({
+  data,
+  onRecipesChanged,
   active,
   busyKey,
   extension,
@@ -96,40 +89,31 @@ export function ExtensionPluginSettingsPage({
   notify,
   onConnectionChanged,
 }: Props) {
-  const messages = useI18n().messages;
-  const l = messages.extensions;
-  if (extension.manifest.id === SCREEN_MAGNIFIER_EXTENSION_ID)
-    return (
-      <ScreenMagnifierConfiguration extension={extension} disabled={!active || Boolean(busyKey)} notify={notify} />
-    );
   const naturalWatermark = extension.manifest.id === NATURAL_WATERMARK_EXTENSION_ID;
   return (
-    <section data-extension-plugin-settings className="grid gap-6">
+    <section data-extension-plugin-settings className="grid min-w-0 gap-5">
+      {extension.manifest.id === PROMPT_RECIPES_EXTENSION_ID && (
+        <PromptRecipeConfiguration
+          key={data.spaceId}
+          active={active}
+          disabled={!extension.enabled || Boolean(busyKey)}
+          data={data}
+          notify={notify}
+          onRecipesChanged={onRecipesChanged}
+        />
+      )}
+      {extension.manifest.id === SCREEN_MAGNIFIER_EXTENSION_ID && (
+        <ScreenMagnifierConfiguration extension={extension} disabled={!active || Boolean(busyKey)} notify={notify} />
+      )}
+      {extension.manifest.id === IMAGE_SEARCH_EXTENSION_ID && (
+        <div className="min-w-0 max-w-xl">
+          <ImageSearchModelConfiguration
+            active={active && extension.enabled}
+            accessKey={extension.permissions.map((permission) => `${permission.key}:${permission.granted}`).join(',')}
+          />
+        </div>
+      )}
       {naturalWatermark && <NaturalWatermarkConfigurationPanel active={active && extension.enabled} notify={notify} />}
-      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border text-sm sm:grid-cols-4">
-        <div className="bg-background p-3">
-          <dt className="text-xs text-muted-foreground">{l.fields.manifest}</dt>
-          <dd className="mt-1 font-medium">{extension.manifest.manifestVersion}</dd>
-        </div>
-        <div className="bg-background p-3">
-          <dt className="text-xs text-muted-foreground">{l.fields.engine}</dt>
-          <dd className="mt-1 font-medium">{extension.manifest.engines[EXTENSION_HOST_ENGINE_KEY]}</dd>
-        </div>
-        <div className="bg-background p-3">
-          <dt className="text-xs text-muted-foreground">{l.fields.source}</dt>
-          <dd className="mt-1 font-medium">{l.source[extension.source]}</dd>
-        </div>
-        <div className="bg-background p-3">
-          <dt className="text-xs text-muted-foreground">{l.fields.compatibility}</dt>
-          <dd className="mt-1 font-medium">{extension.compatible ? l.compatible : l.incompatible}</dd>
-        </div>
-        {extension.manifest.runtime && (
-          <div className="bg-background p-3">
-            <dt className="text-xs text-muted-foreground">{l.fields.runtime}</dt>
-            <dd className="mt-1 font-medium">{extension.manifest.runtime.id}</dd>
-          </div>
-        )}
-      </dl>
       <ExtensionNavigationPreference
         busyKey={busyKey}
         extension={extension}
@@ -176,24 +160,7 @@ export function ExtensionPluginSettingsPage({
           onConnectionChanged={onConnectionChanged}
         />
       )}
-      <div className="grid gap-5">
-        <section className="rounded-lg border">
-          <h3 className="flex items-center gap-2 border-b px-4 py-3 text-sm font-semibold">
-            <BlocksIcon className="size-4" />
-            {l.sections.contributions}
-          </h3>
-          <div className="divide-y">
-            {contributionOrder.flatMap((point) =>
-              (extension.manifest.contributes[point] ?? []).map((contribution) => (
-                <div key={`${point}:${contribution}`} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                  <span className="min-w-0 flex-1 truncate">{contribution}</span>
-                  <Badge variant="outline">{l.contributionPoints[point]}</Badge>
-                </div>
-              )),
-            )}
-          </div>
-        </section>
-      </div>
+      <ExtensionPackageDetails extension={extension} />
     </section>
   );
 }

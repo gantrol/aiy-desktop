@@ -10,7 +10,6 @@ import {
 import { AppRuntimeProviders } from '@/renderer/components/app/AppRuntimeProviders';
 import { AppSidebar } from '@/renderer/components/app/AppSidebar';
 import { AppTitleBar } from '@/renderer/components/app/AppTitleBar';
-import { SettingsDialog } from '@/renderer/components/app/SettingsDialog';
 import {
   initialAppLocation,
   type AppLocation,
@@ -34,6 +33,7 @@ import { useWorkspaceController } from '@/renderer/components/workspace/useWorks
 import { registerWorkspaceDrain } from '@/renderer/components/workspace/workspace-drain';
 import {
   findWorkspaceTab,
+  MAX_TABS_PER_GROUP,
   activeLocation as workspaceTabLocation,
   type WorkspaceRuntimeGroup,
 } from '@/renderer/components/workspace/workspace-state';
@@ -42,6 +42,7 @@ import { AppUpdateSidebarButton } from '@/renderer/features/app-update/AppUpdate
 import { loadCreatorScreen } from '@/renderer/features/creator/lazyCreatorScreen';
 import { useDesktopPetalSources } from '@/renderer/features/desktop-petals/use-desktop-petal-sources';
 import { useCodexImagesNavigation } from '@/renderer/features/extensions/codexImageNavigation';
+import { useClipboardHistoryNavigation } from '@/renderer/features/clipboard-capture/clipboard-history-navigation';
 import { useTransitionShowcaseNavigation } from '@/renderer/features/extensions/transitionShowcaseNavigation';
 import { mergeIntakeResult } from '@/renderer/features/intake/applyIntakeResult';
 import { useVideoDocumentTranscriptBackgroundTasks } from '@/renderer/features/video-documents/useVideoDocumentTranscriptBackgroundTasks';
@@ -62,8 +63,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 export function App() {
   const { locale, messages } = useI18n();
   const [data, setData] = useState<BootstrapDto | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const workspace = useWorkspaceController(data);
+  useClipboardHistoryNavigation(workspace.openTab);
   useDesktopPetalSources(data?.spaceId ?? null, setData, workspace.openTab);
   const workspaceState = workspace.state;
   const navigateWorkspace = workspace.navigate;
@@ -509,6 +510,7 @@ export function App() {
     setGroupTabsCollapsed,
     closeTab,
     closeOtherTabs,
+    closeTabs,
     resetLayout,
     mergeWorkspaceGroupsFrom,
     moveTabToOtherGroup,
@@ -548,14 +550,13 @@ export function App() {
   }
 
   function changeView(nextView: AppView) {
-    if (nextView === 'settings') {
-      setSettingsOpen(true);
-      return;
-    }
-    if (['me', 'about'].includes(nextView) && activeTabId) {
+    if (['me', 'about', 'settings'].includes(nextView) && activeTabId) {
       const existing = workspaceState?.groups
         .flatMap((group) => group.tabs.map((tab) => ({ group, tab })))
-        .find(({ tab }) => workspaceTabLocation(tab).view === nextView);
+        .find(({ tab }) => {
+          const currentView = workspaceTabLocation(tab).view;
+          return currentView === nextView || (nextView === 'settings' && currentView === 'contentManagement');
+        });
       if (existing) activateTab(existing.group, existing.tab.id);
       else openWorkspaceLocation(activeTabId, nextView, 'tab');
       return;
@@ -637,6 +638,7 @@ export function App() {
         dataRevision={dataRevision}
         locale={locale}
         defaultPromptLocale={defaultPromptLocale}
+        onPromptLocaleChange={setDefaultPromptLocale}
         comparisonFullWindow={comparisonFullWindow}
         creationPromptFullWindow={creationPromptFullWindow}
         loadingPreviews={loadingPreviews}
@@ -653,8 +655,11 @@ export function App() {
         onActivateTab={(tabId) => activateTab(group, tabId)}
         onCloseTab={closeTab}
         onCloseOtherTabs={(tabId) => closeOtherTabs(group, tabId)}
+        onCloseTabs={(tabId, scope, committed) => closeTabs(group, tabId, scope, committed)}
+        onTabPinnedChange={workspace.setTabPinned}
         onReorderTab={(tabId, delta) => workspace.reorderTab(group.id, tabId, delta)}
         onNewTab={(sourceTabId, destination) => openWorkspaceLocation(sourceTabId, destination, 'tab')}
+        onMeNavigate={changeView}
         onOpenBeside={(sourceTabId, destination) => openWorkspaceLocation(sourceTabId, destination, 'beside')}
         splitAxis={workspace.state?.arrangement.kind === 'split' ? workspace.state.arrangement.axis : null}
         splitPosition={
@@ -664,6 +669,9 @@ export function App() {
         }
         onMergeGroups={() => mergeWorkspaceGroupsFrom(group)}
         onMoveTabToOtherGroup={moveTabToOtherGroup}
+        canMoveTabToOtherGroup={Boolean(
+          workspace.state?.groups.some((target) => target.id !== group.id && target.tabs.length < MAX_TABS_PER_GROUP),
+        )}
         onSplit={(sourceTabId, axis) => {
           articleLocationFlushersRef.current.get(sourceTabId)?.();
           workspace.split(sourceTabId, axis);
@@ -704,36 +712,6 @@ export function App() {
           onAuthorChange={updateCreationAuthor}
         >
           <main className={`grid h-full min-h-0 overflow-hidden bg-background ${gridRows}`}>
-            {data && workspaceReady && !spaceTransition && (settingsOpen || view === 'settings') && (
-              <SettingsDialog
-                key={data.spaceId}
-                promptLocale={defaultPromptLocale}
-                onPromptLocaleChange={setDefaultPromptLocale}
-                onClose={() => {
-                  setSettingsOpen(false);
-                  // Previously saved settings tabs still need a dismissible destination.
-                  if (view === 'settings') {
-                    if (canGoBack) goBack();
-                    else replaceLocation({ ...initialAppLocation, view: 'creator' });
-                  }
-                }}
-                onAiFeatureModelsOpen={() => {
-                  if (activeTabId)
-                    openWorkspaceLocation(
-                      activeTabId,
-                      {
-                        ...location,
-                        view: 'aiCenter',
-                        aiCenter: { tab: 'capabilities', recordId: null },
-                      },
-                      'tab',
-                    );
-                }}
-                onContentManagementOpen={() => {
-                  if (activeTabId) openWorkspaceLocation(activeTabId, 'contentManagement', 'tab');
-                }}
-              />
-            )}
             {!appFullWindow && (
               <AppTitleBar
                 workerStatus={data?.modelWorker ?? null}

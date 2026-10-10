@@ -56,7 +56,7 @@ export function WorkbenchSidebar({
       style={wide ? { width: resolvedWidth } : undefined}
     >
       {(toggle || header !== null) && (
-        <WorkbenchSidebarHeaderScope value={{ toggle, expanded, docked: wide }}>
+        <WorkbenchSidebarHeaderScope value={{ toggle, expanded }}>
           <WorkbenchSidebarHeader>
             {header ?? <span className="min-w-0 flex-1 truncate text-sm font-semibold">{label}</span>}
           </WorkbenchSidebarHeader>

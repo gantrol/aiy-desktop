@@ -108,6 +108,7 @@ export function createContentLibraryApi(repositories: LibraryDatabaseRepositorie
   }
   return {
     contentLibrary: content,
+    contentSearch: search,
     publishingMasks: new PublishingMaskRepository(repositories, content),
     ensureContentDirectory: (source: import('@/shared/contracts/content-library').ContentSource) =>
       readable.ensure(source),

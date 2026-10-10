@@ -31,6 +31,8 @@ export const LEGACY_CODEX_EXTENSION_IDS = [
 ] as const;
 export const WEIBO_CHANNEL_EXTENSION_ID = 'com.aiy.channel.weibo';
 export const NATURAL_WATERMARK_EXTENSION_ID = 'com.aiy.natural-watermark';
+export const IMAGE_SEARCH_EXTENSION_ID = 'com.aiy.image-search';
+export const PROMPT_RECIPES_EXTENSION_ID = 'com.aiy.prompt-recipes';
 export const ANTIGRAVITY_CLI_EXTENSION_ID = 'com.aiy.antigravity-cli';
 export const ANTIGRAVITY_CLI_PROVIDER_KEY = 'antigravity-cli';
 export const ANTIGRAVITY_CLI_CONNECTION_ID = `${ANTIGRAVITY_CLI_EXTENSION_ID}:cli`;

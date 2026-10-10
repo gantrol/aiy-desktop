@@ -34,7 +34,7 @@ export class ContentReferenceTargets {
   }
   /** Resolve a current editing location atomically. Historical previews never authorize a guessed current location. */
   open(target: ReferenceTarget, referenceId?: string) {
-    if (!['ARTICLE', 'INSPIRATION_STASH'].includes(target.source.kind))
+    if (!['ARTICLE', 'INSPIRATION_STASH', 'SOCIAL_POST'].includes(target.source.kind))
       throw new Error('REFERENCE_NAVIGATION_UNSUPPORTED');
     return this.db.transaction(() => {
       const articleId = target.source.id;
@@ -138,6 +138,7 @@ export class ContentReferenceTargets {
     return { title: describe(source).title, members };
   }
   inspect(target: ReferenceTarget): ReferencePreview {
+    if (target.source.kind === 'SOCIAL_POST') target = { ...target, source: { ...target.source, kind: 'ARTICLE' } };
     const spaceId = String(this.db.prepare('SELECT id FROM local_spaces WHERE singleton_key=1').pluck().get());
     if (!isDocumentSource(target.source)) {
       const { title, members } = this.collection(target.source);
@@ -165,8 +166,6 @@ export class ContentReferenceTargets {
         articleId: document.source.id,
         revisionId: document.revisionId,
       }).content;
-    } else if (document.source.kind === 'SOCIAL_POST') {
-      persisted = this.repositories.socialPosts.getRevision(document.source.id, document.revisionId).content;
     } else if (document.source.kind === 'VIDEO_DOCUMENT' && document.source.branchId) {
       const revision = this.repositories.videoDocuments.getRevision(document.source.branchId, document.revisionId);
       if (revision?.content.format === 'NOTE_COLLECTION') {
@@ -386,7 +385,7 @@ export class ContentReferenceTargets {
       }
       const ids = [...new Set(occurrences.map((use) => use.referenceId))];
       const matches = new Map<string, Pick<ReferenceUse, 'relation' | 'via' | 'path' | 'mode'>>();
-      const kind = target.source.kind === 'INSPIRATION_STASH' ? 'ARTICLE' : target.source.kind;
+      const kind = ['INSPIRATION_STASH', 'SOCIAL_POST'].includes(target.source.kind) ? 'ARTICLE' : target.source.kind;
       const followingDocument = this.followingUseDocuments(target.source.id);
       let bytes = 0;
       // Bound both query size and snapshot bytes. Repeated occurrences share one read.

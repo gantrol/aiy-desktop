@@ -1,7 +1,7 @@
 import type { ImageEditDocument, ImageEditMark } from '@/shared/contracts/image-edit';
 
 export type Point = { x: number; y: number };
-export type ImageEditTool = 'select' | 'crop' | ImageEditMark['kind'];
+export type ImageEditTool = 'select' | 'pan' | 'crop' | ImageEditMark['kind'];
 export function cornerHandles(box: ImageEditDocument['crop'] | null) {
   return box
     ? ([
@@ -69,6 +69,9 @@ export function arrowPath(mark: ImageEditMark) {
   const x = mark.x + mark.width,
     y = mark.y + mark.height;
   return `M${mark.x} ${mark.y}L${x} ${y}M${x - length * Math.cos(angle - 0.45)} ${y - length * Math.sin(angle - 0.45)}L${x} ${y}L${x - length * Math.cos(angle + 0.45)} ${y - length * Math.sin(angle + 0.45)}`;
+}
+export function linePath(mark: ImageEditMark) {
+  return `M${mark.x} ${mark.y}L${mark.x + mark.width} ${mark.y + mark.height}`;
 }
 export function penPath(mark: ImageEditMark) {
   return (mark.points ?? []).map((point, i) => `${i ? 'L' : 'M'}${mark.x + point.x} ${mark.y + point.y}`).join(' ');

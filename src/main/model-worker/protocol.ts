@@ -26,6 +26,7 @@ export const modelWorkerMethods = [
   'agent.creation.albums',
   'agent.creation.ensure-album',
   'agent.creation.move',
+  'agent.creation.delete-empty-albums',
   'agent.work.mutate',
   'agent.pack.preview',
   'agent.pack.apply',

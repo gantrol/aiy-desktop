@@ -69,5 +69,5 @@ export function useMaintenanceGuide(active: boolean) {
       }),
     [run],
   );
-  return { state, busy, error, run, update };
+  return { state, busy, error, run, update, acceptState: setState };
 }

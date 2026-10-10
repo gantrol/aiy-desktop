@@ -9,12 +9,28 @@ import { resolveMediaThumbnailRequest } from '@/main/app/media-thumbnail-request
 import { applyMediaResponseHeaders, CONTEXT_INDEPENDENT_MEDIA_HOSTS, fetchLocalFile } from '@/main/app/media-response';
 import { PACKAGED_RENDERER_URL } from '@/main/app/renderer-protocol';
 import { resolveNoteFile } from '@/main/desktop-petals/note-file-store';
+import { tablePublicationMedia } from '@/main/browser-companion/table-publication-cache';
 
 interface Options {
   activeLibraryContext(): ActiveLibraryContext | null;
   libraryRegistry(): LibraryRegistry | null;
   transitionPreviews: TransitionPreviewCache;
   rendererUrl?: URL;
+}
+
+function publicationResponse(identifier: string, context: ActiveLibraryContext | null, rendererOrigin: string) {
+  const file =
+    context?.state === 'ACTIVE' ? tablePublicationMedia(identifier, context.database.getLocalSpace().id) : null;
+  if (!file) return new Response(null, { status: 404 });
+  return new Response(Uint8Array.from(file.bytes), {
+    headers: {
+      'content-type': file.mimeType,
+      'cache-control': 'no-store',
+      'access-control-allow-origin': rendererOrigin,
+      'content-security-policy': "default-src 'none'",
+      'x-content-type-options': 'nosniff',
+    },
+  });
 }
 
 export function installMediaProtocol(targetProtocol: Protocol, options: Options) {
@@ -27,6 +43,9 @@ export function installMediaProtocol(targetProtocol: Protocol, options: Options)
     const context = CONTEXT_INDEPENDENT_MEDIA_HOSTS.has(url.hostname) ? null : options.activeLibraryContext();
     const release = context?.acquireOperation();
     try {
+      if (url.hostname === 'publication') {
+        return publicationResponse(identifier, context, rendererOrigin);
+      }
       if (url.hostname === 'temporary') {
         const [owner, id, extra] = identifier.split('/');
         if (!owner || !id || extra) return new Response(null, { status: 404 });

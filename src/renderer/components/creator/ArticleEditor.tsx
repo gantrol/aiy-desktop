@@ -1,4 +1,6 @@
 import { OutlineContentLinkHost } from '@/renderer/features/content-editor/OutlineContentLinkHost';
+import { CreationReadingWorkspace } from '@/renderer/features/creation-reading/CreationReadingWorkspace';
+import { ReadingReferenceButton } from '@/renderer/features/creation-reading/ReadingReferenceButton';
 import {
   ArticleAttachments,
   ArticleAttachmentsInput,
@@ -260,6 +262,7 @@ function ArticleEditorWorkspace({
   const [relationsOpen, setRelationsOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
   const [layoutToolbarRoot, setLayoutToolbarRoot] = useState<HTMLDivElement | null>(null);
+  const [sidebarToggleHost, setSidebarToggleHost] = useState<HTMLSpanElement | null>(null);
   const articleComments = useArticleComments({ article, session, notify });
   const articleCheck = useArticleCheck({
     locale,
@@ -290,7 +293,15 @@ function ArticleEditorWorkspace({
 
   const editorMode = useArticleEditorSessionSelector((state) => state.draft.metadata.editorMode);
   const inputHistoryAction = (
-    <ArticleInputHistoryAction articleId={article.id} spaceId={spaceId} onContinue={onContinueInput} notify={notify} />
+    <>
+      <ReadingReferenceButton />
+      <ArticleInputHistoryAction
+        articleId={article.id}
+        spaceId={spaceId}
+        onContinue={onContinueInput}
+        notify={notify}
+      />
+    </>
   );
   if (editorMode === 'OUTLINE') {
     return (
@@ -314,58 +325,63 @@ function ArticleEditorWorkspace({
       {...noteFileCapture(attachments.importFiles)}
     >
       <TooltipProvider delayDuration={300}>
-        <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
-          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-            <span className="truncate font-semibold">{title || messages.creator.manuscriptEditor.untitled}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">{messages.creator.manuscriptEditor.kind}</span>
-            <ArticleSaveStatus
-              conflict={conflict}
-              dirty={dirty}
-              failed={saveFailed}
-              saving={saving}
-              onRetry={() => void session.retry()}
-            />
+        <header className="flex min-h-9 shrink-0 items-start gap-2 border-b px-3">
+          <div className="flex min-h-9 min-w-0 flex-1 flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+              <span className="truncate font-semibold">{title || messages.creator.manuscriptEditor.untitled}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{messages.creator.manuscriptEditor.kind}</span>
+              <ArticleSaveStatus
+                conflict={conflict}
+                dirty={dirty}
+                failed={saveFailed}
+                saving={saving}
+                onRetry={() => void session.retry()}
+              />
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-1">
+              {inputHistoryAction}
+              <PinContentButton
+                iconOnly
+                source={{ kind: 'ARTICLE', id: article.id }}
+                beforePin={() => session.flush('manual')}
+                notify={notify}
+              />
+              <ArticleHeaderAiActions
+                checkAction={
+                  <ArticleCheckButton
+                    busy={articleCheck.checking}
+                    disabled={!hasBody || articleCheck.checking || articleComments.busy}
+                    onClick={() => void articleCheck.run()}
+                  />
+                }
+              />
+              <ArticleRevisionHistoryAction spaceId={spaceId} article={article} notify={notify} zh={zh} />
+              <ArticleDeliveryAction
+                articleId={article.id}
+                extensions={extensions}
+                locale={locale}
+                notify={notify}
+                spaceId={spaceId}
+              />
+              <div ref={setLayoutToolbarRoot} className="contents" />
+              <ArticleHeaderActions
+                copyForAgentAction={<ArticleAgentLinkAction article={article} spaceId={spaceId} notify={notify} />}
+                copyForWechatAction={
+                  <ArticleWechatCopyAction locale={locale} notify={notify} onCopy={onCopyForWechat} />
+                }
+                creatingForm={creatingForm}
+                exporting={exporting}
+                generatingHeader={generatingHeader}
+                hasBody={hasBody}
+                relationCount={relations.length}
+                onCreateArticle={createArticle}
+                onExport={exportMarkdown}
+                onGenerateHeader={generateHeader}
+                onOpenRelations={() => setRelationsOpen(true)}
+              />
+            </div>
           </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-1">
-            {inputHistoryAction}
-            <PinContentButton
-              iconOnly
-              source={{ kind: 'ARTICLE', id: article.id }}
-              beforePin={() => session.flush('manual')}
-              notify={notify}
-            />
-            <ArticleHeaderAiActions
-              checkAction={
-                <ArticleCheckButton
-                  busy={articleCheck.checking}
-                  disabled={!hasBody || articleCheck.checking || articleComments.busy}
-                  onClick={() => void articleCheck.run()}
-                />
-              }
-            />
-            <ArticleRevisionHistoryAction spaceId={spaceId} article={article} notify={notify} zh={zh} />
-            <ArticleDeliveryAction
-              articleId={article.id}
-              extensions={extensions}
-              locale={locale}
-              notify={notify}
-              spaceId={spaceId}
-            />
-            <div ref={setLayoutToolbarRoot} className="contents" />
-            <ArticleHeaderActions
-              copyForAgentAction={<ArticleAgentLinkAction article={article} spaceId={spaceId} notify={notify} />}
-              copyForWechatAction={<ArticleWechatCopyAction locale={locale} notify={notify} onCopy={onCopyForWechat} />}
-              creatingForm={creatingForm}
-              exporting={exporting}
-              generatingHeader={generatingHeader}
-              hasBody={hasBody}
-              relationCount={relations.length}
-              onCreateArticle={createArticle}
-              onExport={exportMarkdown}
-              onGenerateHeader={generateHeader}
-              onOpenRelations={() => setRelationsOpen(true)}
-            />
-          </div>
+          {!splitOpen && <span ref={setSidebarToggleHost} className="flex h-9 shrink-0 items-center empty:hidden" />}
         </header>
       </TooltipProvider>
       {conflict && (
@@ -403,6 +419,7 @@ function ArticleEditorWorkspace({
           media={media}
           mediaBindings={mediaBindings}
           layoutToolbarRoot={layoutToolbarRoot}
+          sidebarToggleHost={splitOpen ? null : sidebarToggleHost}
           splitOpen={splitOpen}
           title={title}
           titleMetadata={titleMetadata}
@@ -448,7 +465,9 @@ export function ArticleEditor(props: Props) {
       spaceId={spaceId}
     >
       <OutlineContentLinkHost.Provider value={{ spaceId, articleId: article.id, albumId: article.albumId, notify }}>
-        <ArticleEditorWorkspace {...props} />
+        <CreationReadingWorkspace spaceId={spaceId}>
+          <ArticleEditorWorkspace {...props} />
+        </CreationReadingWorkspace>
       </OutlineContentLinkHost.Provider>
     </ArticleEditorSessionProvider>
   );

@@ -101,6 +101,12 @@ export class ImageEditSession {
     this.emit({ dirty: true });
     this.schedule();
   };
+  /** Typing is checkpointed while the whole text edit remains one undo step. */
+  changeText = (document: ImageEditDocument) => {
+    if (this.locks) return;
+    this.change(document, false);
+    this.schedule();
+  };
   redo = () => {
     if (this.locks) return;
     const value = this.next.pop();

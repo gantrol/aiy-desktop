@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { AssetImageCopyButton } from '@/renderer/components/media/AssetImageCopyButton';
 import { ContentImageContextMenu } from '@/renderer/features/content-editor/ContentImageContextMenu';
@@ -130,7 +131,7 @@ function DocumentImageNodeView({ node, extension, deleteNode, editor }: NodeView
       </NodeViewWrapper>
     );
   const bitmap = (
-    <img
+    <ScratchImage
       key={`${src}:${load.attempt}`}
       onError={() => setLoad((previous) => ({ ...previous, src, failed: true }))}
       onLoad={() => setLoad((previous) => (previous.failed ? { ...previous, src, failed: false } : previous))}

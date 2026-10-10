@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import { ImageVisibilityProvider } from '@/renderer/components/media/ImageVisibilityProvider';
 import type { ExtensionDto, TermListItem } from '@/shared/contracts';
 import { ExtensionContentLinks } from '@/renderer/features/extensions/ExtensionContentLinks';
 import { GifMakerProvider } from '@/renderer/features/gif-making/GifMakerProvider';
@@ -30,26 +31,28 @@ export function AppRuntimeProviders({
   onAuthorChange,
 }: Props) {
   return (
-    <AssetMenuActionsProvider value={assetMenuActions}>
-      <BackgroundIssueProvider spaceId={spaceId} refresh={refresh} notify={assetMenuActions.notify}>
-        <ArticleDeliveryProvider key={spaceId} spaceId={spaceId} notify={assetMenuActions.notify}>
-          <CodexThreadLinkNavigation />
-          <DesktopPetalLanguageBridge />
-          <GifMakerProvider
-            key={spaceId}
-            spaceId={spaceId}
-            terms={terms}
-            refresh={refresh}
-            notify={assetMenuActions.notify}
-          >
-            <SpaceProfileProvider key={spaceId} spaceId={spaceId} onAuthorChange={onAuthorChange}>
-              <CreationDraftChangesProvider spaceId={spaceId}>
-                <ExtensionContentLinks extensions={extensions}>{children}</ExtensionContentLinks>
-              </CreationDraftChangesProvider>
-            </SpaceProfileProvider>
-          </GifMakerProvider>
-        </ArticleDeliveryProvider>
-      </BackgroundIssueProvider>
-    </AssetMenuActionsProvider>
+    <ImageVisibilityProvider key={spaceId} notify={assetMenuActions.notify}>
+      <AssetMenuActionsProvider value={assetMenuActions}>
+        <BackgroundIssueProvider spaceId={spaceId} refresh={refresh} notify={assetMenuActions.notify}>
+          <ArticleDeliveryProvider key={spaceId} spaceId={spaceId} notify={assetMenuActions.notify}>
+            <CodexThreadLinkNavigation />
+            <DesktopPetalLanguageBridge />
+            <GifMakerProvider
+              key={spaceId}
+              spaceId={spaceId}
+              terms={terms}
+              refresh={refresh}
+              notify={assetMenuActions.notify}
+            >
+              <SpaceProfileProvider key={spaceId} spaceId={spaceId} onAuthorChange={onAuthorChange}>
+                <CreationDraftChangesProvider spaceId={spaceId}>
+                  <ExtensionContentLinks extensions={extensions}>{children}</ExtensionContentLinks>
+                </CreationDraftChangesProvider>
+              </SpaceProfileProvider>
+            </GifMakerProvider>
+          </ArticleDeliveryProvider>
+        </BackgroundIssueProvider>
+      </AssetMenuActionsProvider>
+    </ImageVisibilityProvider>
   );
 }

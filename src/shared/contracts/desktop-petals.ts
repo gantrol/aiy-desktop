@@ -203,7 +203,10 @@ export const desktopPetalSnapshotSchema = z
     contentScale: petalContentScaleSchema.optional(),
     applicationPanelHeight: z.number().int().min(0).max(400).optional(),
     collectionUndo: z.object({ token: z.string().uuid(), expiresAt: z.number() }).nullable().default(null),
+    collectionPreview: z.boolean().optional(),
+    captureEdit: z.boolean().optional(),
     editEpoch: z.number().int().nonnegative().default(0),
+    imageEditRequest: z.string().uuid().optional(),
     point: petalPointSchema,
     notes: z.array(desktopNoteSchema),
     summary: petalNoteSummarySchema.nullable().default(null),
@@ -316,6 +319,9 @@ export interface DesktopPetalsApi extends ContentImageImportsApi, PetalWorkspace
   appearance(input: z.infer<typeof desktopNoteAppearanceSchema>): Promise<DesktopNote>;
   expand(expanded: boolean): Promise<void>;
   setAlwaysOnTop(alwaysOnTop: boolean): Promise<void>;
+  windowTools(
+    command: import('./petal-window-tools').PetalWindowToolsCommand,
+  ): Promise<import('./petal-window-tools').PetalWindowToolsState>;
   setContentScale(scale: number): Promise<void>;
   setApplicationPanelHeight(height: number): Promise<number>;
   undoCollection(token: string): Promise<void>;
@@ -323,7 +329,7 @@ export interface DesktopPetalsApi extends ContentImageImportsApi, PetalWorkspace
   hide(): Promise<void>;
   remove(): Promise<void>;
   move(point: z.infer<typeof petalPointSchema>): Promise<void>;
-  beginDrag(point: z.infer<typeof petalPointSchema>): Promise<void>;
+  beginDrag(point: z.infer<typeof petalPointSchema>, localPoint?: z.infer<typeof petalPointSchema>): Promise<void>;
   endDrag(cancel: boolean, released?: boolean, point?: z.infer<typeof petalPointSchema>): Promise<void>;
   openMain(): Promise<void>;
   onChanged(callback: () => void): () => void;

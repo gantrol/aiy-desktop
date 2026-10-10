@@ -5,7 +5,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { WorkSelect } from '@/renderer/features/work-tracking/WorkFields';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { workItemKinds, workItemStates } from '@/shared/contracts/work-tracking';
-import type { ArticleDto } from '@/shared/contracts';
+import type { ArticleListItem } from '@/shared/contracts';
 import { ContentAuthorFilter } from '@/renderer/features/me/ContentAuthorFilter';
 
 export interface WorkFilters {
@@ -33,7 +33,7 @@ export function WorkTrackingToolbar({
   onRefresh(): void;
   onCreate(): void;
   canTrack?: boolean;
-  articles?: ArticleDto[];
+  articles?: ArticleListItem[];
 }) {
   const l = useI18n().messages.workTracking;
   return (

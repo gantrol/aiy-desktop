@@ -1,4 +1,5 @@
 import { materialMembershipMessages, materialSourceRelationshipMessages } from '@/shared/i18n/material-membership';
+import { projectCommandMessages } from '@/shared/i18n/project-commands';
 import { extensionManagerMessages } from '@/shared/i18n/extension-manager';
 import { articleWechatMessages } from '@/shared/i18n/article-wechat';
 import { publishingMessages } from '@/shared/i18n/publishing';
@@ -14,9 +15,13 @@ import { contentMathMessages } from '@/shared/i18n/content-math';
 import { referenceOutlineMessages } from '@/shared/i18n/reference-outline';
 import { calendarMessages } from '@/renderer/features/calendar/calendarMessages';
 import { workTrackingMessages } from '@/shared/i18n/work-tracking';
+import { clipboardCaptureMessages } from '@/shared/i18n/clipboard-capture';
+import { htmlFileMessages } from '@/shared/i18n/html-files';
 import { agentPermissionsMessages } from '@/shared/i18n/agent-permissions';
 import { contentProvenanceMessages } from '@/shared/i18n/content-provenance';
 import { meMessages } from '@/shared/i18n/me';
+import { imageSearchMessages } from '@/shared/i18n/image-search';
+import { creationReadingMessages } from '@/renderer/features/creation-reading/messages';
 
 const codexUsageEvidenceMessages = {
   glance: 'At a glance',
@@ -141,6 +146,7 @@ const codexUsageEvidenceMessages = {
 };
 
 export const enMessages = {
+  creationReading: creationReadingMessages,
   commentCompilation: {
     select: 'Select comments',
     selected: 'Selected {count} / 50',
@@ -370,10 +376,13 @@ export const enMessages = {
   },
   extensionManager: extensionManagerMessages,
   workTracking: workTrackingMessages,
+  clipboardCapture: clipboardCaptureMessages,
+  htmlFiles: htmlFileMessages,
   contentProvenance: contentProvenanceMessages,
   me: meMessages,
   agentPermissions: agentPermissionsMessages,
   referenceOutline: referenceOutlineMessages,
+  imageSearch: imageSearchMessages,
   designLab: {
     storybook: storybookMessages,
     components: {
@@ -757,6 +766,15 @@ export const enMessages = {
     saved: 'Saved to Companion history',
     savedWithoutBrowser: 'Saved to Companion history, but the browser could not be opened',
     stageErrors: {
+      TABLE_STRUCTURE_UNSUPPORTED: 'This table structure cannot be converted. Simplify the table and prepare again.',
+      TABLE_TOO_WIDE: 'The table cannot fit clearly. Reduce its columns or shorten the cells.',
+      TABLE_ROW_TOO_TALL: 'A table row is too tall for one image. Split the row in the manuscript.',
+      TABLE_RESOURCE_UNAVAILABLE: 'A table image or font resource is unavailable or unsupported.',
+      TABLE_IMAGE_LIMIT: 'The converted images exceed this destination’s image or size limit.',
+      TABLE_ORDER_CONFLICT: 'The saved image order conflicts with the tables. Adjust the channel image order.',
+      TABLE_RENDER_FAILED: 'Table conversion failed. Prepare the preview again.',
+      TABLE_PREVIEW_EXPIRED: 'The table preview expired. Prepare it again before uploading.',
+      TABLE_PREPARATION_BUSY: 'Table preparation is busy or full. Close unused previews and try again.',
       X_MEDIA_UNSUPPORTED: 'For X uploads, use PNG, JPEG, WebP or GIF files.',
       X_MEDIA_TOO_LARGE: 'For X uploads, each still image must be at most 5 MB and a GIF at most 15 MB.',
       XIAOHONGSHU_TITLE_TOO_LONG: 'Shorten the Xiaohongshu title to 20 full-width characters (40 Latin characters).',
@@ -1090,6 +1108,7 @@ export const enMessages = {
     },
   },
   maintenanceGuide: {
+    commands: projectCommandMessages,
     projects: 'Projects',
     addProject: 'Add project',
     editProject: 'Edit project',
@@ -1150,6 +1169,8 @@ export const enMessages = {
       fileTooLarge: 'Handbooks are limited to 256 KiB; project files to 4 MiB.',
       storageUnavailable: 'Cannot load or save projects. Check the local configuration and file access.',
       openFailed: 'Cannot open this link.',
+      permissionRequired: 'Allow project folder access in extension permissions.',
+      canceled: 'Scan canceled.',
     },
   },
   desktopPetals: desktopPetalMessages,
@@ -1160,6 +1181,26 @@ export const enMessages = {
     english: 'English',
   },
   assetFile: {
+    viewMaterial: 'View in materials',
+    sources: 'Open linked source',
+    noSources: 'No linked sources',
+    navigationFailed: 'Source unavailable. Try again.',
+    hideImage: 'Hide image',
+    unhideImage: 'Unhide image',
+    hideImages: 'Hide images',
+    unhideImages: 'Unhide images',
+    hiddenImage: 'Hidden image',
+    scratch: 'Scratch to reveal',
+    scratchKeyboard: 'Hidden image. Scratch to reveal, or press Enter or Space.',
+    visibilityLoading: 'Loading image visibility',
+    visibilityRetry: 'Retry loading visibility',
+    visibilityFailed: 'Could not load or save image visibility',
+    preview: 'Image preview',
+    viewImage: 'View image {index}',
+    previousImage: 'Previous image',
+    nextImage: 'Next image',
+    setCover: 'Set as cover',
+    remove: 'Remove',
     copy: 'Copy image',
     copying: 'Copying image…',
     copied: 'Image copied',
@@ -1268,6 +1309,22 @@ export const enMessages = {
       newTab: 'New tab',
       closeTab: 'Close tab',
       closeOthers: 'Close other tabs',
+      closeLeft: 'Close tabs to the left',
+      closeRight: 'Close tabs to the right',
+      closeAbove: 'Close tabs above',
+      closeBelow: 'Close tabs below',
+      closeAll: 'Close unpinned tabs',
+      pinTab: 'Pin tab',
+      moveToPosition: 'Move to…',
+      moveBeforeTab: (title: string) => `Before ${title}`,
+      tabMoved: (title: string) => `Tab moved: ${title}`,
+      unpinTab: 'Unpin tab',
+      unpinNamedTab: (title: string) => `Unpin tab: ${title}`,
+      pinnedTab: 'Pinned',
+      morePinnedTabs: 'More pinned tabs',
+      morePinnedTabsCurrent: (title: string) => `More pinned tabs, current: ${title}`,
+      moveToStart: 'Move tab to start',
+      moveToEnd: 'Move tab to end',
       moveLeft: 'Move tab left',
       moveRight: 'Move tab right',
       moveUp: 'Move tab up',
@@ -1303,7 +1360,7 @@ export const enMessages = {
       generalTab: 'General',
       fonts: {
         tab: 'Fonts',
-        roles: { ui: 'Interface', content: 'Body text', mono: 'Code' },
+        roles: { ui: 'Interface font', content: 'Body font', mono: 'Code font' },
         systemDefault: 'System default',
         followInterface: 'Follow interface',
         recommended: 'Recommended',
@@ -1314,9 +1371,9 @@ export const enMessages = {
         refresh: 'Refresh fonts',
         reset: 'Reset',
         partial: 'Only common local fonts could be detected. Refresh to try reading the full list.',
-        previewTitle: '字里行间 · A place for ideas',
-        previewBody: '把想法慢慢写下来。The quick brown fox jumps over the lazy dog. 0123456789',
-        downloads: 'Recommended downloads',
+        preview: 'Preview',
+        previewBody: '中文 Aa Bb Cc · 0123456789',
+        downloads: 'Get fonts',
         names: {
           sourceSans: 'Source Han Sans',
           sourceSerif: 'Source Han Serif',
@@ -1325,15 +1382,12 @@ export const enMessages = {
           jetbrains: 'JetBrains Mono',
         },
         uses: {
-          sourceSans: 'Chinese · interface',
-          sourceSerif: 'Chinese · reading',
-          wenkai: 'Chinese · notes',
-          inter: 'English · interface',
-          jetbrains: 'English · code',
+          sourceSans: 'Sans serif · CJK',
+          sourceSerif: 'Serif · CJK',
+          wenkai: 'Handwritten · Chinese',
+          inter: 'Sans serif · Latin',
+          jetbrains: 'Monospace · Latin',
         },
-        installHint: 'Open the official site, install the font on your system, then refresh this list.',
-        licenseHint:
-          'These downloads use SIL OFL 1.1. AIY uses installed fonts without redistributing them; other system fonts follow their own licenses.',
         openFailed: 'Could not open the font website',
       },
       shortcutsTab: 'Shortcuts',
@@ -1438,6 +1492,7 @@ export const enMessages = {
     },
   },
   contentManagement: {
+    untitled: 'Untitled',
     title: 'Content management',
     states: {
       archived: 'Archived',
@@ -1915,6 +1970,7 @@ export const enMessages = {
       features: 'Feature extensions',
       languages: 'Language extensions',
     },
+    builtinTools: 'AIY Built-in Tools',
     search: { placeholder: 'Search extensions', clear: 'Clear search', empty: 'No matching extensions' },
     source: { BUILT_IN: 'Built in', LOCAL: 'Local', MARKETPLACE: 'Marketplace' },
     connectionStates: {
@@ -1934,13 +1990,14 @@ export const enMessages = {
       uninstall: 'Uninstall',
     },
     fields: {
+      identifier: 'Extension ID',
       manifest: 'Manifest',
       engine: 'App engine',
       source: 'Source',
       compatibility: 'Compatibility',
       runtime: 'Runtime',
     },
-    sections: { contributions: 'Contributions', permissions: 'Permissions' },
+    sections: { details: 'Extension information', contributions: 'Contributions', permissions: 'Permissions' },
     contributionPoints: {
       themes: 'Theme',
       fields: 'Field',
@@ -1966,6 +2023,7 @@ export const enMessages = {
       uninstalled: 'Local extension uninstalled',
     },
     updateErrors: {
+      BUILT_IN_IDENTITY: 'This identifier is reserved for an AIY built-in tool',
       UPDATE_UNAVAILABLE: 'Only installed local extensions can be updated',
       UPDATE_ID_MISMATCH: 'Select an update package for this extension',
       UPDATE_INCOMPATIBLE: 'This update requires a different AIY version',
@@ -2414,6 +2472,12 @@ export const enMessages = {
       },
       preview: {
         restricted: 'Static · scripts and network off',
+        offlineRuntime: 'Offline runtime · temporary session',
+        runtimeFrame: 'Embedded web page',
+        runtimeLoading: 'Loading web page',
+        runtimeFailed: 'The web page could not run',
+        runtimeBusy: 'Another web page is running',
+        runtimeReplace: 'Stop it and open this page',
         frameTitle: (fileName: string) => `Safe preview of ${fileName}`,
         unavailable: 'This Mermaid diagram could not be previewed',
         zoomOut: 'Zoom out',
@@ -2994,8 +3058,8 @@ export const enMessages = {
     },
   },
   packs: {
-    title: 'Packs',
-    refresh: 'Refresh packs',
+    title: 'Content packs',
+    refresh: 'Refresh content packs',
     kind: { content: 'Content', bundle: 'Bundle' },
     states: {
       NOT_INSTALLED: 'Not installed',
@@ -3008,7 +3072,7 @@ export const enMessages = {
       REMOVED: 'Removed',
     },
     actions: {
-      import: 'Import local pack',
+      import: 'Import local content pack',
       install: 'Install in this space',
       disable: 'Disable in this space',
       enable: 'Allow in this space',
@@ -4369,6 +4433,38 @@ export const enMessages = {
     },
   },
   recipe: {
+    task: {
+      task: 'Task',
+      recipe: 'Recipe',
+      instructions: 'Instructions',
+      defaultMethod: 'Default',
+      thisRun: 'This run',
+      tasks: { IMAGE_PROMPT: 'Image prompt', ARTICLE_COMMENT: 'AI comments', IMAGE_COVER: 'Cover image' },
+      controls: { ARTICLE_COMMENT: 'Comment recipe', IMAGE_COVER: 'Cover recipe' },
+      defaults: 'Default recipes',
+      edit: 'Edit recipe',
+      create: 'New recipe',
+      saved: 'Default recipe saved',
+      loadFailed: 'Could not load default recipes',
+      retry: 'Retry',
+      defaultUnavailable: 'Default recipe unavailable. Check Prompt extension settings.',
+      all: 'All tasks',
+      save: 'Save',
+      saveAs: 'Save as recipe',
+      useLatest: 'Use latest revision',
+      unavailable: 'Recipe unavailable',
+      saveFailed: 'Could not save. Check the recipe and try again.',
+      unsaved: 'Unsaved changes',
+      discard: 'Discard',
+      keepEditing: 'Keep editing',
+      noBody: 'There is no article body to check',
+      changed: 'The article changed; results are in AI Center',
+      noIssues: 'No clear issues found',
+      added: '{count} check findings added as comments',
+      configure: 'Configure and authorize the article check provider first',
+      failed: 'Article check failed',
+      input: 'Recipe instructions',
+    },
     apply: {
       cancel: 'Cancel',
       apply: 'Use recipe',
@@ -4773,6 +4869,7 @@ export const enMessages = {
       },
       targetRoles: { ARTICLE_HEADER: 'Article hero', ARTICLE_INLINE: 'Illustration', SOCIAL_POST_COVER: 'Cover' },
       source: 'Source',
+      sourceImages: 'Source images',
       sourceContent: 'Source content',
       untitled: 'Untitled',
       backToSource: 'Back to source',
@@ -5116,6 +5213,9 @@ export const enMessages = {
       moreActions: 'More actions',
       delete: 'Delete',
       renameAlbumTitle: 'Rename album',
+      manuscriptUnavailable: 'This manuscript is unavailable.',
+      manuscriptChanged: 'This manuscript moved. Refresh and try again.',
+      manuscriptRequired: 'Other content still needs this manuscript as its main entry.',
       albumName: 'Album name',
       albumRenamed: 'Album renamed',
       albumDeleted: 'Album deleted',
@@ -5507,6 +5607,9 @@ export const enMessages = {
       insertIntoBody: 'Insert into body',
       title: 'Title',
       promptLabel: 'Prompt',
+      referenceImages: 'Reference images',
+      showAllReferences: 'Show all reference images',
+      showFewerReferences: 'Show fewer reference images',
       characters: (count: number) => `${count} characters`,
       placeholder: 'Write freely, and let AI do it. Or enter a few words and let AI write.',
       annotationRefinement: 'Annotated edit',

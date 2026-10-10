@@ -87,6 +87,7 @@ import { z } from 'zod';
 import { agentWorkListSchema, agentWorkMutateSchema, agentWorkReadSchema } from '@/shared/contracts/agent-work';
 import {
   agentCreationAlbumsSchema,
+  agentCreationDeleteEmptyAlbumsSchema,
   agentCreationEnsureAlbumSchema,
   agentCreationMoveSchema,
 } from '@/shared/contracts/agent-creation';
@@ -624,6 +625,7 @@ export interface ModelWorkerMethodParams {
   'agent.creation.albums': [input: z.infer<typeof agentCreationAlbumsSchema>];
   'agent.creation.ensure-album': [input: z.infer<typeof agentCreationEnsureAlbumSchema>];
   'agent.creation.move': [input: z.infer<typeof agentCreationMoveSchema>];
+  'agent.creation.delete-empty-albums': [input: z.infer<typeof agentCreationDeleteEmptyAlbumsSchema>];
   'agent.work.mutate': [input: z.infer<typeof agentWorkMutateSchema>];
   'agent.pack.preview': [input: ContentPackPreviewCommand];
   'agent.pack.apply': [input: ContentPackApplyCommand];
@@ -699,6 +701,7 @@ const schemas = {
   'agent.creation.albums': z.tuple([agentCreationAlbumsSchema]),
   'agent.creation.ensure-album': z.tuple([agentCreationEnsureAlbumSchema]),
   'agent.creation.move': z.tuple([agentCreationMoveSchema]),
+  'agent.creation.delete-empty-albums': z.tuple([agentCreationDeleteEmptyAlbumsSchema]),
   'agent.work.mutate': z.tuple([agentWorkMutateSchema]),
   'agent.pack.preview': z.tuple([contentPackPreviewCommandSchema]),
   'agent.pack.apply': z.tuple([contentPackApplyCommandSchema]),

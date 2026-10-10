@@ -149,6 +149,8 @@ export function useContentWorkspacePanelSize({
 
   return {
     asideRef,
+    available,
+    resizing: drag !== null,
     compact,
     width,
     height,

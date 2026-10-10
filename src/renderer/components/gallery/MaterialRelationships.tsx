@@ -13,12 +13,13 @@ import { resolveLocalizedName } from '@/shared/word-palette-localization';
 import { DictionaryIcon } from '@/renderer/icons';
 import { Badge } from '@/renderer/components/ui/badge';
 import { MetaText } from '@/renderer/components/ui/meta-text';
+import { useAssetNavigation } from '@/renderer/components/media/AssetNavigationProvider';
 
 interface Props {
   relationships: AssetRelationshipDto;
   assetId: string;
   locale: Locale;
-  onOpenResult(seriesId: string, assetId: string): void;
+  onOpenResult(seriesId: string, assetId: string, versionId?: string): void;
   onOpenTerm(termId: string): void;
 }
 
@@ -94,9 +95,10 @@ function CreationCard({
   relationship: AssetCreationRelationshipDto;
   assetId: string;
   locale: Locale;
-  onOpenResult(seriesId: string, assetId: string): void;
+  onOpenResult(seriesId: string, assetId: string, versionId?: string): void;
 }) {
   const copy = useI18n().messages.gallery.sourceRelationships;
+  const navigation = useAssetNavigation();
   const title = relationship.series.title;
   const relationshipType = relationship.kind === 'GENERATION_RUN' ? copy.generated : copy.imported;
   const version = relationship.promptVersion
@@ -124,7 +126,16 @@ function CreationCard({
           variant="ghost"
           type="button"
           className="h-auto w-full min-w-0 justify-start gap-3 whitespace-normal p-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={() => onOpenResult(relationship.series.id, assetId)}
+          disabled={navigation?.busyAssetId === assetId}
+          onClick={() =>
+            navigation
+              ? void navigation.open(assetId, 'SOURCES', {
+                  kind: 'CREATION',
+                  id: relationship.series.id,
+                  versionId: relationship.promptVersion?.id ?? null,
+                })
+              : onOpenResult(relationship.series.id, assetId, relationship.promptVersion?.id)
+          }
         >
           {header}
         </Button>
@@ -161,6 +172,7 @@ function CreationCard({
 
 export function MaterialRelationships({ relationships, assetId, locale, onOpenResult, onOpenTerm }: Props) {
   const copy = useI18n().messages.gallery.sourceRelationships;
+  const navigation = useAssetNavigation();
   return (
     <div className="grid min-w-0 gap-4" data-asset-relationships={relationships.assetId}>
       {relationships.creations.length > 0 && (
@@ -187,7 +199,12 @@ export function MaterialRelationships({ relationships, assetId, locale, onOpenRe
               key={`${relationship.kind}:${relationship.id}`}
               type="button"
               className="h-auto w-full justify-start gap-3 whitespace-normal rounded-md border bg-background p-3 text-left text-sm outline-none hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => onOpenTerm(relationship.termId)}
+              disabled={navigation?.busyAssetId === assetId}
+              onClick={() =>
+                navigation
+                  ? void navigation.open(assetId, 'SOURCES', { kind: 'TERM', id: relationship.termId })
+                  : onOpenTerm(relationship.termId)
+              }
               data-term-relationship={relationship.kind}
             >
               <BookOpenIcon className="size-4 shrink-0 text-relation-referenced" />

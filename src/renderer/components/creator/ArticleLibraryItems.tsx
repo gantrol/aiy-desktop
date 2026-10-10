@@ -227,8 +227,7 @@ export function ArticleCompactItem(props: Props) {
       draggable={Boolean(onDragStart)}
       className={cn(
         'relative grid size-16 shrink-0 place-items-center overflow-visible rounded-xl bg-transparent text-foreground-secondary outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        selected &&
-          'after:pointer-events-none after:absolute after:top-1/2 after:-left-1 after:z-30 after:h-6 after:w-0.5 after:-translate-y-1/2 after:rounded-full after:bg-selected-foreground',
+        selected && 'bg-selected text-selected-foreground',
       )}
       onClick={() => onSelect(article.id)}
       onDragStart={onDragStart}

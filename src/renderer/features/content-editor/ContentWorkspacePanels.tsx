@@ -10,10 +10,14 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { ChevronDown, ChevronUp, Maximize2Icon, Minimize2Icon } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useId,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -54,6 +58,11 @@ function ContentWorkspacePanelTabs({
   size,
   copy,
   collapseRef,
+  toggleHost,
+  contentId,
+  keepMounted,
+  animate,
+  panelWidth,
   setActive,
   onActiveChange,
   changeOpen,
@@ -67,18 +76,42 @@ function ContentWorkspacePanelTabs({
   size: ContentWorkspacePanelSize;
   copy: ContentWorkspacePanelCopy;
   collapseRef: RefObject<HTMLButtonElement | null>;
+  toggleHost?: HTMLElement | null;
+  contentId: string;
+  keepMounted: boolean;
+  animate: boolean;
+  panelWidth: number;
   setActive(value: string): void;
   onActiveChange?(id: string): void;
   changeOpen(value: boolean): void;
   setMaximized: Dispatch<SetStateAction<boolean>>;
 }) {
+  const headerToggleHost = size.compact ? null : toggleHost;
+  const restoreToggleFocus = useRef(false);
+  const setCollapseRef = useCallback(
+    (button: HTMLButtonElement | null) => {
+      if (!button) return;
+      collapseRef.current = button;
+      if (restoreToggleFocus.current) {
+        restoreToggleFocus.current = false;
+        button.focus({ preventScroll: true });
+      }
+      // Keep keyboard focus on the control when it moves between headers.
+      return () => {
+        restoreToggleFocus.current = button.ownerDocument.activeElement === button;
+        if (collapseRef.current === button) collapseRef.current = null;
+      };
+    },
+    [collapseRef],
+  );
   const panelToggle = !size.compact && (
     <WorkbenchPaneToggle
-      ref={collapseRef}
+      ref={setCollapseRef}
       expanded={expanded}
       side="right"
       floating={false}
       label={tabs.find((tab) => tab.id === selected)?.label ?? copy.view}
+      aria-controls={contentId}
       onClick={() => changeOpen(!expanded)}
     />
   );
@@ -93,7 +126,7 @@ function ContentWorkspacePanelTabs({
           onActiveChange?.(value);
           changeOpen(true);
         }}
-        className="flex min-h-0 min-w-0 flex-1 flex-col gap-0"
+        className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden"
       >
         <div
           className={cn(
@@ -101,7 +134,7 @@ function ContentWorkspacePanelTabs({
             collapsedRail && 'min-h-0 flex-1 flex-col border-b-0 py-1',
           )}
         >
-          {collapsedRail && panelToggle}
+          {headerToggleHost ? createPortal(panelToggle, headerToggleHost) : collapsedRail && panelToggle}
           <ContentWorkspacePanelNavigation
             tabs={tabs}
             collapsedRail={collapsedRail}
@@ -124,19 +157,31 @@ function ContentWorkspacePanelTabs({
           {size.compact && (
             <CollapsibleTrigger asChild>
               <Button
-                ref={collapseRef}
+                ref={setCollapseRef}
                 variant="ghost"
                 size="icon-sm"
                 aria-label={expanded ? copy.collapse : copy.expand}
+                aria-controls={contentId}
                 title={expanded ? copy.collapse : copy.expand}
               >
                 {expanded ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
               </Button>
             </CollapsibleTrigger>
           )}
-          {!collapsedRail && panelToggle}
+          {!headerToggleHost && !collapsedRail && panelToggle}
         </div>
-        <CollapsibleContent className="min-h-0 flex-1 overflow-hidden">
+        <CollapsibleContent
+          id={contentId}
+          forceMount={keepMounted ? true : undefined}
+          inert={!expanded}
+          aria-hidden={!expanded}
+          className={cn(
+            'min-h-0 flex-1 overflow-hidden',
+            animate && 'motion-safe:transition-[opacity,visibility] duration-fast',
+            !expanded && 'invisible opacity-0',
+          )}
+          style={animate && !size.compact && !focused ? { width: Math.max(panelWidth - 1, 0) } : undefined}
+        >
           <RestorePanelContext.Provider value={() => setMaximized(false)}>
             {tabs.map((tab) => (
               <TabsContent
@@ -164,12 +209,12 @@ function contentWorkspacePanelClassName(focused: boolean, expanded: boolean, doc
       dockedAt === 960 &&
       (expanded
         ? 'h-[var(--content-workspace-panel-height)] @[960px]/content-workspace:h-auto @[960px]/content-workspace:w-[var(--content-workspace-panel-width)]'
-        : '@[960px]/content-workspace:w-[52px]'),
+        : 'h-9 @[960px]/content-workspace:h-auto @[960px]/content-workspace:w-[52px]'),
     !focused &&
       dockedAt === 768 &&
       (expanded
         ? 'h-[var(--content-workspace-panel-height)] @[768px]/content-workspace:h-auto @[768px]/content-workspace:w-[var(--content-workspace-panel-width)]'
-        : '@[768px]/content-workspace:w-[52px]'),
+        : 'h-9 @[768px]/content-workspace:h-auto @[768px]/content-workspace:w-[52px]'),
   );
 }
 
@@ -222,6 +267,8 @@ export function ContentWorkspacePanels({
   onPanelWidthChange,
   maximized: controlledMaximized,
   onMaximizedChange,
+  toggleHost,
+  keepMounted = false,
 }: {
   tabs: readonly ContentWorkspacePanelTab[];
   active?: string;
@@ -235,14 +282,20 @@ export function ContentWorkspacePanels({
   onPanelWidthChange?(width: number): void;
   maximized?: boolean;
   onMaximizedChange?(maximized: boolean): void;
+  /** Host the disclosure control in the work-surface header only while docked to the right. */
+  toggleHost?: HTMLElement | null;
+  /** Preserve panel-local selection and scroll position while collapsed. */
+  keepMounted?: boolean;
 }) {
   const copy = useI18n().messages.contentEditor;
   const dockedAt = useContext(DockedWidthContext);
   const [localActive, setActive] = useState(tabs[0]?.id);
   const [localOpen, setOpen] = useState(true);
   const [localMaximized, setLocalMaximized] = useState(false);
+  const [disclosureMotion, setDisclosureMotion] = useState(false);
   const maximized = controlledMaximized ?? localMaximized;
   const setMaximized: Dispatch<SetStateAction<boolean>> = (value) => {
+    setDisclosureMotion(false);
     const next = typeof value === 'function' ? value(maximized) : value;
     setLocalMaximized(next);
     onMaximizedChange?.(next);
@@ -250,6 +303,7 @@ export function ContentWorkspacePanels({
   const [desktopDragWidth, setDesktopDragWidth] = useState<number | null>(null);
   const desktopResizeCleanup = useRef<(() => void) | null>(null);
   const collapseRef = useRef<HTMLButtonElement>(null);
+  const contentId = useId();
   useEffect(() => () => desktopResizeCleanup.current?.(), []);
   const selected = tabs.find((tab) => tab.id === (active ?? localActive))?.id ?? tabs[0]?.id;
   const expanded = open ?? localOpen;
@@ -264,15 +318,24 @@ export function ContentWorkspacePanels({
     onPanelWidthChange,
   });
   const collapsedRail = isCollapsedRail(expanded, size.compact);
-  const changeOpen = (value: boolean) => {
-    setOpen(value);
+  // Container changes and direct resizing take over without an old disclosure transition.
+  useLayoutEffect(() => {
+    setDisclosureMotion(false);
+    desktopResizeCleanup.current?.();
+  }, [size.available.width, size.available.height, preferenceKey]);
+  const animate = disclosureMotion && !focused && !size.resizing && desktopDragWidth === null;
+  const changeOpen = (value: boolean, animateChange = true) => {
+    if (!value && size.asideRef.current?.contains(document.activeElement)) collapseRef.current?.focus();
     if (!value) setMaximized(false);
+    setDisclosureMotion(animateChange && !focused && value !== expanded);
+    setOpen(value);
     onOpenChange?.(value);
   };
   const desktopCollapsedWidth = 52;
   function beginDesktopResize(event: React.PointerEvent<HTMLDivElement>) {
     if (size.compact || focused || event.button !== 0 || event.isPrimary === false) return;
     desktopResizeCleanup.current?.();
+    setDisclosureMotion(false);
     const initialExpanded = expanded;
     const initialWidth = size.width;
     let currentOpen = expanded;
@@ -281,7 +344,18 @@ export function ContentWorkspacePanels({
       { collapsed: !expanded, width: initialWidth },
       { minimum: minimumWidth, maximum: size.maximumWidth, collapsedWidth: desktopCollapsedWidth },
     );
-    desktopResizeCleanup.current = beginPanePointerDrag(
+    let active = true;
+    let removeListeners: (() => void) | null = null;
+    const finish = (cancelled: boolean) => {
+      if (!active) return;
+      active = false;
+      removeListeners?.();
+      if (cancelled && currentOpen !== initialExpanded) changeOpen(initialExpanded, false);
+      if (!cancelled && currentOpen) size.change('width', currentWidth);
+      setDesktopDragWidth(null);
+      desktopResizeCleanup.current = null;
+    };
+    removeListeners = beginPanePointerDrag(
       event,
       (delta) => {
         const next = gesture(-delta);
@@ -289,26 +363,23 @@ export function ContentWorkspacePanels({
         const nextOpen = !next.collapsed;
         if (nextOpen !== currentOpen) {
           currentOpen = nextOpen;
-          changeOpen(nextOpen);
+          changeOpen(nextOpen, false);
         }
         setDesktopDragWidth(nextOpen ? next.width : null);
       },
-      (cancelled) => {
-        if (cancelled && currentOpen !== initialExpanded) changeOpen(initialExpanded);
-        if (!cancelled && currentOpen) size.change('width', currentWidth);
-        setDesktopDragWidth(null);
-        desktopResizeCleanup.current = null;
-      },
+      finish,
     );
+    desktopResizeCleanup.current = () => finish(true);
   }
   function changeDesktopWidth(value: number) {
     if (!Number.isFinite(value)) return;
+    setDisclosureMotion(false);
     if (!expanded) {
-      if (value > desktopCollapsedWidth) changeOpen(true);
+      if (value > desktopCollapsedWidth) changeOpen(true, false);
       return;
     }
     if (value < minimumWidth - 48) {
-      changeOpen(false);
+      changeOpen(false, false);
       return;
     }
     size.change('width', Math.max(minimumWidth, value));
@@ -328,7 +399,10 @@ export function ContentWorkspacePanels({
         onKeyDown={(event) =>
           handleContentWorkspacePanelKeyDown(event, expanded, focused, collapseRef, changeOpen, setMaximized)
         }
-        className={contentWorkspacePanelClassName(focused, expanded, dockedAt)}
+        className={cn(
+          contentWorkspacePanelClassName(focused, expanded, dockedAt),
+          animate && 'motion-safe:transition-[width,height] duration-base ease-[var(--ease-standard)]',
+        )}
       >
         {!focused && !size.compact && (
           <CreatorPaneResizeHandle
@@ -349,8 +423,14 @@ export function ContentWorkspacePanels({
             value={size.height}
             min={size.minimumHeight}
             max={size.maximumHeight}
-            onPointerDown={(event) => size.beginResize('height', event)}
-            onValueChange={(value) => size.change('height', value)}
+            onPointerDown={(event) => {
+              setDisclosureMotion(false);
+              size.beginResize('height', event);
+            }}
+            onValueChange={(value) => {
+              setDisclosureMotion(false);
+              size.change('height', value);
+            }}
             visibility="always"
           />
         )}
@@ -363,6 +443,11 @@ export function ContentWorkspacePanels({
           size={size}
           copy={copy}
           collapseRef={collapseRef}
+          toggleHost={toggleHost}
+          contentId={contentId}
+          keepMounted={keepMounted}
+          animate={animate}
+          panelWidth={desktopDragWidth ?? size.width}
           setActive={setActive}
           onActiveChange={onActiveChange}
           changeOpen={changeOpen}

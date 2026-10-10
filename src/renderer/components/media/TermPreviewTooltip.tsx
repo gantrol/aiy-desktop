@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import { useState, type ReactElement, type SyntheticEvent } from 'react';
 import type { TermListItem } from '@/shared/contracts';
 import { cn } from '@/renderer/lib/utils';
@@ -24,7 +25,7 @@ export function TermPreviewTooltip({ term, children }: Props) {
       <TooltipContent side="top" sideOffset={8} className={preview ? 'w-44 overflow-hidden p-0' : 'max-w-80'}>
         {preview ? (
           <div className="relative">
-            <img
+            <ScratchImage
               className="max-h-72 w-full bg-background/10 object-contain"
               crossOrigin="anonymous"
               src={preview.asset.mediaUrl}

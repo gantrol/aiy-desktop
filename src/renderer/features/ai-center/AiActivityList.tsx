@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock3Icon, ListTreeIcon } from 'lucide-react';
 import type { BootstrapDto, ImageGenerationRouteDto, Locale } from '@/shared/contracts';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
+import { Button } from '@/renderer/components/ui/button';
+import { VirtualList } from '@/renderer/components/ui/virtual-list';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -20,6 +22,9 @@ import { projectAiActivityOutcomeOutline } from '@/renderer/features/ai-center/o
 export type AiActivityViewMode = 'OUTLINE' | 'TIMELINE';
 
 interface Props {
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?(): void;
   active: boolean;
   records: AiActivityRecord[];
   categoryFilter: AiActivityCategoryFilter;
@@ -37,6 +42,9 @@ interface Props {
 }
 
 export function AiActivityList({
+  hasMore,
+  loadingMore,
+  onLoadMore,
   active,
   records,
   categoryFilter,
@@ -52,7 +60,9 @@ export function AiActivityList({
   onViewModeChange,
   onSelect,
 }: Props) {
-  const l = useI18n().messages.aiCenter;
+  const messages = useI18n().messages;
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const l = messages.aiCenter;
   const modelNameByKey = useMemo(() => new Map(routes.map((model) => [model.key, model.name])), [routes]);
   const dateFormatter = useMemo(
     () =>
@@ -186,6 +196,7 @@ export function AiActivityList({
         <div className="px-6 py-12 text-center text-sm text-muted-foreground">{l.empty}</div>
       ) : viewMode === 'OUTLINE' ? (
         <AiActivityOutline
+          active={active}
           groups={outlineGroups}
           selectedId={selectedId}
           currentDraftId={currentDraftId}
@@ -195,23 +206,39 @@ export function AiActivityList({
           onSelect={onSelect}
         />
       ) : (
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="divide-y">
-            {filtered.map((record) => (
-              <AiActivityRow
-                key={record.id}
-                record={record}
-                selected={record.id === selectedId}
-                currentDraftId={currentDraftId}
-                modelNameByKey={modelNameByKey}
-                dateFormatter={dateFormatter}
-                now={now}
-                onSelect={onSelect}
-              />
-            ))}
-          </div>
+        <ScrollArea viewportRef={viewportRef} className="min-h-0 flex-1">
+          <VirtualList
+            items={filtered}
+            itemKey={activityKey}
+            viewportRef={viewportRef}
+            active={active}
+            estimatedHeight={100}
+            renderItem={(record) => (
+              <div className="border-b">
+                <AiActivityRow
+                  key={record.id}
+                  record={record}
+                  selected={record.id === selectedId}
+                  currentDraftId={currentDraftId}
+                  modelNameByKey={modelNameByKey}
+                  dateFormatter={dateFormatter}
+                  now={now}
+                  onSelect={onSelect}
+                />
+              </div>
+            )}
+          />
         </ScrollArea>
+      )}
+      {hasMore && (
+        <Button variant="ghost" disabled={!active || loadingMore} onClick={onLoadMore}>
+          {loadingMore ? messages.gallery.screen.loadingMore : messages.gallery.screen.loadMore}
+        </Button>
       )}
     </aside>
   );
+}
+
+function activityKey(record: AiActivityRecord) {
+  return record.id;
 }

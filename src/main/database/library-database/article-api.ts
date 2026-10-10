@@ -44,6 +44,10 @@ export function createArticleApi(
       return repositories.articles.list();
     },
 
+    listArticleSummaries() {
+      return repositories.articles.listSummaries();
+    },
+
     getArticle(id: string) {
       return repositories.articles.get(id);
     },

@@ -39,6 +39,10 @@ export class ImagePrivacyScanner {
         const ocr = await recognizeWindowsImage(input.bytes, task.abort.signal);
         if (task.abort.signal.aborted) return { status: 'cancelled' };
         if (ocr.status !== 'ready') return ocr;
+        if (input.kind === 'recognize') {
+          const text = ocr.lines.map((line) => line.text ?? line.words.map((word) => word.text).join(' ')).join('\n');
+          return text.length <= 262144 ? { status: 'ready', regions: [], text } : { status: 'tooLarge' };
+        }
         const regions = findSensitiveRegions(ocr, input.options, image.width, image.height);
         return regions ? { status: 'ready', regions } : { status: 'tooMany' };
       } finally {

@@ -31,6 +31,9 @@ export function useCreationWorks({ data, activeEntity, activeCreationItemId, sou
   const suffixes = creationWorkTitleSuffixes(
     forms.map((form) => ({ id: form.entityRef.id, title: `${form.role}:${creationFormTitle(form, labels)}` })),
   );
-  const source = item?.forms.find((form) => form.id === (context?.form.sourceFormId ?? sourceFormId));
+  const sourceItem = context?.form.sourceCreationItemId
+    ? data.creationItems.find((candidate) => candidate.id === context.form.sourceCreationItemId)
+    : item;
+  const source = sourceItem?.forms.find((form) => form.id === (context?.form.sourceFormId ?? sourceFormId));
   return { context, forms, selectedId, suffixes, source: source ? projectCreationForm(source, index) : null };
 }

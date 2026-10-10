@@ -1,4 +1,4 @@
-import { ArchiveRestoreIcon, ArrowLeftIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react';
+import { ArchiveRestoreIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react';
 import { useState } from 'react';
 import type {
   ContentLifecycleItemDto,
@@ -10,18 +10,18 @@ import type {
   ContentLifecycleState,
 } from '@/shared/contracts';
 import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
-import { Button } from '@/renderer/components/ui/button';
-import { MetaText } from '@/renderer/components/ui/meta-text';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { Tabs, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type { MessageCatalog } from '@/renderer/i18n/types';
 import { ContentLifecycleBrowser } from '@/renderer/features/content-management/ContentLifecycleBrowser';
+import { ContentManagementHeader } from '@/renderer/features/content-management/ContentManagementHeader';
 import {
   ContentLifecycleConfirmationDialog,
   type ContentLifecycleConfirmation,
 } from '@/renderer/features/content-management/ContentLifecycleConfirmationDialog';
 import { useContentLifecyclePage } from '@/renderer/features/content-management/useContentLifecyclePage';
+import { lifecycleTextPresentation } from '@/renderer/features/content-management/contentLifecyclePresentation';
 
 type KindFilter = 'ALL' | ContentLifecycleKind;
 
@@ -36,6 +36,7 @@ type PendingConfirmation =
     } & ContentLifecycleConfirmation);
 
 interface Props {
+  embedded?: boolean;
   active: boolean;
   canNavigateBack: boolean;
   onNavigateBack(): void;
@@ -59,7 +60,14 @@ function lifecycleFilterLabels(filters: MessageCatalog['contentManagement']['fil
   return { ALL: filters.all, CREATION: filters.creation, ALBUM: filters.album, MATERIAL: filters.material };
 }
 
-export function ContentManagementScreen({ active, canNavigateBack, onNavigateBack, onContentChange, notify }: Props) {
+export function ContentManagementScreen({
+  embedded = false,
+  active,
+  canNavigateBack,
+  onNavigateBack,
+  onContentChange,
+  notify,
+}: Props) {
   const { messages } = useI18n();
   const l = messages.contentManagement;
   const [state, setState] = useState<ContentLifecycleState>('ARCHIVED');
@@ -105,7 +113,7 @@ export function ContentManagementScreen({ active, canNavigateBack, onNavigateBac
   function openRestore(item: ContentLifecycleItemDto) {
     setConfirmation({
       kind: 'RESTORE',
-      title: item.title,
+      title: lifecycleTextPresentation(item, messages).title,
       item,
       albumCount: item.albumCount,
       contentCount: item.contentCount,
@@ -120,7 +128,7 @@ export function ContentManagementScreen({ active, canNavigateBack, onNavigateBac
         action: 'DELETE',
         targets: [{ entityType: item.entityType, entityId: item.entityId }],
       });
-      setConfirmation({ kind: 'DELETE', title: item.title, item, plan });
+      setConfirmation({ kind: 'DELETE', title: lifecycleTextPresentation(item, messages).title, item, plan });
     } catch {
       notify(l.notices.failed);
       setReloadRevision((current) => current + 1);
@@ -135,7 +143,13 @@ export function ContentManagementScreen({ active, canNavigateBack, onNavigateBac
     setPlanningKey(key);
     try {
       const plan = await window.desktopApi.contentLifecyclePurgePlan({ selection });
-      setConfirmation({ kind: 'PURGE', title: item.title, selection, plan, clear: false });
+      setConfirmation({
+        kind: 'PURGE',
+        title: lifecycleTextPresentation(item, messages).title,
+        selection,
+        plan,
+        clear: false,
+      });
     } catch {
       notify(l.notices.failed);
       setReloadRevision((current) => current + 1);
@@ -256,42 +270,30 @@ export function ContentManagementScreen({ active, canNavigateBack, onNavigateBac
 
   return (
     <div className="flex size-full min-h-0 flex-col bg-background">
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b px-5">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          disabled={!canNavigateBack}
-          aria-label={messages.app.navigation.back}
-          onClick={onNavigateBack}
-        >
-          <ArrowLeftIcon className="size-4" />
-        </Button>
-        <h1 className="text-base font-semibold">{l.title}</h1>
-        {page && !loading && <MetaText>{l.count(page.total)}</MetaText>}
-        {state === 'RECYCLE_BIN' && !containerId && page && page.total > 0 && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="ml-auto text-destructive hover:text-destructive"
-            disabled={planningKey !== null || submitting}
-            onClick={() => void openClear()}
-          >
-            <Trash2Icon className="size-3.5" />
-            {l.actions.clear}
-          </Button>
-        )}
-      </header>
+      <ContentManagementHeader
+        embedded={embedded}
+        canNavigateBack={canNavigateBack}
+        onNavigateBack={onNavigateBack}
+        total={page && !loading ? page.total : null}
+        canClear={state === 'RECYCLE_BIN' && !containerId && Boolean(page && page.total > 0)}
+        busy={planningKey !== null || submitting}
+        onClear={() => void openClear()}
+      />
 
-      <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 border-b px-6">
+      <div className="grid shrink-0 justify-items-start gap-3 border-b px-6 pb-3">
         <Tabs value={state} onValueChange={changeState}>
           <TabsList className="border-b-0">
             <TabsTrigger value="ARCHIVED">{l.states.archived}</TabsTrigger>
             <TabsTrigger value="RECYCLE_BIN">{l.states.recycleBin}</TabsTrigger>
           </TabsList>
         </Tabs>
-        <Segmented type="single" value={kindFilter} onValueChange={changeKind} className="mb-1.5">
+        <Segmented
+          type="single"
+          value={kindFilter}
+          onValueChange={changeKind}
+          aria-label={l.title}
+          className="h-auto min-h-8 max-w-full flex-wrap justify-start"
+        >
           {(['ALL', 'CREATION', 'ALBUM', 'MATERIAL'] as const).map((filter) => (
             <SegmentedItem key={filter} value={filter}>
               {filterLabels[filter]}

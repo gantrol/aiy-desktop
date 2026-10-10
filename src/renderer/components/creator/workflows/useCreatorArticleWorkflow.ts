@@ -1,4 +1,6 @@
-import { articleDraftInput } from '@/shared/article-draft';
+import { articleDraftDto, articleDraftInput } from '@/shared/article-draft';
+import { inspirationArticleIds } from '@/shared/article-summary';
+import { loadArticleDetails } from '@/renderer/components/creator/useArticleDetails';
 import { emptyArticleContent } from '@/renderer/components/creator/article-editor/articleContentTransforms';
 import { creationFormByEntity, creationItemByFormEntity } from '@/renderer/components/creator/creationFormEntities';
 import { useI18n } from '@/renderer/i18n/useI18n';
@@ -6,6 +8,7 @@ import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import type {
   ArticleContentInput,
   ArticleDto,
+  ArticleListItem,
   ArticleRevisionSaveInput,
   ArticleWechatCopyOptions,
   CreationItemDto,
@@ -19,6 +22,7 @@ interface Options {
   creationItems: readonly CreationItemDto[];
   getCreationDraftCommitIdentity(): string | null;
   inspirationStashes: readonly InspirationStashDto[];
+  articles?: readonly ArticleListItem[];
   locale: Locale;
   notify(message: string): void;
   onDraftArticleCreated(article: ArticleDto): void;
@@ -54,7 +58,7 @@ export function useCreatorArticleWorkflow(options: Options) {
   const refresh = useStableCallback(options.refresh);
 
   function activeSourceId(sourceId: string | null) {
-    return sourceId && options.inspirationStashes.some((stash) => stash.id === sourceId) ? sourceId : null;
+    return sourceId && inspirationArticleIds(options).includes(sourceId) ? sourceId : null;
   }
 
   function formId(entityId: string) {
@@ -118,13 +122,17 @@ export function useCreatorArticleWorkflow(options: Options) {
     }
     let article: ArticleDto;
     if (sourceItem && snapshot.sourceInspirationStashId) {
-      const source = options.inspirationStashes.find((item) => item.id === snapshot.sourceInspirationStashId);
+      const summary = options.articles?.find((item) => item.id === snapshot.sourceInspirationStashId);
+      const source =
+        options.inspirationStashes.find((item) => item.id === snapshot.sourceInspirationStashId) ??
+        (summary ? articleDraftDto(await loadArticleDetails(options.spaceId, summary)) : null);
       if (!source) throw new Error(socialCopy.inspirationUnavailable);
+      if (getCreationDraftCommitIdentity() !== snapshot.creationDraftCommitIdentity) return;
       await window.desktopApi.inspirationStashSave({
         mode: 'UPDATE',
         id: source.id,
-        expectedContentHash: source.contentHash,
-        expectedRevisionId: source.revisionId,
+        expectedContentHash: summary?.contentHash ?? source.contentHash,
+        expectedRevisionId: summary?.revisionId ?? source.revisionId,
         consumeCreationDraftId: snapshot.creationDraftId,
         content: {
           ...articleDraftInput(snapshot.content),
@@ -147,7 +155,7 @@ export function useCreatorArticleWorkflow(options: Options) {
     notify(article.content.editorMode === 'OUTLINE' ? outlineCopy.outlineCreated : socialCopy.articleCreated);
   });
 
-  const renameArticle = useStableCallback(async (article: ArticleDto, title: string) => {
+  const renameArticle = useStableCallback(async (article: Pick<ArticleDto, 'id'>, title: string) => {
     await window.desktopApi.articleRename({ id: article.id, title });
     await refresh();
     notify(socialCopy.articleTitleUpdated);

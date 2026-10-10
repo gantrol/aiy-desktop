@@ -5,6 +5,7 @@ interface Gesture {
   pointerId: number;
   target: Element;
   origin: Point;
+  local: Point;
   last: Point;
   moved: boolean;
   begun: boolean;
@@ -27,7 +28,7 @@ function move(active: Gesture): Promise<void> {
   active.moving = (async () => {
     if (!active.begun) {
       active.begun = true;
-      await window.desktopPetals.beginDrag(active.origin);
+      await window.desktopPetals.beginDrag(active.origin, active.local);
     }
     while (active.next) {
       const destination = active.next;
@@ -116,18 +117,22 @@ export function usePetalDrag(onClick?: () => void, onError?: (reason: unknown) =
       if (event.pointerId === gesture.current?.pointerId) finish(true);
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') finish(true);
+      if (event.key === 'Escape' && gesture.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        finish(true);
+      }
     };
     window.addEventListener('pointermove', pointerMove, true);
     window.addEventListener('pointerup', up, true);
     window.addEventListener('pointercancel', cancel, true);
-    window.addEventListener('keydown', escape);
+    window.addEventListener('keydown', escape, true);
     return () => {
       mounted.current = false;
       window.removeEventListener('pointermove', pointerMove, true);
       window.removeEventListener('pointerup', up, true);
       window.removeEventListener('pointercancel', cancel, true);
-      window.removeEventListener('keydown', escape);
+      window.removeEventListener('keydown', escape, true);
       finish(false);
     };
   }, [finish, pointerMove]);
@@ -141,6 +146,7 @@ export function usePetalDrag(onClick?: () => void, onError?: (reason: unknown) =
           pointerId: event.pointerId,
           target: event.currentTarget,
           origin: point(event),
+          local: { x: Math.round(event.clientX), y: Math.round(event.clientY) },
           last: point(event),
           moved: false,
           begun: false,

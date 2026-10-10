@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { publicationContainsTables } from '@/shared/publication-tables';
+import { discardTablePreviews } from '@/renderer/features/browser-companion/prepareTableImagePost';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { SocialPostPublishingDialog } from '@/renderer/features/browser-companion/SocialPostPublishingDialog';
 import { prepareSocialPostHandoff } from '@/renderer/features/browser-companion/prepareSocialPostHandoff';
@@ -47,7 +49,11 @@ export function useSocialPostPublication({
   } | null>(null);
   const { busy, handoff } = useBrowserCompanionHandoff({
     notify: report,
-    prepare: (target) =>
+    review: (target, watermark, prepared) => {
+      discardTablePreviews(spaceId, [prepared]);
+      setPublishing({ targets: [target], watermark });
+    },
+    prepare: (target, watermark) =>
       prepareSocialPostHandoff({
         spaceId,
         content,
@@ -56,6 +62,8 @@ export function useSocialPostPublication({
         persist,
         postId,
         target,
+        watermark,
+        tableLabel: messages.publishing.tables.table,
         copy,
         readSavedContent,
         readSavedRevisionId,
@@ -63,7 +71,13 @@ export function useSocialPostPublication({
   });
   return {
     busy,
-    handoff,
+    handoff: (target: BrowserCompanionTarget, watermark: BrowserCompanionWatermarkSelection = { kind: 'NONE' }) => {
+      if (content.format === 'markdown' && publicationContainsTables(content.body)) {
+        setPublishing({ targets: [target], watermark });
+        return Promise.resolve();
+      }
+      return handoff(target, watermark);
+    },
     prepareBatch: (watermark: BrowserCompanionWatermarkSelection) => setPublishing({ targets, watermark }),
     prepareWechatArticle: (watermark: BrowserCompanionWatermarkSelection) =>
       setPublishing({ targets: ['wechat'], watermark }),

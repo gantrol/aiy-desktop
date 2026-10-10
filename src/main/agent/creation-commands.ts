@@ -2,6 +2,7 @@ import type { z } from 'zod';
 import type { LibraryDatabase } from '@/main/database';
 import {
   agentCreationAlbumsSchema,
+  agentCreationDeleteEmptyAlbumsSchema,
   agentCreationEnsureAlbumSchema,
   agentCreationMoveSchema,
 } from '@/shared/contracts/agent-creation';
@@ -132,6 +133,48 @@ export function moveAgentCreations(
         return { creationItemId: row.id, moved: true };
       });
       return { spaceId: input.spaceId, albumId: input.albumId, entries };
+    })
+    .immediate();
+}
+
+/** Reject the whole batch before deletion if any album is no longer an empty leaf. */
+export function deleteAgentEmptyCreationAlbums(
+  database: LibraryDatabase,
+  input: z.infer<typeof agentCreationDeleteEmptyAlbumsSchema>,
+  signal: AbortSignal,
+) {
+  return database.db
+    .transaction(() => {
+      assertSpace(database, input.spaceId, signal);
+      const ids = input.entries.map((entry) => entry.albumId);
+      const selected = JSON.stringify(ids);
+      const albums = database.db
+        .prepare(`${availableAlbums} AND album.id IN (SELECT value FROM json_each(?))`)
+        .all(selected) as Album[];
+      for (const entry of input.entries) {
+        const matches = albums.filter((album) => album.id === entry.albumId);
+        if (matches.length !== 1) throw failure('ALBUM_UNAVAILABLE');
+        if (matches[0].parentAlbumId !== entry.expectedParentAlbumId) throw failure('PARENT_CONFLICT');
+      }
+      // A hidden member, child album or unfinished draft still makes an album nonempty.
+      const occupied = database.db
+        .prepare(
+          `SELECT 1 FROM album_members
+          WHERE album_id IN (SELECT value FROM json_each(?)) AND deleted_at IS NULL
+          UNION ALL SELECT 1 FROM creation_drafts
+          WHERE target_album_id IN (SELECT value FROM json_each(?))
+            AND consumed_at IS NULL AND deleted_at IS NULL
+          LIMIT 1`,
+        )
+        .get(selected, selected);
+      if (occupied) throw failure('ALBUM_NOT_EMPTY');
+      const targets = ids.map((entityId) => ({ entityType: 'ALBUM' as const, entityId }));
+      const plan = database.planContentLifecycle({ action: 'DELETE', targets });
+      if (plan.count !== ids.length || plan.albumCount !== ids.length || plan.contentCount !== 0)
+        throw failure('ALBUM_NOT_EMPTY');
+      signal.throwIfAborted();
+      database.applyContentLifecycle({ action: 'DELETE', targets, confirmationToken: plan.confirmationToken });
+      return { spaceId: input.spaceId, deletedAlbumIds: ids };
     })
     .immediate();
 }

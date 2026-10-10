@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { naturalWatermarkProfileIdSchema } from '@/shared/contracts/natural-watermark';
 import { XIAOHONGSHU_STAGE_ERROR_CODES } from '@/shared/xiaohongshu-publishing';
+import { tablePublicationPreviewSchema, TABLE_PUBLICATION_ERRORS } from '@/shared/contracts/table-publication-preview';
 
 const idSchema = z.string().min(1).max(200);
 const handoffIdSchema = z.string().uuid();
@@ -67,9 +68,10 @@ export const browserCompanionStageInputSchema = z
     articleCoverMediaIndex: z.number().int().min(0).max(19).optional(),
     mediaAssetIds: z.array(idSchema).max(20).optional(),
     watermark: browserCompanionWatermarkSelectionSchema.optional(),
+    tableConversion: tablePublicationPreviewSchema.optional(),
   })
   .strict()
-  .refine((input) => input.target !== 'x' || (input.mediaAssetIds?.length ?? 0) <= 4, { path: ['mediaAssetIds'] })
+  .refine((input) => !input.tableConversion || input.contentKind === 'social-post-body', { path: ['tableConversion'] })
   .refine((input) => input.target !== 'xiaohongshu' || input.contentKind === 'social-post-body', {
     path: ['contentKind'],
   })
@@ -127,6 +129,7 @@ export const browserCompanionStageResultSchema = z
   .strict();
 
 export const browserCompanionStageErrorCodeSchema = z.enum([
+  ...TABLE_PUBLICATION_ERRORS,
   'X_MEDIA_UNSUPPORTED',
   'X_MEDIA_TOO_LARGE',
   ...XIAOHONGSHU_STAGE_ERROR_CODES,
@@ -190,6 +193,7 @@ export const browserCompanionBatchItemResultSchema = z
       item.result
         ? item.result.handoff.target === item.target &&
           (item.errorCode === null ||
+            item.errorCode === 'NOT_ATTEMPTED' ||
             item.errorCode === 'HANDOFF_NOT_ALLOWED' ||
             item.errorCode === 'OPEN_NOT_CONFIRMED')
         : item.errorCode !== null && item.errorCode !== 'OPEN_NOT_CONFIRMED',
@@ -208,6 +212,7 @@ export const browserCompanionBatchResultSchema = z
   .strict();
 
 export const browserCompanionBatchHistoryResultSchema = z.array(browserCompanionBatchResultSchema).max(1_000);
+export const browserCompanionBatchHistoryInputSchema = z.object({ includeHistory: z.boolean().default(true) }).strict();
 export const browserCompanionReopenInputSchema = z
   .object({ handoffId: handoffIdSchema, expectedSpaceId: idSchema.optional() })
   .strict();

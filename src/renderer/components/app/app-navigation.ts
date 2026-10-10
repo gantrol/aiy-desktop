@@ -1,7 +1,8 @@
 import type { DictionaryBrowseContext } from '@/renderer/components/dictionary/dictionary-navigation';
 import type { CreationRelationFilter } from '@/shared/contracts';
 import type { GifWorkspaceState } from '@/shared/contracts/gif-making';
-import type { ContentLookupInput } from '@/shared/contracts/content-search';
+import type { workspaceSearchLocationSchema } from '@/shared/contracts/image-search';
+import type { z } from 'zod';
 import type { ContentSource } from '@/shared/contracts/content-source';
 
 export type AppView =
@@ -86,6 +87,7 @@ export interface GalleryLocation {
   collection: GalleryCollection;
   selectedMaterialKey: string | null;
   requestedMaterialId: string | null;
+  requestedAssetId?: string | null;
   browse?: import('@/shared/contracts/workspace-layout').GalleryBrowseState;
 }
 
@@ -120,7 +122,7 @@ export interface AppLocation {
   creator: CreatorLocation;
   dictionary: DictionaryLocation;
   gallery: GalleryLocation;
-  search: Pick<ContentLookupInput, 'query' | 'type'>;
+  search: z.infer<typeof workspaceSearchLocationSchema>;
   /** One navigation's search evidence; ordinary workspace position persistence takes over after opening. */
   contentSearchTarget?: { source: ContentSource; query: string };
   extensions: ExtensionsLocation;

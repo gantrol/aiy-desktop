@@ -1,6 +1,9 @@
-import { useEffect, useMemo } from 'react';
-import { PetalContextMenu } from '@/renderer/features/desktop-petals/PetalContextMenu';
+import { useMemo } from 'react';
+import { PetalHubMenu } from '@/renderer/features/desktop-petals/PetalHubMenu';
+import type { PetalMenuControl } from '@/renderer/features/desktop-petals/petal-menu-api';
 import { demoCues, demoMenuAt } from '@/renderer/features/extensions/feature-demo/v050/demoTimeline';
+import { demoFlowerCenter } from '@/renderer/features/extensions/feature-demo/v050/demoDesktopScene';
+import { demoAsyncNoop, demoNoop } from '@/renderer/features/extensions/feature-demo/v050/demoCreationData';
 import { useDemoWorkspaceTargets } from '@/renderer/features/extensions/feature-demo/v050/useDemoWorkspaceTargets';
 import { DemoCreationShell } from '@/renderer/features/extensions/feature-demo/v050/DemoCreationShell';
 import { DemoCreationInput } from '@/renderer/features/extensions/feature-demo/v050/DemoCreationInput';
@@ -14,27 +17,28 @@ import type { DesktopPetalSnapshot } from '@/shared/contracts/desktop-petals';
 interface Props {
   time: number;
   snapshot: DesktopPetalSnapshot;
-  requestMenu(): void;
   notify(message: DemoWindowDetail): void;
 }
 
-export function DemoWorkspaceWindow({ time, snapshot, requestMenu, notify }: Props) {
+const [menuX, menuY] = demoFlowerCenter(demoCues.menuOpen);
+// The timeline owns the menu; native overlay windows cannot run inside the demo subframe.
+const demoMenu = {
+  anchor: { x: menuX, y: menuY },
+  close: demoAsyncNoop,
+  dismiss: demoNoop,
+  select: demoNoop,
+  restoreFocus: demoNoop,
+} satisfies PetalMenuControl;
+
+export function DemoWorkspaceWindow({ time, snapshot, notify }: Props) {
   const menuOpen = demoMenuAt(time);
   const gif = time >= demoCues.gifWorkspace;
   const motionReady = useDemoSmileMedia(gif, notify);
   const fail = useMemo(() => () => notify({ type: 'failed' }), [notify]);
   useDemoWorkspaceTargets(time, notify);
-  useEffect(() => {
-    if (menuOpen) requestMenu();
-  }, [menuOpen, requestMenu]);
-
   return (
     <>
-      {menuOpen && (
-        <PetalContextMenu snapshot={snapshot} onError={fail}>
-          <span />
-        </PetalContextMenu>
-      )}
+      {menuOpen && <PetalHubMenu snapshot={snapshot} onError={fail} menu={demoMenu} />}
       <div className="absolute inset-0" style={{ visibility: time >= demoCues.workspace ? 'visible' : 'hidden' }}>
         <DemoCreationShell gif={gif}>
           <div className="relative min-h-0 min-w-0">

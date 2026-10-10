@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { ALBUM_COVER_LAYERS } from '@/renderer/components/albums/albumCoverAssets';
+import { EmptyAlbumIcon } from '@/renderer/components/albums/EmptyAlbumIcon';
 import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
@@ -14,7 +15,7 @@ export interface AlbumContentPreview {
 
 const expandedStep = 32;
 
-/** Each layer represents one real member; no samples leaves a single blank cover. */
+/** Each layer represents one real member; no samples leaves a single album cover. */
 export function AlbumContentCover({
   previews = [],
   expanded = false,
@@ -51,7 +52,7 @@ export function AlbumContentCover({
           </span>
         ))
       ) : (
-        <span className="absolute left-1 top-0.5 h-6 w-5 rounded-sm border border-current text-muted-foreground" />
+        <EmptyAlbumIcon className="size-7 text-muted-foreground" />
       )}
     </span>
   );
@@ -74,6 +75,7 @@ export function AlbumContentCoverPreview({
   const restoringFocus = useRef(false);
   const contentId = useId();
   const layers = previews.slice(0, ALBUM_COVER_LAYERS);
+  const expandedWidth = Math.max(28, (layers.length - 1) * expandedStep + 28);
 
   useEffect(() => {
     if (!expanded) return;
@@ -87,7 +89,8 @@ export function AlbumContentCoverPreview({
   return (
     <span
       ref={rootRef}
-      className="relative block size-7"
+      className={cn('relative block h-7', animate && 'transition-[width] duration-150 motion-reduce:transition-none')}
+      style={{ width: expanded ? expandedWidth : 28 }}
       data-content-expanded={expanded}
       data-item-drag-ignore
       onPointerEnter={(event) => {
@@ -138,7 +141,7 @@ export function AlbumContentCoverPreview({
         aria-label={labels.previewTitle(title)}
         hidden={!expanded}
         className="absolute left-0 top-0 h-7"
-        style={{ width: Math.max(28, (layers.length - 1) * expandedStep + 28) }}
+        style={{ width: expandedWidth }}
       >
         {layers.map(({ id, title: contentTitle, onOpen }, index) => (
           <Button

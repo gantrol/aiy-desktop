@@ -68,11 +68,11 @@ export async function executeTemporaryImageEdit(store: TemporaryFilesStore, id: 
   if (input.kind === 'cancel') next.draft = null;
   if (input.kind === 'commit') {
     const dimensions = imageDimensions(Buffer.from(input.bytes), '.png');
-    const { crop, rotation } = input.document;
+    const { crop, rotation, output } = input.document;
     if (
       !dimensions ||
-      dimensions.width !== (rotation % 2 ? crop.height : crop.width) ||
-      dimensions.height !== (rotation % 2 ? crop.width : crop.height)
+      dimensions.width !== (output?.width ?? (rotation % 2 ? crop.height : crop.width)) ||
+      dimensions.height !== (output?.height ?? (rotation % 2 ? crop.width : crop.height))
     )
       throw petalError('invalidSettings');
     const asset = await stageTemporaryImage(store, id, {

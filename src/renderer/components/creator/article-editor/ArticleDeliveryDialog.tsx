@@ -14,6 +14,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import type { MessageCatalog } from '@/renderer/i18n/types';
 import { ArticleDeliveryTargetRow } from '@/renderer/components/creator/article-editor/ArticleDeliveryTargetRow';
 import { useArticleEditorSession } from '@/renderer/components/creator/article-editor/ArticleEditorSessionProvider';
+import { PublicationPreview } from '@/renderer/features/browser-companion/PublicationPreview';
 import { useWatermarkSelection } from '@/renderer/features/browser-companion/CompanionHandoffMenu';
 import {
   articleDeliveryConnectionMessage,
@@ -50,6 +51,7 @@ function resultLabel(result: ArticleDeliveryBatchOutcome, messages: MessageCatal
   const companionCopy = messages.browserCompanion;
   const publishingCopy = messages.publishing;
   if (result.kind === 'UNKNOWN') return copy.unknown;
+  if (result.kind === 'STOPPED') return publishingCopy.batchStopped;
   if (result.kind === 'FAILED') return result.message;
   if (result.kind === 'QUEUED') return deliveryCopy.status.queued;
   const { result: handoff, errorCode } = result.receipt;
@@ -162,7 +164,7 @@ export function ArticleDeliveryDialog({
     : { kind: 'NONE' };
   const setup = useArticleDeliverySetup({ articleId, spaceId, targets });
   const batch = useArticleDeliveryBatch({ articleId, spaceId, notify });
-  const locked = batch.busy || batch.submitted;
+  const locked = batch.busy || batch.submitted || Boolean(batch.review);
   const definitions = useMemo(
     () => new Map(targets.map((target) => [articleUploadTargetKey(articleDeliveryTargetChoice(target)), target])),
     [targets],
@@ -316,7 +318,7 @@ export function ArticleDeliveryDialog({
             articleId={articleId}
             spaceId={spaceId}
             busy={batch.busy}
-            submitted={batch.submitted}
+            submitted={batch.submitted || Boolean(batch.review)}
             destinations={setup.destinations}
             onDestinationsChange={setup.setDestinations}
             selectedBrowsers={selectedBrowsers}
@@ -327,6 +329,7 @@ export function ArticleDeliveryDialog({
             maskTargets={maskTargets}
             beforeOpen={() => session.flush('manual')}
           />
+          <ArticleDeliveryReview batch={batch} />
           {batch.fault && (
             <div role="alert" className="text-sm text-destructive">
               {batch.fault}
@@ -334,12 +337,31 @@ export function ArticleDeliveryDialog({
           )}
         </div>
         <DialogFooter className="shrink-0 flex-row items-center justify-end border-t bg-overlay px-4 py-3">
+          {batch.busy && !batch.submitted && !batch.review && (
+            <Button variant="outline" onClick={batch.cancelPreparation}>
+              {messages.common.cancel}
+            </Button>
+          )}
           {batch.submitted && (
             <Button type="button" variant="outline" disabled={batch.busy} onClick={onClose}>
               {messages.common.close}
             </Button>
           )}
-          {!batch.submitted && (
+          {batch.review && (
+            <>
+              <Button variant="outline" disabled={batch.busy} onClick={batch.cancelReview}>
+                {messages.common.cancel}
+              </Button>
+              <Button disabled={batch.busy || !batch.canConfirmReview} onClick={() => void batch.confirmReview()}>
+                {messages.publishing.tables.confirmDelivery.replace(
+                  '{count}',
+                  String(batch.review.apiInputs.length + batch.review.browserInputs.length),
+                )}
+                {usesPublish && ` · ${copy.directPublish}`}
+              </Button>
+            </>
+          )}
+          {!batch.submitted && !batch.review && (
             <Button
               type="button"
               data-action="article-upload-submit"
@@ -365,6 +387,29 @@ export function ArticleDeliveryDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ArticleDeliveryReview({ batch }: { batch: ReturnType<typeof useArticleDeliveryBatch> }) {
+  const { messages } = useI18n();
+  if (!batch.review) return null;
+  return (
+    <div className="grid gap-4 py-3">
+      {batch.review.browserInputs.map(({ key, input }) => (
+        <section key={key} className="grid gap-2 border-t pt-3">
+          <h3 className="text-sm font-medium">{messages.browserCompanion.targets[input.target]}</h3>
+          <PublicationPreview
+            prepared={input}
+            target={input.target}
+            onImagesReady={(ready) =>
+              input.tableConversion && batch.setTablePreviewReady(input.tableConversion.id, ready)
+            }
+            assets={[]}
+            onChange={batch.busy ? undefined : (prepared) => batch.updateReview(key, prepared)}
+          />
+        </section>
+      ))}
+    </div>
   );
 }
 

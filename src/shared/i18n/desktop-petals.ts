@@ -2,6 +2,19 @@ import { contentEditorMessages } from '@/shared/i18n/content-editor';
 import { imageEditorMessages } from '@/shared/i18n/image-editor';
 /** English base shared by the renderer catalog and native flower menus. */
 export const desktopPetalMessages = {
+  windowTools: {
+    opacity: 'Opacity',
+    locked: 'Lock position',
+    clickThrough: 'Click through',
+    nudge: 'Nudge position',
+    left: 'Move left',
+    right: 'Move right',
+    up: 'Move up',
+    down: 'Move down',
+    display: 'Move to display',
+    displayNumber: 'Display {number}',
+    recover: 'Restore window controls',
+  },
   magnifier: {
     useInFlower: 'Open flower controls',
     start: 'Start magnifier',
@@ -13,6 +26,7 @@ export const desktopPetalMessages = {
   },
   imageEditor: imageEditorMessages,
   temporary: {
+    imageNames: { capture: 'Capture', clipboard: 'Clipboard image', stitch: 'Stitched image' },
     title: 'Temporary files',
     newNote: 'New temporary note',
     import: 'Import Markdown or image…',
@@ -291,6 +305,7 @@ export const desktopPetalMessages = {
     pauseAlwaysOnTop: 'Stop keeping on top for now',
     resumeAlwaysOnTop: 'Keep on top',
     undoCollection: 'Undo last collection',
+    collectOnRelease: 'Release to put away',
     resize: 'Resize note',
     moveLayer: 'Move to layer',
     hide: 'Hide temporarily',
@@ -498,6 +513,8 @@ export const desktopPetalMessages = {
     magnifierDisabled: 'Enable Screen Magnifier and allow screen access in Extensions.',
     magnifierOwnerHidden: 'Show the flower center to start the magnifier.',
     magnifierFailed: 'Magnifier could not run. Click the flower center to retry.',
+    clipboardEmpty: 'No text or image in the clipboard.',
+    imageEditUnsupported: 'Use a still PNG or JPEG up to 25 MiB, 16384 px per edge and 32 million pixels.',
     temporaryCapacity: 'Temporary storage is full. Make files permanent, discard files, or increase the capacity.',
     temporaryChooseSpace: 'Choose a space in the main window, then make this file permanent.',
     temporaryPromotionPending:

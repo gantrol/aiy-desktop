@@ -19,11 +19,13 @@ import type {
 } from '@/shared/contracts';
 import { mediaUrl } from '@/main/database/core/values';
 import { trimSurroundingCharacters } from '@/shared/string-boundaries';
+import { taskRecipeMethodSchema, type TaskRecipeMethod } from '@/shared/contracts/task-recipe';
 
 type JsonMap = Record<string, unknown>;
 type TermReader = (termId: string, locale: Locale) => TermListItem;
 
 interface NormalizedPalette {
+  method?: TaskRecipeMethod;
   name: string;
   nameLocale: string;
   description: string;
@@ -63,6 +65,7 @@ function paletteContentHash(input: NormalizedPalette) {
         referenceAssetIds: input.referenceAssetIds,
         parameters: input.parameters,
         promptNodes: input.promptNodes,
+        ...(input.method ? { method: input.method } : {}),
       }),
     )
     .digest('hex');
@@ -93,8 +96,8 @@ function createPaletteRevision(
   db.prepare(
     `INSERT INTO word_palette_revisions
     (id, palette_id, parent_revision_id, revision_no, name, name_locale, description,
-     kind, content_hash, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     kind, content_hash, created_at, method_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     revisionId,
     paletteId,
@@ -106,6 +109,7 @@ function createPaletteRevision(
     paletteKind(input),
     contentHash,
     timestamp,
+    input.method ? JSON.stringify(input.method) : null,
   );
   for (const localization of input.localizations) {
     db.prepare(
@@ -499,6 +503,7 @@ function readPaletteRevision(
       description: text(localization.description),
     })),
     kind: text(row.kind) as WordPaletteRevisionDto['kind'],
+    ...(row.method_json ? { method: taskRecipeMethodSchema.parse(JSON.parse(text(row.method_json))) } : {}),
     terms: termRows.map((item) => readTerm(text(item.term_id), locale)),
     parameters,
     promptNodes,
@@ -571,6 +576,7 @@ export function listWordPalettes(
       description: current.description,
       localizations: current.localizations,
       kind: current.kind,
+      ...(current.method ? { method: current.method } : {}),
       status: row.archived_at ? 'ARCHIVED' : 'ACTIVE',
       terms: current.terms,
       parameters: current.parameters,
@@ -600,6 +606,18 @@ export function createWordPalette(db: Database.Database, input: CreateWordPalett
 export function updateWordPalette(db: Database.Database, input: UpdateWordPaletteInput, timestamp: string) {
   const normalized = validateWordPaletteInput(db, input);
   db.transaction(() => {
+    const current = db.prepare(`SELECT current_revision_id FROM word_palettes WHERE id = ?`).get(input.paletteId) as
+      { current_revision_id: string } | undefined;
+    if (input.expectedRevisionId && current?.current_revision_id !== input.expectedRevisionId)
+      throw new Error('TASK_RECIPE_CHANGED');
+    const previous =
+      current &&
+      (db.prepare('SELECT method_json FROM word_palette_revisions WHERE id = ?').get(current.current_revision_id) as
+        { method_json: string | null } | undefined);
+    const previousMethod = previous?.method_json
+      ? taskRecipeMethodSchema.parse(JSON.parse(previous.method_json))
+      : undefined;
+    if (previousMethod?.task !== normalized.method?.task) throw new Error('TASK_RECIPE_INCOMPATIBLE');
     const existing = db.prepare('SELECT 1 FROM word_palettes WHERE id = ? AND deleted_at IS NULL').get(input.paletteId);
     if (!existing) throw new Error('Word palette not found');
     createPaletteRevision(db, input.paletteId, normalized, timestamp);
@@ -607,6 +625,23 @@ export function updateWordPalette(db: Database.Database, input: UpdateWordPalett
 }
 
 function validateWordPaletteInput(db: Database.Database, input: CreateWordPaletteInput): NormalizedPalette {
+  const method = input.method ? taskRecipeMethodSchema.parse(input.method) : undefined;
+  if (method) {
+    if (
+      input.promptNodes.length ||
+      input.parameters.length ||
+      input.referenceAssetIds.length > 8 ||
+      (method.task === 'ARTICLE_COMMENT' && input.referenceAssetIds.length)
+    )
+      throw new Error('TASK_RECIPE_INCOMPATIBLE');
+    if (method.source) {
+      const source = db
+        .prepare('SELECT method_json FROM word_palette_revisions WHERE id = ? AND palette_id = ?')
+        .get(method.source.revisionId, method.source.recipeId) as { method_json: string | null } | undefined;
+      if (!source?.method_json || taskRecipeMethodSchema.parse(JSON.parse(source.method_json)).task !== method.task)
+        throw new Error('TASK_RECIPE_UNAVAILABLE');
+    }
+  }
   const normalizeLocale = (value: string) => value.trim().toLocaleLowerCase();
   const name = input.name.trim();
   const nameLocale = normalizeLocale(input.nameLocale);
@@ -725,12 +760,13 @@ function validateWordPaletteInput(db: Database.Database, input: CreateWordPalett
   const hasPromptContent = Boolean(
     promptNodes.some((node) => node.kind !== 'TEXT' || node.promptFragment.length || node.negativeFragment.length),
   );
-  if (!termIds.length && !parameters.length && !referenceAssetIds.length && !hasPromptContent) {
+  if (!method && !termIds.length && !parameters.length && !referenceAssetIds.length && !hasPromptContent) {
     throw new Error('A word palette needs Prompt content, variations, terms, or reference images');
   }
   return {
     name,
     nameLocale,
+    ...(method ? { method } : {}),
     description: input.description.trim(),
     localizations,
     termIds,

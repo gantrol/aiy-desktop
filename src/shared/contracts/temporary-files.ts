@@ -15,10 +15,22 @@ export const temporaryFilesSnapshotSchema = z.object({
   items: z.array(temporaryFileSummarySchema),
 });
 export const temporaryFilesCommandSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('finishCapture'), id: z.string().uuid() }).strict(),
   z.object({ kind: z.literal('list') }).strict(),
-  z.object({ kind: z.literal('create'), requestId: z.string().uuid() }).strict(),
-  z.object({ kind: z.literal('import'), requestId: z.string().uuid() }).strict(),
-  z.object({ kind: z.literal('clipboard'), requestId: z.string().uuid() }).strict(),
+  z
+    .object({ kind: z.literal('create'), requestId: z.string().uuid(), text: z.string().max(262144).optional() })
+    .strict(),
+  z.object({ kind: z.literal('import'), requestId: z.string().uuid(), edit: z.boolean().optional() }).strict(),
+  z.object({ kind: z.literal('clipboard'), requestId: z.string().uuid(), edit: z.boolean().optional() }).strict(),
+  z
+    .object({
+      kind: z.literal('image'),
+      requestId: z.string().uuid(),
+      bytes: z.custom<Uint8Array>(
+        (value) => value instanceof Uint8Array && value.byteLength > 0 && value.byteLength <= 25 * 1024 * 1024,
+      ),
+    })
+    .strict(),
   z.object({ kind: z.literal('open'), id: z.string().uuid() }).strict(),
   z.object({ kind: z.literal('discard'), id: z.string().uuid() }).strict(),
   z.object({ kind: z.literal('convert'), id: z.string().uuid() }).strict(),

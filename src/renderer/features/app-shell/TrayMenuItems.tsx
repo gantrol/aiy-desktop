@@ -1,4 +1,4 @@
-import { CircleAlert, Eye, EyeOff, House, ListChecks, LogOut, Settings2 } from 'lucide-react';
+import { CircleAlert, ClipboardList, Eye, EyeOff, House, ListChecks, LogOut, Settings2, Scan } from 'lucide-react';
 import type { ComponentProps } from 'react';
 import { AIYFlowerMark } from '@/renderer/components/brand/AIYFlowerMark';
 import { Button } from '@/renderer/components/ui/button';
@@ -23,7 +23,7 @@ export function TrayMenuItems({
   previewQuitFocused = false,
 }: {
   state: Pick<TrayMenuState, 'taskCount' | 'windowReady' | 'quittingSoon'> &
-    Partial<Pick<TrayMenuState, 'petalsReady'>>;
+    Partial<Pick<TrayMenuState, 'petalsReady' | 'captureReady' | 'clipboardHistoryReady'>>;
   onAction(action: TrayMenuAction): void;
   previewQuitFocused?: boolean;
   preview?: boolean;
@@ -37,6 +37,18 @@ export function TrayMenuItems({
         <House />
         {copy.open}
       </Item>
+      {!preview && (
+        <>
+          <Item disabled={!state.captureReady} onSelect={() => onAction('capture')}>
+            <Scan />
+            {copy.capture}
+          </Item>
+          <Item disabled={!state.clipboardHistoryReady} onSelect={() => onAction('clipboard-history')}>
+            <ClipboardList />
+            {copy['clipboard-history']}
+          </Item>
+        </>
+      )}
       <Divider className="-mx-1 my-1" />
       {!preview && (
         <>

@@ -8,6 +8,13 @@ export function clampPetalBounds(point: Point, size: { width: number; height: nu
     y: Math.round(Math.max(area.y, Math.min(point.y, area.y + area.height - size.height))),
   };
 }
+/** Image pins can cross display edges, provided a draggable portion stays on screen. */
+export function clampImagePinBounds(point: Point, size: { width: number; height: number }, area: Rectangle) {
+  return {
+    x: Math.round(Math.max(area.x - size.width + 32, Math.min(point.x, area.x + area.width - 32))),
+    y: Math.round(Math.max(area.y - size.height + 32, Math.min(point.y, area.y + area.height - 32))),
+  };
+}
 export function flowerVisualBounds(bounds: Rectangle, flowerSize: number): Rectangle {
   return {
     x: bounds.x + (bounds.width - flowerSize) / 2,

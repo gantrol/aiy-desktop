@@ -280,9 +280,9 @@ export function LocalSpaceSwitcher({ spaceName, spaceCoverUrl, busy, transitioni
                 disabled={transitionPending || busy || space.isCurrent || !space.available}
                 aria-current={space.isCurrent ? 'true' : undefined}
                 className={cn(
-                  'h-9 justify-start gap-2 border-l-4 border-transparent px-2 font-normal',
+                  'h-9 justify-start gap-2 px-2 font-normal',
                   space.isCurrent &&
-                    'border-selected-foreground bg-selected text-selected-foreground hover:bg-selected disabled:bg-selected disabled:text-selected-foreground',
+                    'bg-selected text-selected-foreground hover:bg-selected disabled:bg-selected disabled:text-selected-foreground',
                 )}
                 onClick={() => void run(() => window.desktopApi.localSpacesSwitch(space.id))}
               >

@@ -13,6 +13,15 @@ export const imagePrivacyCommandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('cancel'), requestId: z.string().uuid() }).strict(),
   z
     .object({
+      kind: z.literal('recognize'),
+      requestId: z.string().uuid(),
+      bytes: z.custom<Uint8Array>(
+        (value) => value instanceof Uint8Array && value.byteLength > 0 && value.byteLength <= 25 * 1024 * 1024,
+      ),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal('scan'),
       requestId: z.string().uuid(),
       options: imagePrivacyOptionsSchema,
@@ -32,7 +41,13 @@ export const imagePrivacyRegionSchema = z
   })
   .strict();
 export const imagePrivacyResultSchema = z.discriminatedUnion('status', [
-  z.object({ status: z.literal('ready'), regions: z.array(imagePrivacyRegionSchema).max(300) }).strict(),
+  z
+    .object({
+      status: z.literal('ready'),
+      regions: z.array(imagePrivacyRegionSchema).max(300),
+      text: z.string().max(262144).optional(),
+    })
+    .strict(),
   z
     .object({ status: z.enum(['unsupported', 'unavailable', 'tooLarge', 'busy', 'cancelled', 'failed', 'tooMany']) })
     .strict(),

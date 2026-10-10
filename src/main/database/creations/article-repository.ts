@@ -1,10 +1,13 @@
+import { readArticleMediaAssets } from '@/main/database/creations/article-media-assets';
+import { readArticleSummaries } from '@/main/database/creations/article-summary-reader';
 import type { LibraryStorage } from '@/main/database/core/storage';
-import { mediaUrl, now, text, type JsonMap } from '@/main/database/core/values';
+import { now, text, type JsonMap } from '@/main/database/core/values';
 import { ArticleCommentRepository } from '@/main/database/creations/article-comment-repository';
 import { ArticleElementRepository } from '@/main/database/creations/article-element-repository';
 import type { ArticleRevisionContentLocator } from '@/main/database/creations/article-revision-pack-codec';
 import { ArticleRevisionPackStore } from '@/main/database/creations/article-revision-pack-store';
 import { CreationItemRepository } from '@/main/database/creations/creation-item-repository';
+import { articleCreationScope, isolateArticleCreation } from '@/main/database/creations/article-creation-management';
 import { ContentLifecycleRepository } from '@/main/database/recovery/content-lifecycle-repository';
 import { articleRevisionMatchesArticle, normalizeArticleContent } from '@/shared/article-revision';
 import type {
@@ -50,21 +53,6 @@ import { initializeContentAuthors } from '@/main/database/me/content-authorship'
 import { articleReadMetadata } from '@/main/database/creations/article-read-metadata';
 import type { AuthorSummary, ContentWriteContext } from '@/shared/contracts/authorship';
 
-function assetDto(row: JsonMap): AssetDto {
-  const id = text(row.id);
-  return {
-    id,
-    kind: text(row.kind) as AssetDto['kind'],
-    originType: text(row.origin_type),
-    width: Number(row.width),
-    height: Number(row.height),
-    mimeType: text(row.mime_type),
-    byteSize: Number(row.byte_size),
-    mediaUrl: mediaUrl(id),
-    createdAt: text(row.created_at),
-  };
-}
-
 function contentHash(content: ArticleContentInput) {
   return createHash('sha256').update(canonicalArticleContentJson(content)).digest('hex');
 }
@@ -91,6 +79,12 @@ export class ArticleRepository {
     return this.storage.db;
   }
 
+  listSummaries() {
+    return readArticleSummaries(this.db, (rows) =>
+      this.revisionPacks.readContents(rows.map((row) => this.contentLocator(row))),
+    );
+  }
+
   list(ids?: readonly string[]): ArticleDto[] {
     if (ids?.length === 0) return [];
     const rows = this.db
@@ -115,7 +109,7 @@ export class ArticleRepository {
         [...contentsByRevision.values()].flatMap((content) => content.mediaBindings.map((binding) => binding.assetId)),
       ),
     ];
-    const assetsById = this.mediaAssetsById(assetIds);
+    const assetsById = readArticleMediaAssets(this.db, assetIds);
     return articleReadMetadata(this.db, rows).map((row) => {
       const articleId = text(row.id);
       const revisionId = text(row.revision_id);
@@ -508,7 +502,18 @@ export class ArticleRepository {
         const item = this.creationItems.get(sourceForm.creationItemId);
         if (item.lifecycle !== 'ACTIVE') throw new Error('Archived creation items cannot be changed');
         this.assertAlbumAvailable(item.albumId);
-        this.assertSourceAvailable(input.sourceInspirationStashId, item.id);
+        // The explicit source form may itself be a manuscript separated from its original item.
+        const inheritedSource =
+          sourceForm.entity.kind === 'ARTICLE'
+            ? this.db
+                .prepare('SELECT source_inspiration_stash_id FROM articles WHERE id = ?')
+                .pluck()
+                .get(sourceForm.entity.id)
+            : null;
+        this.assertSourceAvailable(
+          input.sourceInspirationStashId,
+          inheritedSource === input.sourceInspirationStashId ? undefined : item.id,
+        );
 
         const content = normalizeArticleContent(input.content);
         assertBlockDocumentReady(content.document);
@@ -534,13 +539,14 @@ export class ArticleRepository {
           entity: { kind: 'ARTICLE', id },
           anchorKey: null,
         });
+        const creationItemId = isolateArticleCreation(this.storage, articleCreationScope(this.storage, id));
         this.storage.recordChange(
           'ARTICLE',
           id,
           'CREATE',
           {
             albumId: item.albumId,
-            creationItemId: item.id,
+            creationItemId,
             sourceFormId: sourceForm.id,
             sourceInspirationStashId: input.sourceInspirationStashId,
             revisionId,
@@ -807,21 +813,7 @@ export class ArticleRepository {
   }
 
   private mediaAssets(ids: readonly string[]) {
-    const byId = this.mediaAssetsById(ids);
+    const byId = readArticleMediaAssets(this.db, ids);
     return [...new Set(ids)].flatMap((id) => byId.get(id) ?? []);
-  }
-
-  private mediaAssetsById(ids: readonly string[]) {
-    const byId = new Map<string, AssetDto>();
-    const uniqueIds = [...new Set(ids)];
-    for (let offset = 0; offset < uniqueIds.length; offset += 400) {
-      const chunk = uniqueIds.slice(offset, offset + 400);
-      const placeholders = chunk.map(() => '?').join(', ');
-      const rows = this.db
-        .prepare(`SELECT * FROM image_assets WHERE deleted_at IS NULL AND id IN (${placeholders})`)
-        .all(...chunk) as JsonMap[];
-      for (const row of rows) byId.set(text(row.id), assetDto(row));
-    }
-    return byId;
   }
 }

@@ -1,19 +1,16 @@
-import { parentPort, workerData } from 'node:worker_threads';
 import { z } from 'zod';
+import { extensionProcessPort } from '@/main/extensions/process-port';
+import { writeWorkerDiagnostic } from '@/main/extensions/worker-diagnostics';
 import { CodexUsageInvestigator } from '@/main/extensions/codex-usage-investigator';
 import type {
   UsageWorkerRequest,
   UsageWorkerResponse,
 } from '@/main/extensions/codex-usage-investigator/worker-protocol';
 
-const port = parentPort;
-if (!port) throw new Error('Codex usage worker requires a parent port');
-const data = z
-  .object({ dataDirectory: z.string().min(1) })
-  .strict()
-  .parse(workerData);
-const send = (message: UsageWorkerResponse) => port.postMessage(message);
-const investigator = new CodexUsageInvestigator({ ...data, onTaskChanged: (task) => send({ kind: 'task', task }) });
+const port = extensionProcessPort();
+writeWorkerDiagnostic('worker-ready');
+const send = (message: UsageWorkerResponse) => port.send(message);
+let investigator: CodexUsageInvestigator;
 
 async function execute(request: UsageWorkerRequest) {
   switch (request.method) {
@@ -38,11 +35,23 @@ async function execute(request: UsageWorkerRequest) {
 
 // Pause bypasses the queue so long reads and backups remain cancellable.
 let queue: Promise<unknown> = Promise.resolve();
-port.on('message', (request: UsageWorkerRequest) => {
+port.listen((message) => {
+  if (!investigator) {
+    const { dataDirectory } = z
+      .object({ kind: z.literal('configure'), dataDirectory: z.string().min(1) })
+      .strict()
+      .parse(message);
+    investigator = new CodexUsageInvestigator({ dataDirectory, onTaskChanged: (task) => send({ kind: 'task', task }) });
+    return;
+  }
+  const request = message as UsageWorkerRequest;
   const run = async () => {
+    writeWorkerDiagnostic('command-started', { requestId: request.id, operation: request.method });
     try {
       send({ kind: 'result', id: request.id, value: await execute(request) });
+      writeWorkerDiagnostic('command-finished', { requestId: request.id });
     } catch (error) {
+      writeWorkerDiagnostic('command-failed', { requestId: request.id }, error);
       send({ kind: 'result', id: request.id, error: error instanceof Error ? error.message : String(error) });
     }
   };

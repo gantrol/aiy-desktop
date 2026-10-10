@@ -23,6 +23,7 @@ import {
   type CodexVisualizationSessionRecord,
 } from '@/main/extensions/codex-visualization-discovery/scan';
 import { scanCodexThreadDiagrams } from '@/main/extensions/codex-visualization-discovery/thread-diagram-scan';
+import { htmlPreviewResourcePolicy } from '@/main/extensions/codex-visualization-discovery/html-preview-resources';
 
 const MAX_EXPORT_BYTES = 1024 * 1024 * 1024;
 const EXPORT_CONCURRENCY = 4;
@@ -30,24 +31,13 @@ const ARTIFACT_ID_PATTERN = /^[a-f0-9]{64}$/;
 const HTML_PREVIEW_ID_PATTERN = /^[a-f0-9]{48}$/;
 const SESSION_ID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const HTML_PREVIEW_TTL_MS = 5 * 60 * 1_000;
+const EXECUTABLE_HTML_PREVIEW_TTL_MS = 60 * 60 * 1_000;
 const MAX_ACTIVE_HTML_PREVIEWS = 3;
 const MAX_HTML_PREVIEW_REQUESTS = 48;
 const MAX_HTML_PREVIEW_BYTES = 24 * 1024 * 1024;
 const MAX_MERMAID_PREVIEW_BYTES = 512 * 1024;
 const MAX_SESSION_ARTIFACTS = 256;
 const mermaidPreviewExtensions = new Set(['.mmd', '.mermaid']);
-
-const htmlPreviewResourcePolicyByExtension: Readonly<
-  Record<string, { contentType: string; maximumBytes: number } | undefined>
-> = {
-  '.html': { contentType: 'text/html; charset=utf-8', maximumBytes: 4 * 1024 * 1024 },
-  '.htm': { contentType: 'text/html; charset=utf-8', maximumBytes: 4 * 1024 * 1024 },
-  '.css': { contentType: 'text/css; charset=utf-8', maximumBytes: 2 * 1024 * 1024 },
-  '.png': { contentType: 'image/png', maximumBytes: 8 * 1024 * 1024 },
-  '.jpg': { contentType: 'image/jpeg', maximumBytes: 8 * 1024 * 1024 },
-  '.jpeg': { contentType: 'image/jpeg', maximumBytes: 8 * 1024 * 1024 },
-  '.webp': { contentType: 'image/webp', maximumBytes: 8 * 1024 * 1024 },
-};
 
 interface IndexedVisualizationSession extends CodexVisualizationSessionRecord {
   threadName: string;
@@ -75,6 +65,7 @@ interface HtmlPreviewAccess {
   expiresAtMs: number;
   requestCount: number;
   reservedBytes: number;
+  scriptsAllowed: boolean;
 }
 
 export interface CodexVisualizationHtmlPreviewResource {
@@ -82,6 +73,7 @@ export interface CodexVisualizationHtmlPreviewResource {
   byteSize: number;
   contentType: string;
   entryDocument: boolean;
+  scriptsAllowed: boolean;
 }
 
 function isInsidePath(rootPath: string, candidatePath: string) {
@@ -360,6 +352,7 @@ export class CodexVisualizationDiscovery extends EventEmitter {
     this.artifactById.clear();
     this.sessionById.clear();
     this.htmlPreviewById.clear();
+    this.emit('html-previews-revoked');
   }
 
   async list(input: CodexVisualizationListInput): Promise<CodexVisualizationSnapshotDto> {
@@ -433,14 +426,14 @@ export class CodexVisualizationDiscovery extends EventEmitter {
     return resolvedFile;
   }
 
-  async prepareHtmlPreview(artifactId: string): Promise<CodexVisualizationHtmlPreviewDto> {
+  async prepareHtmlPreview(artifactId: string, scriptsAllowed = false): Promise<CodexVisualizationHtmlPreviewDto> {
     if (this.disposed) throw new Error('Codex visualization discovery is closed');
     if (!ARTIFACT_ID_PATTERN.test(artifactId)) throw new Error('Invalid Codex visualization result');
     const artifact = this.artifactById.get(artifactId);
     if (!artifact || artifact.sourceKind !== 'FILE' || artifact.kind !== 'INTERACTIVE' || artifact.role !== 'PRIMARY') {
       throw new Error('This visualization does not support an HTML preview');
     }
-    const resourcePolicy = htmlPreviewResourcePolicyByExtension[artifact.extension];
+    const resourcePolicy = htmlPreviewResourcePolicy(artifact.extension);
     if (!resourcePolicy || artifact.byteSize > resourcePolicy.maximumBytes) {
       throw new Error('HTML preview exceeds the 4 MB safety limit');
     }
@@ -451,10 +444,10 @@ export class CodexVisualizationDiscovery extends EventEmitter {
     while (this.htmlPreviewById.size >= MAX_ACTIVE_HTML_PREVIEWS) {
       const oldestPreviewId = this.htmlPreviewById.keys().next().value;
       if (typeof oldestPreviewId !== 'string') break;
-      this.htmlPreviewById.delete(oldestPreviewId);
+      this.releaseHtmlPreview(oldestPreviewId);
     }
     const previewId = randomBytes(24).toString('hex');
-    const expiresAtMs = Date.now() + HTML_PREVIEW_TTL_MS;
+    const expiresAtMs = Date.now() + (scriptsAllowed ? EXECUTABLE_HTML_PREVIEW_TTL_MS : HTML_PREVIEW_TTL_MS);
     this.htmlPreviewById.set(previewId, {
       previewId,
       artifactId,
@@ -463,12 +456,14 @@ export class CodexVisualizationDiscovery extends EventEmitter {
       expiresAtMs,
       requestCount: 0,
       reservedBytes: 0,
+      scriptsAllowed,
     });
     return {
       previewId,
       artifactId,
       url: `${CODEX_VISUALIZATION_PREVIEW_SCHEME}://${previewId}/${encodedRelativeUrlPath(artifact.relativePath)}`,
       expiresAt: new Date(expiresAtMs).toISOString(),
+      scriptsAllowed,
     };
   }
 
@@ -504,6 +499,18 @@ export class CodexVisualizationDiscovery extends EventEmitter {
   releaseHtmlPreview(previewId: string) {
     if (!HTML_PREVIEW_ID_PATTERN.test(previewId)) throw new Error('Invalid HTML preview');
     this.htmlPreviewById.delete(previewId);
+    this.emit('html-preview-released', previewId);
+  }
+
+  executableHtmlPreview(previewId: string) {
+    const access = this.htmlPreviewById.get(previewId);
+    if (this.disposed || !access?.scriptsAllowed || access.expiresAtMs <= Date.now()) {
+      throw new Error('Executable HTML preview is unavailable');
+    }
+    return {
+      url: `${CODEX_VISUALIZATION_PREVIEW_SCHEME}://${previewId}/${encodedRelativeUrlPath(access.entryRelativePath)}`,
+      expiresAtMs: access.expiresAtMs,
+    };
   }
 
   async resolveHtmlPreviewResource(
@@ -516,7 +523,7 @@ export class CodexVisualizationDiscovery extends EventEmitter {
     const access = this.htmlPreviewById.get(previewId);
     if (!access) throw new Error('HTML preview expired');
     if (access.requestCount >= MAX_HTML_PREVIEW_REQUESTS) {
-      this.htmlPreviewById.delete(previewId);
+      this.releaseHtmlPreview(previewId);
       throw new Error('HTML preview exceeded its request budget');
     }
     access.requestCount += 1;
@@ -524,7 +531,7 @@ export class CodexVisualizationDiscovery extends EventEmitter {
     if (!segments) throw new Error('Invalid HTML preview resource');
     const normalizedRelativePath = segments.join('/');
     const extension = path.extname(segments.at(-1)!).toLowerCase();
-    const resourcePolicy = htmlPreviewResourcePolicyByExtension[extension];
+    const resourcePolicy = htmlPreviewResourcePolicy(extension, access.scriptsAllowed);
     const entryDocument = normalizedRelativePath === access.entryRelativePath;
     if (!resourcePolicy || ((extension === '.html' || extension === '.htm') && !entryDocument)) {
       throw new Error('HTML preview resource type is blocked');
@@ -565,7 +572,7 @@ export class CodexVisualizationDiscovery extends EventEmitter {
     }
     const reservedBytes = reserveBodyBytes ? fileStat.size : 0;
     if (access.reservedBytes + reservedBytes > MAX_HTML_PREVIEW_BYTES) {
-      this.htmlPreviewById.delete(previewId);
+      this.releaseHtmlPreview(previewId);
       throw new Error('HTML preview exceeded its loading budget');
     }
     access.reservedBytes += reservedBytes;
@@ -574,6 +581,7 @@ export class CodexVisualizationDiscovery extends EventEmitter {
       byteSize: fileStat.size,
       contentType: resourcePolicy.contentType,
       entryDocument,
+      scriptsAllowed: access.scriptsAllowed,
     };
   }
 
@@ -686,6 +694,7 @@ export class CodexVisualizationDiscovery extends EventEmitter {
   async dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    this.emit('html-previews-revoked');
     this.active = false;
     this.scanPromise?.controller.abort();
     this.stopWatcher();
@@ -701,7 +710,7 @@ export class CodexVisualizationDiscovery extends EventEmitter {
   private removeExpiredHtmlPreviews() {
     const now = Date.now();
     for (const [previewId, access] of this.htmlPreviewById) {
-      if (access.expiresAtMs <= now) this.htmlPreviewById.delete(previewId);
+      if (access.expiresAtMs <= now) this.releaseHtmlPreview(previewId);
     }
   }
 

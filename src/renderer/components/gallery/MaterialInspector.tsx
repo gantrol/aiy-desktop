@@ -68,7 +68,7 @@ interface Props {
   onClose(): void;
   onPrevious(): void;
   onNext(): void;
-  onOpenResult(seriesId: string, assetId: string): void;
+  onOpenResult(seriesId: string, assetId: string, versionId?: string): void;
   onOpenTerm(termId: string): void;
   onCopyText(text: string): void;
   lifecycleBusy: boolean;
@@ -241,7 +241,7 @@ export function MaterialDetailPage({
       onClose={() => requestExit(onClose)}
       onPrevious={() => requestExit(onPrevious)}
       onNext={() => requestExit(onNext)}
-      onOpenResult={(seriesId, assetId) => requestExit(() => onOpenResult(seriesId, assetId))}
+      onOpenResult={(seriesId, assetId, versionId) => requestExit(() => onOpenResult(seriesId, assetId, versionId))}
       onOpenTerm={(termId) => requestExit(() => onOpenTerm(termId))}
       onCopyText={onCopyText}
       lifecycleBusy={lifecycleBusy}
@@ -276,8 +276,9 @@ export function MaterialDetailPage({
           collectionWidth={240}
           minimumDetailWidth={540}
           selectionKey={item.key}
-          collection={({ revealDetail }) => (
+          collection={({ revealDetail, visible }) => (
             <MaterialBrowseList
+              active={visible}
               items={browseItems}
               selectedKey={item.key}
               onSelect={(next) => {

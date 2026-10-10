@@ -5,6 +5,7 @@ import type {
 } from '@/shared/contracts/codex-visualizations';
 import { CodexVisualizationPreviewFrame } from '@/renderer/features/extensions/CodexVisualizationPreviewFrame';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { EmbeddedWebPreview } from '@/renderer/features/extensions/EmbeddedWebPreview';
 
 interface Props {
   artifact: CodexVisualizationArtifactDto;
@@ -26,18 +27,23 @@ export function CodexHtmlPreviewDialog({ artifact, access, busy, onClose, onOpen
       artifact={artifact}
       busy={busy}
       openSourceLabel={l.actions.openExternal}
+      scriptsAllowed={access.scriptsAllowed}
       onClose={onClose}
       onOpenSource={onOpenExternal}
     >
-      <iframe
-        key={access.previewId}
-        src={access.url}
-        title={l.preview.frameTitle(artifact.fileName)}
-        sandbox=""
-        referrerPolicy="no-referrer"
-        allow=""
-        className="size-full min-h-0 bg-background"
-      />
+      {access.scriptsAllowed ? (
+        <EmbeddedWebPreview previewId={access.previewId} onClose={onClose} />
+      ) : (
+        <iframe
+          key={access.previewId}
+          src={access.url}
+          title={l.preview.frameTitle(artifact.fileName)}
+          sandbox=""
+          referrerPolicy="no-referrer"
+          allow=""
+          className="size-full min-h-0 bg-background"
+        />
+      )}
     </CodexVisualizationPreviewFrame>
   );
 }

@@ -1,6 +1,6 @@
 import { LoaderCircleIcon } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
-import type { ArticleDto } from '@/shared/contracts';
+import type { ArticleListItem } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
 import { Input } from '@/renderer/components/ui/input';
@@ -8,10 +8,10 @@ import { Label } from '@/renderer/components/ui/label';
 import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Props {
-  article: ArticleDto | null;
+  article: ArticleListItem | null;
   open: boolean;
   onOpenChange(open: boolean): void;
-  onSave(article: ArticleDto, title: string): Promise<void>;
+  onSave(article: ArticleListItem, title: string): Promise<void>;
 }
 
 export function RenameArticleDialog({ article, open, onOpenChange, onSave }: Props) {

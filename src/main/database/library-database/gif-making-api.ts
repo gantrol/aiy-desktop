@@ -19,12 +19,13 @@ import type { GifDocumentPurpose } from '@/shared/contracts/gif-motion-draft';
 import { gifExecutionSeries } from '@/main/database/creations/gif-execution-ownership';
 import { ensureImageMaterials } from '@/main/database/albums/image-material-batch';
 import { now } from '@/main/database/core/values';
+import { socialPostArticleContent } from '@/shared/social-post-article';
 
 export function createGifMakingApi({
   storage,
-  socialPosts,
+  articles,
   creationItems,
-}: Pick<LibraryDatabaseRepositories, 'storage' | 'socialPosts' | 'creationItems'>) {
+}: Pick<LibraryDatabaseRepositories, 'storage' | 'articles' | 'creationItems'>) {
   const documents = new GifDocumentRepository(storage);
   const generated = new GifGenerationRepository(storage);
   return {
@@ -134,7 +135,7 @@ export function createGifMakingApi({
           const previous = storage.db
             .prepare(
               `SELECT saved.post_id FROM gif_frame_groups saved
-        JOIN social_post_drafts post ON post.id=saved.post_id AND post.deleted_at IS NULL AND post.archived_at IS NULL
+        JOIN articles post ON post.id=saved.post_id AND post.deleted_at IS NULL AND post.archived_at IS NULL
         WHERE saved.document_id=? AND saved.candidate_id=?`,
             )
             .get(documentId, candidateId) as { post_id: string } | undefined;
@@ -144,16 +145,16 @@ export function createGifMakingApi({
           if (!form) throw new Error('GIF_ASSET_UNAVAILABLE');
           const ids = [...new Set(candidate.manifest.frames.map((frame) => frame.assetId))];
           ensureImageMaterials(storage, ids);
-          const post = socialPosts.createForm({
+          const post = articles.createForm({
             sourceFormId: form.id,
             sourceInspirationStashId: null,
-            content: {
+            content: socialPostArticleContent({
               schemaVersion: 1,
               title: candidate.settings.plan?.title || document.title,
               body: '',
               mediaAssetIds: ids,
               coverAssetId: ids[0] ?? null,
-            },
+            }),
           });
           storage.db
             .prepare(

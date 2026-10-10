@@ -1,5 +1,5 @@
 import { bindArticleNoteRecovery } from '@/main/app/article-note-recovery';
-import { articleDraftDto } from '@/shared/article-draft';
+import { SocialPostRecoveryStore } from '@/main/app/social-post-recovery-store';
 import { articleWechatMessages } from '@/shared/i18n/article-wechat';
 import type { NaturalWatermarkRuntime } from '@/main/extensions/natural-watermark/selection';
 import { app, clipboard, dialog, nativeImage, shell, type BrowserWindow } from 'electron';
@@ -8,6 +8,8 @@ import { createHash } from 'node:crypto';
 import { chmod, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import { registerCalendarIpc } from '@/main/ipc/calendar-handlers';
+import { registerPromptRecipeIpc } from '@/main/ipc/prompt-recipe-handlers';
+import { resolveDefaultTaskRecipe } from '@/main/extensions/prompt-recipes';
 import { registerMeIpc } from '@/main/ipc/me-handlers';
 import { registerContentLibraryIpc } from '@/main/ipc/content-library-handlers';
 import { registerPublishingMaskIpc } from '@/main/ipc/publishing-mask-handlers';
@@ -63,6 +65,7 @@ import { registerCreatorImportIpc } from '@/main/ipc/creator-import-handlers';
 import { registerGifMakingIpc } from '@/main/ipc/gif-making-handlers';
 import { registerDictionaryIpc } from '@/main/ipc/dictionary-handlers';
 import { registerAssetIpc } from '@/main/ipc/asset-handlers';
+import { registerImageSearchIpc } from '@/main/ipc/image-search-handlers';
 import { registerCreationAssistantIpc } from '@/main/ipc/creation-assistant-handlers';
 import { registerExtensionSettingsIpc } from '@/main/ipc/extension-settings-handlers';
 import { registerGenerationIpc } from '@/main/ipc/generation-handlers';
@@ -152,14 +155,14 @@ const compactExecutionWorkbenchOptions = {
 } as const;
 
 function creativeLibraryContainers(database: LibraryDatabase) {
-  const articles = database.listArticles();
+  const articles = database.listArticleSummaries();
   return {
     articles,
     creations: database.listCreations(),
     creationItems: database.listCreationItems(),
     animations: database.listAnimationWorks(),
     evaluationSuites: database.listEvaluationSuites(),
-    inspirationStashes: articles.filter((article) => article.content.creationInput).map(articleDraftDto),
+    inspirationStashes: [],
     imageBreakdowns: database.listImageBreakdowns(),
     socialPosts: database.listSocialPosts(),
     derivedVisuals: database.listDerivedVisuals(),
@@ -276,6 +279,7 @@ function createBrowserCompanionRuntime(
       isActivated: () => extensions.isActivated(NATURAL_WATERMARK_EXTENSION_ID),
     },
     (source) => calendarHandoffLibrary(database.db, source),
+    (ids) => database.resolveAssetFilesAsync(ids),
   );
 }
 
@@ -346,6 +350,10 @@ function createArticleCheckRequestRunner(
   codex: CodexService,
 ) {
   return async (request: ArticleCheckInput): Promise<ArticleCheckExecutionResult> => {
+    if (!request.recipe) {
+      const recipe = resolveDefaultTaskRecipe(database.db, extensions, 'ARTICLE_COMMENT');
+      if (recipe) request = { ...request, recipe };
+    }
     const execution = assistantRouting.resolve('articleCheck');
     if (execution.providerKey !== 'codex' || !execution.reasoningEffort) {
       throw Object.assign(new Error('The configured article check model is not supported'), {
@@ -359,6 +367,7 @@ function createArticleCheckRequestRunner(
     });
     const checkArticle = codex.checkArticle.bind(codex);
     const run = operationDatabase.startArticleCheck({
+      request,
       articleId: request.articleId,
       expectedRevisionId: request.expectedRevisionId,
       locale: request.locale,
@@ -430,6 +439,19 @@ function registerPublishingIpc(
   return createContentIpcServices(database, getWindow, naturalWatermark, extensions);
 }
 
+function bindLibraryRecovery(
+  database: LibraryDatabase,
+  recovery: ArticleEditorRecoveryStore,
+  runtime: RegisterIpcRuntimeOptions,
+) {
+  bindArticleNoteRecovery(
+    database,
+    recovery,
+    runtime.runInLibraryContext,
+    new SocialPostRecoveryStore(app.getPath('userData')),
+  );
+}
+
 export function registerIpc(
   database: LibraryDatabase,
   browserCompanionService: BrowserCompanionLoopbackServer,
@@ -464,7 +486,7 @@ export function registerIpc(
   runtime: RegisterIpcRuntimeOptions = {},
 ) {
   if (!runtime.applicationIpcRegistered) registerApplicationIpc(getWindow, workspaceLayouts, articleEditorRecovery);
-  bindArticleNoteRecovery(database, articleEditorRecovery, runtime.runInLibraryContext);
+  bindLibraryRecovery(database, articleEditorRecovery, runtime);
   const ipcMain = runtime.ipcMain ?? createTrustedIpcHandlerRegistrar(getWindow, runtime.runInLibraryContext);
   const contentServices = registerPublishingIpc(
     ipcMain,
@@ -635,6 +657,7 @@ export function registerIpc(
     chooseSaveFile: (options) => showDownloadsSaveDialog(getWindow, options),
     sendRendererEvent,
   });
+  registerPromptRecipeIpc(ipcMain, database, extensions);
   registerIntakeIpc(ipcMain, database);
   registerWorkTrackingIpc(ipcMain, database, extensions, generation);
   ipcMain.handle('agent-permissions:read', () => readAgentPermissions(database));
@@ -679,5 +702,6 @@ export function registerIpc(
   registerBackgroundIssueIpc(ipcMain, database);
   registerGenerationIpc(ipcMain, database, generation, imageTransforms, runAssistantRequest);
   registerAssetIpc(ipcMain, database, assetFiles, localSpaces.refreshCurrentPreviews);
+  registerImageSearchIpc(ipcMain, database, extensions);
   registerGifMakingIpc(ipcMain, database, generation, codex, assistantRouting);
 }

@@ -12,6 +12,10 @@ import {
 } from '@/main/database/core/schema';
 import markInterruptedRunsSql from '@/main/database/sql/mark-interrupted-runs.sql?raw';
 import { LibraryStorage } from '@/main/database/core/storage';
+import { ImageSearchService } from '@/main/image-search/service';
+import { ImageMetadataSearch } from '@/main/image-search/metadata-service';
+import { ContentSemanticSearch } from '@/main/image-search/content-service';
+import { VideoSearchService } from '@/main/video-search/service';
 import type { FacetSystemRole } from '@/shared/contracts';
 import { PackSyncRepository } from '@/main/database/packs/pack-sync-repository';
 import type { PackSyncSummary } from '@/shared/pack-sync';
@@ -39,6 +43,10 @@ export interface FixtureImportOptions {
  */
 class LibraryDatabaseCore {
   readonly db: LibraryStorage['db'];
+  readonly imageSearch: ImageSearchService;
+  readonly imageMetadataSearch: ImageMetadataSearch;
+  readonly contentSemanticSearch: ContentSemanticSearch;
+  readonly videoSearch: VideoSearchService;
   private readonly repositories;
   private readonly storage: LibraryStorage;
   private initialized = false;
@@ -52,7 +60,16 @@ class LibraryDatabaseCore {
     this.storage = new LibraryStorage(dbPath, libraryRoot, options);
     this.db = this.storage.db;
     this.repositories = createLibraryDatabaseRepositories(this.storage);
-    Object.assign(this, createLibraryDatabaseApi(this.repositories));
+    this.imageSearch = new ImageSearchService(this.storage, this.repositories.gallery, this.repositories.assetFiles);
+    const api = createLibraryDatabaseApi(this.repositories);
+    Object.assign(this, api);
+    this.imageMetadataSearch = new ImageMetadataSearch(
+      this.storage,
+      this.repositories.gallery,
+      this.repositories.assetFiles,
+    );
+    this.contentSemanticSearch = new ContentSemanticSearch(this.storage, api.contentSearch);
+    this.videoSearch = new VideoSearchService(this.storage);
   }
 
   initialize(
@@ -200,6 +217,10 @@ class LibraryDatabaseCore {
     this.repositories.articleRevisionPacks.stopScheduling();
     this.repositories.articleRevisionPacks.assertDrained();
     this.closed = true;
+    this.imageSearch.dispose();
+    this.imageMetadataSearch.stop();
+    this.contentSemanticSearch.dispose();
+    this.videoSearch.dispose();
     this.repositories.libraryFileView.stopSynchronization();
     try {
       if (this.initialized) markDatabaseCleanShutdown(this.db);

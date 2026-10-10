@@ -1,5 +1,7 @@
 import { lazy, useEffect } from 'react';
 import { WorkspaceDetailLoadingBoundary } from '@/renderer/components/app/WorkspaceDetailLoadingBoundary';
+import { Skeleton } from '@/renderer/components/ui/skeleton';
+import { Button } from '@/renderer/components/ui/button';
 import { DerivedVisualResumeDialog } from '@/renderer/components/creator/DerivedVisualResumeDialog';
 import { creationFormByEntity } from '@/renderer/components/creator/creationFormEntities';
 import { CreatorInputWorkspace } from '@/renderer/components/creator/screen/CreatorInputWorkspace';
@@ -29,15 +31,13 @@ interface Props {
 export function CreatorScreenView({ model }: Props) {
   const { animationWorkspace, app, projection } = model;
   const { messages } = useI18n();
+  const awaitingArticle = articleSelectionPending(model);
   const sourceForms = activeSourceForms(model);
   const specializedWorkspaceVisible = hasSpecializedWorkspace(model);
   const derivedVisual = model.workflow.content.derivedVisual;
   const animationId = animationWorkspace && app.location.surface === 'animation' ? app.location.documentId : null;
   const { setCompactPanel } = projection.panes;
-  const sidebarVisible =
-    projection.panes.multiPane &&
-    app.libraryVisible !== false &&
-    Boolean(animationWorkspace || (!app.comparisonFullWindow && !app.promptFullWindow));
+  const sidebarVisible = creatorSidebarVisible(model);
   const sidebarWidth = useWorkspaceSidebarWidth(
     sidebarVisible ? projection.panes.resultWidth : 0,
     projection.panes.animateDisclosure,
@@ -95,6 +95,7 @@ export function CreatorScreenView({ model }: Props) {
         >
           {app.libraryVisible !== false && <CreatorLibraryWorkspace model={model} />}
           <WorkspaceSidebarContent>
+            {awaitingArticle && <ArticleLoadStatus model={model} />}
             {animationWorkspace && (
               <div
                 className={`${projection.panes.multiPane || projection.panes.compactPanel === 'creator' ? 'flex' : 'hidden'} min-h-0 min-w-0 overflow-hidden bg-background`}
@@ -105,7 +106,9 @@ export function CreatorScreenView({ model }: Props) {
             {!animationWorkspace && specializedWorkspaceVisible && (
               <CreatorSpecializedWorkspace model={model} imageBreakdownSourceFormId={sourceForms.imageBreakdown} />
             )}
-            {!animationWorkspace && <CreatorInputWorkspace model={model} sourceFormId={sourceForms.active} />}
+            {!animationWorkspace && !awaitingArticle && (
+              <CreatorInputWorkspace model={model} sourceFormId={sourceForms.active} />
+            )}
             {projection.showOutputPane && !app.promptFullWindow && (
               <WorkspaceDetailLoadingBoundary
                 className="min-h-0 min-w-0 overflow-hidden"
@@ -130,6 +133,14 @@ export function CreatorScreenView({ model }: Props) {
         )}
       </div>
     </CreatorWorkNavigationProvider>
+  );
+}
+
+function creatorSidebarVisible({ projection, app, animationWorkspace }: CreatorScreenViewModel) {
+  return (
+    projection.panes.multiPane &&
+    app.libraryVisible !== false &&
+    Boolean(animationWorkspace || (!app.comparisonFullWindow && !app.promptFullWindow))
   );
 }
 
@@ -168,4 +179,36 @@ function outputTabLabel(model: CreatorScreenViewModel, messages: MessageCatalog)
     return messages.creator.derivedVisual.targetRoles[visual.role];
   }
   return messages.creator.outputTabs[model.outputUi.mode];
+}
+
+function articleSelectionPending(model: CreatorScreenViewModel) {
+  const content = model.selection.contentSelection;
+  return Boolean(
+    (content.selectedArticleId && !content.selectedArticle) ||
+    (content.selectedInspirationStashId && !content.selectedInspirationStash),
+  );
+}
+
+function ArticleLoadStatus({ model }: Props) {
+  const content = model.selection.contentSelection;
+  const { messages } = useI18n();
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4 p-6" aria-busy={!content.articleLoadError}>
+      {content.articleLoadError ? (
+        <>
+          <p role="alert" className="text-sm text-destructive">
+            {content.articleLoadError}
+          </p>
+          <Button variant="outline" className="self-start" onClick={content.retryArticleLoad}>
+            {messages.workbench.retry}
+          </Button>
+        </>
+      ) : (
+        <>
+          <Skeleton className="h-8 w-1/2" />
+          <Skeleton className="h-40 w-full" />
+        </>
+      )}
+    </div>
+  );
 }

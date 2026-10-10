@@ -1,6 +1,7 @@
 import type { JSONContent } from '@tiptap/core';
 import { z } from 'zod';
 import { linkCardAttributesSchema } from '@/shared/contracts/link-card';
+import { htmlFileAttributesSchema } from '@/shared/contracts/html-file';
 import { isMathNode, mathSourceLimit } from '@/shared/content-math';
 
 export type BlockNode = JSONContent;
@@ -29,6 +30,7 @@ const supportedNodes = new Set<string>([
   'text',
   'hardBreak',
   'inlineMath',
+  'htmlFile',
   'bulletList',
   'orderedList',
   'taskList',
@@ -43,7 +45,7 @@ const supportedNodes = new Set<string>([
   ...blockIdentityNodeTypes,
 ]);
 const supportedMarks = new Set(['bold', 'italic', 'strike', 'code', 'link', 'underline']);
-const inlineTypes = new Set(['text', 'hardBreak', 'creatorTerm', 'creatorRecipe', 'inlineMath']);
+const inlineTypes = new Set(['text', 'hardBreak', 'creatorTerm', 'creatorRecipe', 'inlineMath', 'htmlFile']);
 const blockTypes = new Set([
   'paragraph',
   'heading',
@@ -188,6 +190,7 @@ function validAttributes(type: string, attrs: unknown) {
     if (typeof latex !== 'string' || !latex.trim() || latex.length > mathSourceLimit) return false;
   }
   if (type === 'linkCard' && !linkCardAttributesSchema.safeParse(attrs).success) return false;
+  if (type === 'htmlFile' && !htmlFileAttributesSchema.safeParse(attrs).success) return false;
   if (
     type === 'reveal' &&
     (!attrs ||

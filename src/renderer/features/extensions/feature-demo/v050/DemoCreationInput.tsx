@@ -93,17 +93,6 @@ export function DemoCreationInput({ time, onError }: { time: number; onError(): 
         startReady={Boolean(prompt)}
         fullWindow={false}
         annotationRefinement={null}
-        materialPicker={
-          <Button
-            variant="outline"
-            size="icon"
-            className="rounded-full"
-            aria-label={copy.sourceImage}
-            onClick={demoNoop}
-          >
-            <ImageIcon />
-          </Button>
-        }
         dictionaryPicker={
           <Button variant="outline" size="icon" className="rounded-full" aria-label={c.dictionary} onClick={demoNoop}>
             <DictionaryIcon />
@@ -114,22 +103,33 @@ export function DemoCreationInput({ time, onError }: { time: number; onError(): 
           <CanvasPresetPicker locale={locale} presets={[]} value={undefined} compact toolbar onChange={demoNoop} />
         }
         references={
-          <div className="relative mt-1 h-16 w-24 overflow-hidden rounded-sm bg-muted" aria-label={copy.sourceImage}>
-            <img
-              data-demo-media="source"
-              src={demoMedia.character}
-              alt={copy.sourceImage}
-              className="size-full object-contain"
-              onError={onError}
-            />
+          <div className="flex items-center gap-2">
+            <div className="relative mt-1 h-16 w-24 overflow-hidden rounded-sm bg-muted" aria-label={copy.sourceImage}>
+              <img
+                data-demo-media="source"
+                src={demoMedia.character}
+                alt={copy.sourceImage}
+                className="size-full object-contain"
+                onError={onError}
+              />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="absolute right-0 top-0 size-5 bg-background/90"
+                aria-label={messages.creator.derivedVisual.removeReference(1)}
+                onClick={demoNoop}
+              >
+                <CloseIcon className="size-3" />
+              </Button>
+            </div>
             <Button
-              variant="ghost"
-              size="icon-sm"
-              className="absolute right-0 top-0 size-5 bg-background/90"
-              aria-label={messages.creator.derivedVisual.removeReference(1)}
+              variant="outline"
+              size="icon"
+              className="rounded-sm border-dashed"
+              aria-label={messages.creator.materialPicker.add}
               onClick={demoNoop}
             >
-              <CloseIcon className="size-3" />
+              <ImageIcon />
             </Button>
           </div>
         }

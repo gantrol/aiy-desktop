@@ -17,6 +17,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { ContentReferenceHost, type ReferenceHost } from '@/renderer/features/content-editor/ContentReferenceHost';
 import { OutlineGlobalCollapseRail } from '@/renderer/features/content-editor/OutlineGlobalCollapseRail';
 import { useContentReferenceDrop } from '@/renderer/features/content-editor/useContentReferenceDrop';
+import { useOutlineHtmlDrop } from '@/renderer/features/content-editor/useOutlineHtmlDrop';
 import { ContentSearchPosition } from '@/renderer/features/content-search/ContentSearchPosition';
 
 export function VideoDocumentEditorSurfaces({
@@ -55,6 +56,7 @@ export function VideoDocumentEditorSurfaces({
   const copy = useI18n().messages.referenceOutline;
   const [navigationError, setNavigationError] = useState('');
   const referenceDrop = useContentReferenceDrop(editor, contentSource);
+  const htmlDrop = useOutlineHtmlDrop(editor, Boolean(outlineMode));
   const [activeShared, setActiveShared] = useState<ActiveSharedEditor | null>(null);
   const activeEditor = useMemo(() => ({ active: activeShared, activate: setActiveShared }), [activeShared]);
   useEffect(() => {
@@ -81,9 +83,16 @@ export function VideoDocumentEditorSurfaces({
             ref={editorRootRef}
             data-slot="video-document-wysiwyg-editor"
             data-content-source={contentSource ? JSON.stringify(contentSource) : undefined}
-            onDragOverCapture={referenceDrop.onDragOverCapture}
-            onDropCapture={referenceDrop.onDropCapture}
-            onDragLeaveCapture={referenceDrop.onDragLeaveCapture}
+            onDragOverCapture={(event) => {
+              if (!htmlDrop.onDragOverCapture(event)) referenceDrop.onDragOverCapture(event);
+            }}
+            onDropCapture={(event) => {
+              if (!htmlDrop.onDropCapture(event)) referenceDrop.onDropCapture(event);
+            }}
+            onDragLeaveCapture={(event) => {
+              htmlDrop.onDragLeaveCapture(event);
+              referenceDrop.onDragLeaveCapture(event);
+            }}
             className={cn(
               'group/editor relative min-w-0 w-full',
               outlineMode && 'min-h-[60vh]',
@@ -100,6 +109,16 @@ export function VideoDocumentEditorSurfaces({
               </p>
             )}
             {toolbarRoot ? createPortal(chrome, toolbarRoot) : chrome}
+            {htmlDrop.status && (
+              <span role="status" className="text-xs text-muted-foreground">
+                {htmlDrop.status}
+              </span>
+            )}
+            {htmlDrop.error && (
+              <span role="alert" className="text-xs text-destructive">
+                {htmlDrop.error}
+              </span>
+            )}
             <ContentSearchPosition editor={editor} source={contentSource} searching={searching} />
             {referenceDrop.error && (
               <span role="alert" className="text-xs text-destructive">
@@ -135,6 +154,16 @@ export function VideoDocumentEditorSurfaces({
             ? createPortal(
                 <>
                   {chrome}
+                  {htmlDrop.status && (
+                    <span role="status" className="text-xs text-muted-foreground">
+                      {htmlDrop.status}
+                    </span>
+                  )}
+                  {htmlDrop.error && (
+                    <span role="alert" className="text-xs text-destructive">
+                      {htmlDrop.error}
+                    </span>
+                  )}
                   {referenceDrop.error && (
                     <span role="alert" className="text-xs text-destructive">
                       {referenceDrop.error}

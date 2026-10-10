@@ -19,6 +19,7 @@ import type {
   FavoriteTextMaterialDto,
   ExternalMaterialMetadataDto,
   GalleryItemDto,
+  GalleryMaterialDto,
   GalleryPageDto,
   GallerySourceFilter,
   ImageRatingDimension,
@@ -102,7 +103,7 @@ interface Props {
   location: GalleryLocation;
   onNavigate(location: GalleryLocation, mode?: NavigationMode): void;
   onHistoryNavigationGuardChange(guard: HistoryNavigationGuard | null): void;
-  onOpenResult(seriesId: string, assetId: string): void;
+  onOpenResult(seriesId: string, assetId: string, versionId?: string): void;
   onOpenTerm(termId: string): void;
   onIntakeCommitted(result: IntakeCommitResult): void | Promise<void>;
   onActiveAlbumChange(albumId: string | null): void;
@@ -183,6 +184,11 @@ export function GalleryScreen({
   const { locale, messages } = useI18n();
   const l = messages.gallery.screen;
   const locationKey = navigationLocationKey(location);
+  const requestedTargetKey = location.requestedAssetId
+    ? `asset:${location.requestedAssetId}`
+    : location.requestedMaterialId
+      ? `material:${location.requestedMaterialId}`
+      : null;
   const appliedLocationKeyRef = useRef(locationKey);
   const navigationPending = appliedLocationKeyRef.current !== locationKey;
   const requestId = useRef(0);
@@ -216,7 +222,7 @@ export function GalleryScreen({
   const [requestedRevision, setRequestedRevision] = useState(0);
   const [requestedMaterial, setRequestedMaterial] = useState<{
     libraryKey: string;
-    materialId: string;
+    targetKey: string;
     item: MaterialLibraryItem;
   } | null>(null);
   const [checkedKeys, setCheckedKeys] = useState<ReadonlySet<string>>(() => new Set());
@@ -933,15 +939,15 @@ export function GalleryScreen({
 
   const selectedItem = useMemo(
     () =>
-      location.requestedMaterialId
-        ? requestedMaterial?.libraryKey === libraryKey && requestedMaterial.materialId === location.requestedMaterialId
+      requestedTargetKey
+        ? requestedMaterial?.libraryKey === libraryKey && requestedMaterial.targetKey === requestedTargetKey
           ? requestedMaterial.item
           : null
         : (materials.find((item) => item.key === selectedKey) ?? null),
-    [libraryKey, location.requestedMaterialId, materials, requestedMaterial, selectedKey],
+    [libraryKey, requestedTargetKey, materials, requestedMaterial, selectedKey],
   );
   const selectedIndex =
-    selectedItem && !location.requestedMaterialId ? materials.findIndex((item) => item.key === selectedItem.key) : -1;
+    selectedItem && !requestedTargetKey ? materials.findIndex((item) => item.key === selectedItem.key) : -1;
   const previousItem = selectedIndex > 0 ? materials[selectedIndex - 1] : null;
   const nextItem = selectedIndex >= 0 ? (materials[selectedIndex + 1] ?? null) : null;
   const selectedFavoriteMaterialId =
@@ -971,7 +977,7 @@ export function GalleryScreen({
       error ||
       albumError ||
       (nextCursor && items.length < (viewportSnapshotRef.current?.imageCount ?? 0)) ||
-      location.requestedMaterialId ||
+      requestedTargetKey ||
       displayedQueryKey !== galleryQueryKey ||
       !selectedKey ||
       selectedItem
@@ -998,7 +1004,7 @@ export function GalleryScreen({
     albumError,
     nextCursor,
     items.length,
-    location.requestedMaterialId,
+    requestedTargetKey,
     selectedItem,
     selectedKey,
   ]);
@@ -1014,10 +1020,15 @@ export function GalleryScreen({
 
   useEffect(() => {
     const requestedMaterialId = location.requestedMaterialId;
-    if (!active || !requestedMaterialId) return;
+    const requestedAssetId = location.requestedAssetId;
+    if (!active || !requestedTargetKey) return;
     let current = true;
-    void window.desktopApi
-      .galleryMaterialGet(requestedMaterialId, locale)
+    const request: Promise<GalleryMaterialDto | null> = requestedAssetId
+      ? window.desktopApi
+          .assetNavigationGet(requestedAssetId, locale)
+          .then((result) => (result ? { kind: 'MEDIA', media: result.material } : null))
+      : window.desktopApi.galleryMaterialGet(requestedMaterialId!, locale);
+    void request
       .then((result) => {
         if (!current) return;
         if (!result) {
@@ -1026,7 +1037,7 @@ export function GalleryScreen({
           return;
         }
         const item = result.kind === 'MEDIA' ? mediaMaterial(result.media) : textMaterial(result.text);
-        setRequestedMaterial({ libraryKey, materialId: requestedMaterialId, item });
+        setRequestedMaterial({ libraryKey, targetKey: requestedTargetKey, item });
         setSelectedKey(item.key);
       })
       .catch((reason: unknown) => {
@@ -1041,6 +1052,8 @@ export function GalleryScreen({
     libraryKey,
     locale,
     location.requestedMaterialId,
+    location.requestedAssetId,
+    requestedTargetKey,
     requestedRevision,
     requestedMaterialFailed,
   ]);
@@ -1148,6 +1161,7 @@ export function GalleryScreen({
           collection: currentCollection(),
           selectedMaterialKey: selectedKey,
           requestedMaterialId: location.requestedMaterialId,
+          requestedAssetId: location.requestedAssetId,
           browse: { ...currentBrowseState(), viewport },
         },
         'replace',
@@ -1714,6 +1728,9 @@ export function GalleryScreen({
 
               {selectionMode && !creationBrowseActive && activeAlbum?.kind !== 'USER' && (
                 <MaterialBatchToolbar
+                  imageAssetIds={materials.flatMap((item) =>
+                    checkedKeys.has(item.key) && item.kind === 'IMAGE' ? [item.image.asset.id] : [],
+                  )}
                   count={checkedKeys.size}
                   albums={writableAlbums}
                   terms={terms}
@@ -1787,12 +1804,12 @@ export function GalleryScreen({
         {active && selectedItem && (
           <WorkspaceDetailLoadingBoundary>
             <MaterialDetailPage
-              browseItems={location.requestedMaterialId ? [] : materials}
+              browseItems={requestedTargetKey ? [] : materials}
               onBrowseSelect={(item) => selectMaterial(item, undefined, 'replace')}
               spaceId={spaceId}
               item={selectedItem}
               position={Math.max(0, selectedIndex) + 1}
-              total={location.requestedMaterialId ? 1 : Math.max(resultTotal, materials.length)}
+              total={requestedTargetKey ? 1 : Math.max(resultTotal, materials.length)}
               albums={writableAlbums}
               ratingBusy={selectedItem.kind === 'IMAGE' && busyAssets.has(selectedItem.image.asset.id)}
               albumMembershipBusy={albumMutationBusy}
@@ -1811,7 +1828,7 @@ export function GalleryScreen({
               onNext={() => {
                 if (nextItem) selectMaterial(nextItem, undefined, 'replace');
               }}
-              onOpenResult={(seriesId, assetId) => onOpenResult(activeAlbum?.sourceSeriesId ?? seriesId, assetId)}
+              onOpenResult={onOpenResult}
               onOpenTerm={onOpenTerm}
               onCopyText={(text) => void copyText(text)}
               lifecycleBusy={contentLifecycleBusy}
@@ -1827,7 +1844,7 @@ export function GalleryScreen({
               }}
               notify={notify}
               onMetadataUpdated={updateMaterialMetadata}
-              closeAfterRemoveFavorite={favoriteOnly && !location.requestedMaterialId}
+              closeAfterRemoveFavorite={favoriteOnly && !requestedTargetKey}
               onHistoryNavigationGuardChange={onHistoryNavigationGuardChange}
               revealContext={revealContextForMaterial(selectedItem)}
             />

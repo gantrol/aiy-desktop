@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Eye, EyeOff, PinOff, RefreshCw } from 'lucide-react';
+import { Search, Eye, EyeOff, MonitorDown, RefreshCw } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
@@ -224,7 +224,7 @@ function PetalManager({ snapshot, onError }: Props) {
               disabled={disabled}
               onClick={() => void run({ kind: 'collect', ids: [...selected] })}
             >
-              <PinOff className="size-3.5" />
+              <MonitorDown className="size-3.5" />
               {copy.collect}
             </Button>
           </>

@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { z } from 'zod';
+import { taskRecipeMethodSchema } from '@/shared/contracts/task-recipe';
 import type { LibraryDatabase } from '@/main/database';
 import type { GenerationService } from '@/main/generation/service';
 import { TermIllustrationService } from '@/main/dictionary/term-illustration-service';
@@ -160,6 +161,7 @@ const paletteParameterSchema = z.object({
     .max(100),
 });
 const paletteFields = {
+  method: taskRecipeMethodSchema.optional(),
   locale: localeSchema,
   name: z.string().min(1).max(200),
   nameLocale: contentLocaleSchema,
@@ -170,7 +172,7 @@ const paletteFields = {
   promptNodes: z.array(palettePromptNodeSchema).max(2000),
 };
 const createPaletteSchema = z.object(paletteFields).strict();
-const updatePaletteSchema = z.object({ paletteId: id, ...paletteFields }).strict();
+const updatePaletteSchema = z.object({ paletteId: id, expectedRevisionId: id.optional(), ...paletteFields }).strict();
 
 export function registerDictionaryIpc(
   ipcMain: IpcHandlerRegistrar,

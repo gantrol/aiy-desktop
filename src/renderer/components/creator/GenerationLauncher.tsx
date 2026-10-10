@@ -4,6 +4,8 @@ import type { ImageGenerationRouteDto, GenerationTargetInput, Locale } from '@/s
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
+import { ResponsiveButton } from '@/renderer/components/ui/responsive-button';
 import { shortcutTokens } from '@/renderer/commands/app-shortcuts';
 import { GenerationBatchControl } from '@/renderer/components/creator/GenerationBatchControl';
 import { generationBatchPlan } from '@/renderer/components/creator/generationBatchPlan';
@@ -77,7 +79,6 @@ export function GenerationLauncher(props: Props) {
     platform,
   ).join('+');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsId = useId();
   const blockedMessageId = useId();
   const blockMessage = useGenerationBlockMessage(readiness);
   const canGenerate = readiness.ready && !starting && !interactionBlocked;
@@ -88,7 +89,7 @@ export function GenerationLauncher(props: Props) {
       : (routes.find((model) => model.key === target.modelKey)?.name ?? target.modelKey),
   );
   const modelSummary = modelNames.join(' + ') || labels.noneSelected;
-  const launcherModelLabel = `${labels.launcherModels}${locale === 'zh' ? '：' : ':'}`;
+  const launcherModelLabel = labels.launcherModels;
   const batchSummary =
     batchPlan.uniformRepeatCount === null
       ? labels.batchTotal(batchPlan.modelCount, batchPlan.totalCount)
@@ -121,7 +122,7 @@ export function GenerationLauncher(props: Props) {
     <Button
       data-action="generate"
       type="button"
-      size="lg"
+      size={embedded ? 'sm' : 'lg'}
       className={cn(
         'shrink-0 bg-generation-action text-generation-action-foreground hover:bg-generation-action-hover active:bg-generation-action-hover',
         'min-w-24',
@@ -135,30 +136,45 @@ export function GenerationLauncher(props: Props) {
     >
       {starting ? <LoaderCircleIcon className="size-4 animate-spin" /> : <ImagePlusIcon className="size-4" />}
       {starting ? labels.generating : labels.generate}
-      {!starting && generationCount > 1 ? ` ${generationCount}` : ''}
+      {!starting && generationCount > 1 ? ` ${new Intl.NumberFormat(locale).format(generationCount)}` : ''}
     </Button>
   );
 
   const summary = (
     <div
       data-generation-model-summary
-      className="flex min-w-0 flex-1 items-center gap-1"
+      className="flex min-w-32 flex-1 basis-32 items-center gap-1"
       title={`${launcherModelLabel} ${modelSummary} · ${batchSummary}`}
     >
-      <Button
-        type="button"
-        data-action="generation-settings"
-        variant="ghost"
-        size="icon-sm"
-        className="shrink-0 text-muted-foreground"
-        title={labels.modelParameters}
-        aria-label={labels.modelParameters}
-        aria-expanded={settingsOpen}
-        aria-controls={settingsId}
-        onClick={() => setSettingsOpen((current) => !current)}
-      >
-        <Settings2Icon className="size-4" />
-      </Button>
+      <Popover modal open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <PopoverTrigger asChild>
+          <ResponsiveButton
+            type="button"
+            data-action="generation-settings"
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            label={labels.modelParameters}
+            aria-expanded={settingsOpen}
+          >
+            <Settings2Icon className="size-4" />
+          </ResponsiveButton>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          side="top"
+          className="max-h-[min(32rem,75vh)] w-96 max-w-[calc(100vw-2rem)] overflow-y-auto p-0"
+          aria-label={labels.modelParameters}
+        >
+          <GenerationBatchControl targets={generationTargets} onTargetsChange={onGenerationTargetsChange} />
+          <ModelGenerationSettingsTable
+            locale={locale}
+            routes={routes}
+            targets={generationTargets}
+            onTargetsChange={onGenerationTargetsChange}
+          />
+        </PopoverContent>
+      </Popover>
       <span data-generation-model-label className="hidden shrink-0 text-sm text-muted-foreground @3xl/launcher:inline">
         {launcherModelLabel}
       </span>
@@ -169,12 +185,14 @@ export function GenerationLauncher(props: Props) {
         onSelectedModelKeysChange={selectModels}
         onConfigureExtension={onConfigureExtension}
       />
-      <GenerationQualitySelector
-        locale={locale}
-        routes={routes}
-        targets={generationTargets}
-        onTargetsChange={onGenerationTargetsChange}
-      />
+      {!embedded && (
+        <GenerationQualitySelector
+          locale={locale}
+          routes={routes}
+          targets={generationTargets}
+          onTargetsChange={onGenerationTargetsChange}
+        />
+      )}
       {batchPlan.totalCount > 1 && (
         <span
           data-generation-batch-summary
@@ -192,12 +210,12 @@ export function GenerationLauncher(props: Props) {
       data-embedded={embedded || undefined}
       className={cn(
         '@container/launcher shrink-0 overflow-hidden',
-        embedded ? 'border-t bg-surface-sunken/15' : 'rounded-xl border bg-surface',
+        embedded ? 'bg-surface' : 'rounded-md border bg-surface',
       )}
     >
-      <div className="grid min-h-16 grid-cols-1 items-center gap-2 px-3 py-2 @min-[640px]/launcher:grid-cols-[minmax(0,1fr)_auto] @min-[640px]/launcher:gap-3">
+      <div className={cn('flex flex-wrap items-center gap-2 py-2', embedded ? 'px-6' : 'px-3')}>
         {summary}
-        <div className="flex min-w-0 items-center justify-end gap-2">
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
           {secondaryAction}
           {generateButton}
         </div>
@@ -211,17 +229,6 @@ export function GenerationLauncher(props: Props) {
         >
           {blockMessage}
         </p>
-      )}
-      {settingsOpen && (
-        <div id={settingsId} className="border-t bg-surface-sunken/40">
-          <GenerationBatchControl targets={generationTargets} onTargetsChange={onGenerationTargetsChange} />
-          <ModelGenerationSettingsTable
-            locale={locale}
-            routes={routes}
-            targets={generationTargets}
-            onTargetsChange={onGenerationTargetsChange}
-          />
-        </div>
       )}
     </section>
   );

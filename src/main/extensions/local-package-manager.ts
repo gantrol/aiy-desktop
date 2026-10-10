@@ -2,6 +2,7 @@ import { lstat, mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { LoadedExtensionPackage } from '@/main/extensions/package-loader';
 import { loadExtensionPackage } from '@/main/extensions/package-loader';
+import { assertExtensionSource } from '@/main/extensions/source-policy';
 
 async function requireDirectory(directoryPath: string, label: string) {
   const entry = await lstat(directoryPath);
@@ -40,6 +41,7 @@ export class LocalExtensionPackageManager {
   }
 
   async install(candidate: LoadedExtensionPackage): Promise<LoadedExtensionPackage> {
+    assertExtensionSource(candidate.manifest, 'LOCAL');
     await mkdir(this.rootPath, { recursive: true });
     const targetPath = requireDirectChild(this.rootPath, path.join(this.rootPath, candidate.manifest.id));
     const temporaryRoot = await mkdtemp(path.join(path.dirname(this.rootPath), '.aiy-extension-install-'));

@@ -119,11 +119,12 @@ export function creationRelationsForForm(
       .filter((form) => form.entity.kind === 'DERIVED_VISUAL' && form.sourceFormId === sourceForm.id)
       .map((form) => form.id),
   );
-  const children = item.forms.filter(
+  const allForms = data.creationItems.flatMap((candidate) => candidate.forms);
+  const children = allForms.filter(
     (form) => form.sourceFormId === sourceForm.id || (form.sourceFormId !== null && visualIds.has(form.sourceFormId)),
   );
   const source = sourceForm.sourceFormId
-    ? (item.forms.find((form) => form.id === sourceForm.sourceFormId) ?? null)
+    ? (allForms.find((form) => form.id === sourceForm.sourceFormId) ?? null)
     : null;
   const related = [
     ...(source ? [{ form: source, direction: 'SOURCE' as const }] : []),

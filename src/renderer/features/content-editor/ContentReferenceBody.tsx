@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import { useId, useRef, useState } from 'react';
 import { Copy, Download } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
@@ -22,6 +23,8 @@ import { contentFigureReferenceAssetId } from '@/shared/content-figure-reference
 import { contentAssetPath } from '@/shared/content-asset-path';
 import { referenceMarkdownHeadings } from '@/renderer/features/content-editor/referenceMarkdownHeadings';
 import { PinContentButton } from '@/renderer/features/desktop-petals/PinContentAction';
+import { parseReadingCitationLink } from '@/shared/reading-citation-link';
+import { useReadingHost } from '@/renderer/features/creation-reading/ReadingHost';
 
 function ReferenceImage({ src, alt, media }: { src: string; alt: string; media?: ContentReference['media'][number] }) {
   const { messages } = useI18n();
@@ -67,7 +70,7 @@ function ReferenceImage({ src, alt, media }: { src: string; alt: string; media?:
           aria-label={messages.referenceOutline.viewImage}
           onClick={(event) => event.stopPropagation()}
         >
-          <img
+          <ScratchImage
             key={load.attempt}
             {...imageEvents}
             src={src}
@@ -82,7 +85,13 @@ function ReferenceImage({ src, alt, media }: { src: string; alt: string; media?:
         <DialogHeader>
           <DialogTitle>{alt || messages.referenceOutline.viewImage}</DialogTitle>
         </DialogHeader>
-        <img key={load.attempt} {...imageEvents} src={src} alt={alt} className="max-h-[65vh] w-full object-contain" />
+        <ScratchImage
+          key={load.attempt}
+          {...imageEvents}
+          src={src}
+          alt={alt}
+          className="max-h-[65vh] w-full object-contain"
+        />
         {imageState}
         {media && (
           <div className="flex gap-2">
@@ -133,6 +142,7 @@ export function ContentReferenceBody({
   const root = useRef<HTMLDivElement>(null);
   const localId = useId();
   const occurrenceId = originBlockId || localId;
+  const readingHost = useReadingHost();
   const follow = async (href: string) => {
     if (busy) return;
     setBusy(true);
@@ -156,7 +166,14 @@ export function ContentReferenceBody({
     }
   };
   const onLink = (href: string) => {
-    if (href.startsWith('#aiy-block:')) void follow(href);
+    const citation = parseReadingCitationLink(href);
+    if (citation) {
+      const trigger = globalThis.document.activeElement;
+      const opened = readingHost?.openCitation(citation, () => {
+        if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
+      });
+      setError(opened ? '' : messages.creationReading.citationUnavailable);
+    } else if (href.startsWith('#aiy-block:')) void follow(href);
     else if (parseAiyDeepLink(href)) {
       if (!openAppContentLink(href)) setError(copy.locationMissing);
       else onNavigated?.();

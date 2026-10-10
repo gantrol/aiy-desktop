@@ -1,6 +1,8 @@
 import { useRef, useState, type ComponentPropsWithoutRef, type CSSProperties } from 'react';
 import { sampleImageIsOpaque } from '@/renderer/components/media/imageOpacity';
 import { cn } from '@/renderer/lib/utils';
+import { imageAssetIdFromUrl, useImageHidden } from '@/renderer/components/media/ImageVisibilityProvider';
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 
 interface ImageAmbientBackdropProps {
   src: string;
@@ -69,6 +71,8 @@ function ImageAmbientBackdropFrame({
 }
 
 export function ImageAmbientBackdrop(props: ImageAmbientBackdropProps) {
+  const hidden = useImageHidden(imageAssetIdFromUrl(props.src));
+  if (hidden) return null;
   return <ImageAmbientBackdropFrame key={props.src} {...props} />;
 }
 
@@ -103,7 +107,7 @@ export function AmbientImage({
         decoding={decoding}
         crossOrigin={crossOrigin}
       />
-      <img
+      <ScratchImage
         {...imageProps}
         src={src}
         loading={loading}

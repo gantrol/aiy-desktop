@@ -28,7 +28,12 @@ export function formMatchesFilter(form: CreationFormProjection, filter: Creation
   // Saved creation inputs now own article forms; keep them reachable through the inspiration filter too.
   return (
     (filter[creationFormFilterKey(form)] ||
-      (filter.inspirations && form.role === 'ARTICLE' && Boolean(form.entity?.content.creationInput))) &&
+      (filter.inspirations &&
+        form.role === 'ARTICLE' &&
+        Boolean(
+          form.entity &&
+          ('hasCreationInput' in form.entity ? form.entity.hasCreationInput : form.entity.content.creationInput),
+        ))) &&
     creationMatchesAuthor([form], filter.author)
   );
 }

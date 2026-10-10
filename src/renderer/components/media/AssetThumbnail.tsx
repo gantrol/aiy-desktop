@@ -5,6 +5,7 @@ import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 import { cn } from '@/renderer/lib/utils';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 
 type Props = Omit<ComponentPropsWithoutRef<'img'>, 'src' | 'srcSet'> & {
   asset: Pick<AssetDto, 'id'>;
@@ -43,7 +44,7 @@ function AssetThumbnailFrame({
   return (
     <>
       {ambient && <ImageAmbientBackdrop src={src} loading={loading} decoding={decoding} crossOrigin={crossOrigin} />}
-      <img
+      <ScratchImage
         {...imageProps}
         src={src}
         alt={alt}

@@ -2,6 +2,22 @@ import type { ContentLifecycleItemDto, ContentLifecycleSubtype, Locale } from '@
 import type { MessageCatalog } from '@/renderer/i18n/types';
 import { formatDateTime } from '@/renderer/lib/dateFormat';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
+import { storedContentPreview } from '@/shared/content-lifecycle-preview';
+import { contentDisplayTitle } from '@/shared/content-document';
+
+export function lifecycleTextPresentation(item: ContentLifecycleItemDto, messages: MessageCatalog) {
+  const serialized =
+    ['ARTICLE', 'SOCIAL_POST', 'INSPIRATION_STASH', 'IMAGE_BREAKDOWN', 'EVALUATION_SUITE'].includes(item.subtype) &&
+    /^\s*\{\s*"(?:schemaVersion|title|document|manualPrompt|body|markdown|summary)"\s*:/u.test(item.previewText ?? '');
+  const recovered = serialized ? storedContentPreview(item.previewText) : null;
+  const previewText = serialized ? (recovered?.previewText ?? null) : item.previewText;
+  const title = contentDisplayTitle(
+    item.title === item.entityId ? recovered?.title : item.title,
+    previewText ?? '',
+    messages.contentManagement.untitled,
+  );
+  return { title, previewText };
+}
 
 const subtypeMessageKeys = {
   GIF_DOCUMENT: 'animation',

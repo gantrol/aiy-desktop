@@ -72,7 +72,7 @@ export class TrayMenuWindow {
   private position(window: BrowserWindow, point: Point) {
     const area = screen.getDisplayNearestPoint(point).workArea;
     const width = Math.min(300, area.width);
-    const height = Math.min(this.state().taskCount > 0 ? 350 : 316, area.height);
+    const height = Math.min(this.state().taskCount > 0 ? 382 : 348, area.height);
     window.setBounds({
       x: Math.round(Math.max(area.x, Math.min(point.x - width, area.x + area.width - width))),
       y: Math.round(Math.max(area.y, Math.min(point.y - height, area.y + area.height - height))),

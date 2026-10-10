@@ -1,5 +1,5 @@
-import { Pin } from 'lucide-react';
 import { useState } from 'react';
+import { PinToDesktopIcon } from '@/renderer/features/desktop-petals/PinToDesktopIcon';
 import { Button } from '@/renderer/components/ui/button';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { petalErrorText } from '@/shared/petal-errors';
@@ -31,7 +31,7 @@ export function PinNoteButton({
           .finally(() => setBusy(false));
       }}
     >
-      <Pin className="size-3.5" />
+      <PinToDesktopIcon className="size-3.5" />
       {copy.note.pin}
     </Button>
   );

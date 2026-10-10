@@ -8,7 +8,7 @@ export function useImageEditPersistence(
   session: ImageEditSession,
   image: HTMLImageElement,
   id: string,
-  onClose: () => void,
+  onClose: () => void | Promise<void>,
 ) {
   const { messages } = useI18n(),
     copy = messages.desktopPetals.imageEditor;
@@ -17,6 +17,7 @@ export function useImageEditPersistence(
     composing = useRef(false),
     closed = useRef(false);
   const completed = useRef<ImageEditDocument | null>(null);
+  const returning = useRef(false);
   const persist = async () => {
     if (composing.current) throw new Error('IMAGE_EDIT_COMPOSING');
     const document = session.getSnapshot().document;
@@ -35,6 +36,9 @@ export function useImageEditPersistence(
     () =>
       window.desktopPetals.onFlush(async (save) => {
         if (composing.current) return { status: 'blocked', reason: 'composing' };
+        // The close handshake can itself request a flush. Its caller has already
+        // committed or checkpointed, so waiting for that same operation would deadlock.
+        if (returning.current) return { status: 'recoverable' };
         const unlock = session.lock();
         try {
           if (operation.current) await operation.current;
@@ -63,9 +67,14 @@ export function useImageEditPersistence(
         unlock();
       });
   };
-  const close = () => {
-    closed.current = true;
-    onClose();
+  const close = async () => {
+    returning.current = true;
+    try {
+      await onClose();
+      closed.current = true;
+    } finally {
+      returning.current = false;
+    }
   };
   const finish = (action: 'done' | 'copy' | 'convert') =>
     run(async () => {
@@ -78,19 +87,24 @@ export function useImageEditPersistence(
       try {
         if (action === 'copy') await window.desktopPetals.assetFile({ assetId: session.resultAssetId, action: 'copy' });
         if (action === 'convert') await window.desktopPetals.temporaryFiles({ kind: 'convert', id });
-        close();
+        await close();
       } catch {
-        setError(action === 'copy' ? copy.copyFailed : copy.convertFailed);
+        setError(action === 'copy' ? copy.copyFailed : action === 'convert' ? copy.convertFailed : copy.failed);
       }
     });
   const cancel = () =>
     run(async () => {
       try {
         await session.cancel();
-        close();
+        await close();
       } catch {
         setError(copy.cancelFailed);
       }
     });
-  return { error, setError, finish, cancel, composing };
+  const leave = () =>
+    run(async () => {
+      await session.checkpoint();
+      await close();
+    });
+  return { error, setError, finish, cancel, leave, composing };
 }

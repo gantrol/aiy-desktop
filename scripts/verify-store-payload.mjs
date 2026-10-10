@@ -39,6 +39,10 @@ async function readAsarAssets(asarPath) {
     const jsonSize = header.readUInt32LE(4);
     if (jsonSize > header.length - 8) throw new Error('Packaged ASAR JSON size is invalid.');
     const index = JSON.parse(header.toString('utf8', 8, 8 + jsonSize));
+    const onnx = index.files?.node_modules?.files?.['onnxruntime-node']?.files;
+    if (!onnx?.dist?.files?.['binding.js']?.size || onnx.bin) {
+      throw new Error('Windows ONNX must ship its managed loader without native runtime binaries.');
+    }
     const assets = index.files?.out?.files?.renderer?.files?.assets?.files;
     if (!assets) throw new Error('Packaged renderer assets are missing.');
     return assets;

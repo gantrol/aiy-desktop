@@ -72,8 +72,9 @@ const creationFormRecordShape = {
   authors: z.array(authorSummarySchema).default([]),
   id: idSchema,
   creationItemId: idSchema,
-  /** Optional immutable lineage edge to another form in the same creation item. */
+  /** Immutable lineage; independent manuscript management may move the source into another item. */
   sourceFormId: idSchema.nullable(),
+  sourceCreationItemId: idSchema.optional(),
   sortOrder: sortOrderSchema,
   createdAt: dateTimeSchema,
   updatedAt: dateTimeSchema,
@@ -284,6 +285,7 @@ export const creationItemSchema = z
         continue;
       }
       if (!formById.has(form.sourceFormId)) {
+        if (form.sourceCreationItemId && form.sourceCreationItemId !== item.id) continue;
         context.addIssue({
           code: 'custom',
           path: ['forms', index, 'sourceFormId'],
@@ -519,6 +521,7 @@ export const creationItemListInputSchema = z
 export const creationItemMoveInputSchema = z
   .object({
     creationItemId: idSchema,
+    articleFormId: idSchema.optional(),
     albumId: idSchema.nullable(),
     parentCreationItemId: idSchema.nullable().optional(),
     expectedParentCreationItemId: idSchema.nullable().optional(),
@@ -528,6 +531,7 @@ export const creationItemMoveInputSchema = z
 export const creationItemSetPinnedInputSchema = z
   .object({
     creationItemId: idSchema,
+    articleFormId: idSchema.optional(),
     pinned: z.boolean(),
   })
   .strict();

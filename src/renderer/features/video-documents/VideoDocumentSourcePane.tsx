@@ -1,12 +1,12 @@
+import { ExternalLinkIcon, FileUpIcon, LoaderCircleIcon, NotebookPenIcon, RefreshCwIcon } from 'lucide-react';
 import {
-  ExternalLinkIcon,
-  FileUpIcon,
-  LoaderCircleIcon,
-  NotebookPenIcon,
-  PanelRightCloseIcon,
-  RefreshCwIcon,
-} from 'lucide-react';
-import { useCallback, useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react';
+  useCallback,
+  useEffect,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type Ref,
+} from 'react';
 import type { VideoDocumentDto } from '@/shared/contracts';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
@@ -15,6 +15,7 @@ import {
   formatVideoDocumentTime,
   type VideoDocumentPlayerLabels,
 } from '@/renderer/features/video-documents/VideoDocumentPlayerControls';
+import { VideoDocumentSourcePaneToggle } from '@/renderer/features/video-documents/VideoDocumentSourceDisclosure';
 import { useVideoDocumentPlayer } from '@/renderer/features/video-documents/useVideoDocumentPlayer';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
@@ -32,6 +33,7 @@ export interface VideoDocumentSourcePaneLabels {
   sourceUnavailable?: string;
   openSourceMaterial?: string;
   collapse?: string;
+  expand?: string;
   resize?: string;
   replaceVideo?: string;
   replacingVideo?: string;
@@ -43,6 +45,10 @@ export interface VideoDocumentSourcePaneLabels {
 
 interface Props {
   document: VideoDocumentDto;
+  open: boolean;
+  contentId: string;
+  docked: boolean;
+  toggleRef: Ref<HTMLButtonElement>;
   seekRequest: { timestampMs: number; revision: number } | null;
   labels?: VideoDocumentSourcePaneLabels;
   audioInfo?: VideoDocumentAudioInfo;
@@ -57,7 +63,7 @@ interface Props {
   onPlaybackStateChange?(playing: boolean): void;
   onPlaybackError?(error: unknown): void;
   onOpenMaterial(materialId: string): void;
-  onCollapse(): void;
+  onOpenChange(open: boolean): void;
 }
 
 interface LegacySourcePaneLabels {
@@ -66,6 +72,7 @@ interface LegacySourcePaneLabels {
   openSourceMaterial: string;
   player: Pick<VideoDocumentPlayerLabels, 'backTen' | 'forwardTen' | 'speed'> & {
     collapse: string;
+    expand: string;
     replaceVideo?: string;
     replacingVideo?: string;
     quickInsertNote?: string;
@@ -78,6 +85,7 @@ interface ResolvedSourcePaneLabels {
   sourceUnavailable: string;
   openSourceMaterial: string;
   collapse: string;
+  expand: string;
   resize?: string;
   replaceVideo?: string;
   replacingVideo?: string;
@@ -129,6 +137,7 @@ function resolveLabels(
     sourceUnavailable: supplied?.sourceUnavailable ?? fallback.sourceUnavailable,
     openSourceMaterial: supplied?.openSourceMaterial ?? fallback.openSourceMaterial,
     collapse: supplied?.collapse ?? fallback.player.collapse,
+    expand: supplied?.expand ?? fallback.player.expand,
     resize: supplied?.resize,
     replaceVideo: supplied?.replaceVideo ?? fallback.player.replaceVideo,
     replacingVideo: supplied?.replacingVideo ?? fallback.player.replacingVideo,
@@ -198,7 +207,7 @@ function VideoDocumentPaneResizeHandle({ width, label, onWidthChange }: ResizeHa
       aria-valuemin={MINIMUM_WIDTH}
       aria-valuemax={MAXIMUM_WIDTH}
       aria-valuenow={width}
-      className="absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent hover:after:bg-border focus-visible:after:bg-ring"
+      className="absolute inset-y-0 -left-1 z-20 hidden w-2 cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent hover:after:bg-border focus-visible:after:bg-ring @min-[56rem]/video-workspace:block"
       onPointerDown={beginResize}
       onKeyDown={(event) => {
         if (event.key === 'ArrowLeft') {
@@ -215,29 +224,34 @@ function VideoDocumentPaneResizeHandle({ width, label, onWidthChange }: ResizeHa
 
 interface SourcePaneHeaderProps {
   labels: ResolvedSourcePaneLabels;
-  onCollapse(): void;
+  open: boolean;
+  contentId: string;
+  toggleVisible: boolean;
+  toggleRef: Ref<HTMLButtonElement>;
+  onOpenChange(open: boolean): void;
 }
 
-function SourcePaneHeader({ labels, onCollapse }: SourcePaneHeaderProps) {
+function SourcePaneHeader({ labels, open, contentId, toggleVisible, toggleRef, onOpenChange }: SourcePaneHeaderProps) {
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b pl-4 pr-2.5 text-sm font-semibold">
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b pl-4 pr-2.5 text-sm font-semibold @min-[56rem]/video-workspace:h-12">
       <span className="min-w-0 flex-1 truncate">{labels.sourceVideo}</span>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        title={labels.collapse}
-        aria-label={labels.collapse}
-        aria-expanded
-        onClick={onCollapse}
-      >
-        <PanelRightCloseIcon className="size-4" />
-      </Button>
+      {toggleVisible && (
+        <VideoDocumentSourcePaneToggle
+          ref={toggleRef}
+          open={open}
+          placement="source-header"
+          collapseLabel={labels.collapse}
+          expandLabel={labels.expand}
+          contentId={contentId}
+          onOpenChange={onOpenChange}
+        />
+      )}
     </header>
   );
 }
 
 interface SourcePaneBodyProps {
+  contentId: string;
   videoDocument: VideoDocumentDto;
   labels: ResolvedSourcePaneLabels;
   player: ReturnType<typeof useVideoDocumentPlayer>;
@@ -252,6 +266,7 @@ interface SourcePaneBodyProps {
 }
 
 function SourcePaneBody({
+  contentId,
   videoDocument,
   labels,
   player,
@@ -266,7 +281,7 @@ function SourcePaneBody({
 }: SourcePaneBodyProps) {
   const audioStatusLabel = audioInfo ? labels.audioStatus?.[audioInfo.status] : undefined;
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-14">
+    <div id={contentId} className="min-h-0 flex-1 overflow-y-auto p-4 pb-14">
       {videoDocument.source.available ? (
         <div
           ref={player.playerRef}
@@ -352,7 +367,7 @@ function SourcePaneBody({
           {audioInfo?.primaryCodec ? ` · ${audioInfo.primaryCodec}` : ''}
         </span>
       </div>
-      <div className={cn('mt-4 grid gap-2', onReplaceVideo && 'grid-cols-2')}>
+      <div className={cn('mt-4 grid gap-2', onReplaceVideo && '@min-[24rem]/video-source:grid-cols-2')}>
         {onReplaceVideo && (
           <Button type="button" variant="outline" size="sm" disabled={replacingVideo} onClick={onReplaceVideo}>
             {replacingVideo ? <LoaderCircleIcon className="size-4 animate-spin" /> : <FileUpIcon className="size-4" />}
@@ -374,8 +389,75 @@ function SourcePaneBody({
   );
 }
 
+interface SourcePaneContentProps {
+  contentId: string;
+  document: VideoDocumentDto;
+  seekRequest: Props['seekRequest'];
+  labels: ResolvedSourcePaneLabels;
+  audioInfo: VideoDocumentAudioInfo | undefined;
+  replacingVideo: boolean;
+  quickInsertNoteBusy: boolean;
+  onReplaceVideo?: () => void;
+  onRecheckAudio?: () => void;
+  onQuickInsertNote?: () => void;
+  onPlaybackTimeChange?: (timestampMs: number) => void;
+  onPlaybackStateChange?: (playing: boolean) => void;
+  onPlaybackError?: (error: unknown) => void;
+  onOpenMaterial(materialId: string): void;
+}
+
+function SourcePaneContent({
+  contentId,
+  document,
+  seekRequest,
+  labels,
+  audioInfo,
+  replacingVideo,
+  quickInsertNoteBusy,
+  onReplaceVideo,
+  onRecheckAudio,
+  onQuickInsertNote,
+  onPlaybackTimeChange,
+  onPlaybackStateChange,
+  onPlaybackError,
+  onOpenMaterial,
+}: SourcePaneContentProps) {
+  const audioEnabled = document.source.available && audioInfo?.status !== 'NO_AUDIO';
+  const player = useVideoDocumentPlayer({
+    sourceId: document.source.asset.id,
+    fallbackDurationMs: document.source.asset.durationMs,
+    audioEnabled,
+    enabled: document.source.available,
+    onPlaybackTimeChange,
+    onPlaybackStateChange,
+    onPlaybackError,
+  });
+  useSeekRequest(player.videoRef, player.actions.seekToMs, seekRequest);
+
+  return (
+    <SourcePaneBody
+      contentId={contentId}
+      videoDocument={document}
+      labels={labels}
+      player={player}
+      audioInfo={audioInfo}
+      audioEnabled={audioEnabled}
+      replacingVideo={replacingVideo}
+      quickInsertNoteBusy={quickInsertNoteBusy}
+      onReplaceVideo={onReplaceVideo}
+      onRecheckAudio={onRecheckAudio}
+      onQuickInsertNote={onQuickInsertNote}
+      onOpenMaterial={onOpenMaterial}
+    />
+  );
+}
+
 export function VideoDocumentSourcePane({
   document,
+  open,
+  contentId,
+  docked,
+  toggleRef,
   seekRequest,
   labels: suppliedLabels,
   audioInfo,
@@ -390,46 +472,53 @@ export function VideoDocumentSourcePane({
   onPlaybackStateChange,
   onPlaybackError,
   onOpenMaterial,
-  onCollapse,
+  onOpenChange,
 }: Props) {
   const { messages } = useI18n();
   const labels = resolveLabels(suppliedLabels, messages.videoDocuments);
   const { paneWidth, updateWidth } = usePaneWidth(width, onWidthChange);
   const resolvedAudioInfo = audioInfo ?? document.source.audio;
-  const audioEnabled = document.source.available && resolvedAudioInfo?.status !== 'NO_AUDIO';
-  const player = useVideoDocumentPlayer({
-    sourceId: document.source.asset.id,
-    fallbackDurationMs: document.source.asset.durationMs,
-    audioEnabled,
-    enabled: document.source.available,
-    onPlaybackTimeChange,
-    onPlaybackStateChange,
-    onPlaybackError,
-  });
-  useSeekRequest(player.videoRef, player.actions.seekToMs, seekRequest);
 
   return (
     <aside
-      className="relative flex min-h-0 shrink-0 flex-col border-l bg-surface"
-      style={{ width: paneWidth, minWidth: MINIMUM_WIDTH, maxWidth: MAXIMUM_WIDTH }}
+      className={cn(
+        '@container/video-source relative flex min-h-0 min-w-0 w-full max-w-full shrink-0 flex-col border-t bg-surface @min-[56rem]/video-workspace:w-(--video-source-pane-width) @min-[56rem]/video-workspace:max-w-[45%] @min-[56rem]/video-workspace:border-t-0 @min-[56rem]/video-workspace:border-l',
+        open ? 'max-h-[45%] @min-[56rem]/video-workspace:max-h-none' : docked ? 'hidden' : 'h-14 max-h-14',
+      )}
+      style={{ '--video-source-pane-width': `${paneWidth}px` } as CSSProperties}
       data-slot="video-document-source-pane"
       data-audio-status={resolvedAudioInfo?.status}
+      data-state={open ? 'open' : 'closed'}
     >
-      <VideoDocumentPaneResizeHandle width={paneWidth} label={labels.resize} onWidthChange={updateWidth} />
-      <SourcePaneHeader labels={labels} onCollapse={onCollapse} />
-      <SourcePaneBody
-        videoDocument={document}
+      {open && <VideoDocumentPaneResizeHandle width={paneWidth} label={labels.resize} onWidthChange={updateWidth} />}
+      <SourcePaneHeader
         labels={labels}
-        player={player}
-        audioInfo={resolvedAudioInfo}
-        audioEnabled={audioEnabled}
-        replacingVideo={replacingVideo}
-        quickInsertNoteBusy={quickInsertNoteBusy}
-        onReplaceVideo={onReplaceVideo}
-        onRecheckAudio={onRecheckAudio}
-        onQuickInsertNote={onQuickInsertNote}
-        onOpenMaterial={onOpenMaterial}
+        open={open}
+        contentId={contentId}
+        toggleVisible={!docked}
+        toggleRef={toggleRef}
+        onOpenChange={onOpenChange}
       />
+      {open ? (
+        <SourcePaneContent
+          contentId={contentId}
+          document={document}
+          seekRequest={seekRequest}
+          labels={labels}
+          audioInfo={resolvedAudioInfo}
+          replacingVideo={replacingVideo}
+          quickInsertNoteBusy={quickInsertNoteBusy}
+          onReplaceVideo={onReplaceVideo}
+          onRecheckAudio={onRecheckAudio}
+          onQuickInsertNote={onQuickInsertNote}
+          onPlaybackTimeChange={onPlaybackTimeChange}
+          onPlaybackStateChange={onPlaybackStateChange}
+          onPlaybackError={onPlaybackError}
+          onOpenMaterial={onOpenMaterial}
+        />
+      ) : (
+        <div id={contentId} hidden />
+      )}
     </aside>
   );
 }

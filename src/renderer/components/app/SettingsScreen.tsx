@@ -1,5 +1,5 @@
 import { ArrowUpRightIcon } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import type { Locale } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { Button } from '@/renderer/components/ui/button';
@@ -15,12 +15,15 @@ import { SettingsLayout, type SettingsArea } from '@/renderer/components/app/Set
 import { PetalMaintenance } from '@/renderer/features/desktop-petals/PetalMaintenance';
 import { AgentPermissionsSettings } from '@/renderer/features/agent-permissions/AgentPermissionsSettings';
 import { FontSettings } from '@/renderer/features/font-settings/FontSettings';
+import { cn } from '@/renderer/lib/utils';
 
 export interface SettingsScreenProps {
   promptLocale: Locale | null;
   onPromptLocaleChange(locale: Locale | null): void;
   onAiFeatureModelsOpen(): void;
   onContentManagementOpen(): void;
+  contentManagement?: ReactNode;
+  onSettingsOpen?(): void;
 }
 
 export function SettingsScreen(props: SettingsScreenProps) {
@@ -39,33 +42,55 @@ export function SettingsScreen(props: SettingsScreenProps) {
   };
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-[minmax(18rem,0.9fr)_minmax(0,1.1fr)] md:overflow-hidden">
-      <div className="min-w-0 md:overflow-y-auto">
-        <SettingsLayout
-          selected={area}
-          panelId={panelId}
-          onSelect={(next) => {
-            setArea(next);
-            setVisited((current) => (current.includes(next) ? current : [...current, next]));
-          }}
-          onContentManagementOpen={props.onContentManagementOpen}
-        />
-      </div>
-      <div className="min-w-0 border-t p-5 md:overflow-y-auto md:border-t-0 md:border-l md:p-6">
-        {(Object.keys(titles) as SettingsArea[]).map((item) => (
-          <section
-            key={item}
-            id={panelId + '-' + item}
-            aria-labelledby={panelId + '-' + item + '-title'}
-            hidden={item !== area}
-            className={item === area ? 'grid gap-5' : 'hidden'}
-          >
-            <h2 id={panelId + '-' + item + '-title'} className="text-sm font-semibold">
-              {titles[item]}
-            </h2>
-            {visited.includes(item) && <SettingsAreaContent area={item} {...props} />}
-          </section>
-        ))}
+    <div className="@container/settings flex size-full min-h-0 flex-col bg-background">
+      <header className="flex min-h-14 shrink-0 items-center border-b px-6 py-3">
+        <h1 className="text-base font-semibold">{labels.title}</h1>
+      </header>
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto @[56rem]/settings:grid-cols-[minmax(18rem,0.8fr)_minmax(0,1.2fr)] @[56rem]/settings:overflow-hidden">
+        <div className="min-w-0 @[56rem]/settings:overflow-y-auto">
+          <SettingsLayout
+            selected={props.contentManagement ? 'contentManagement' : area}
+            panelId={panelId}
+            onSelect={(next) => {
+              setArea(next);
+              setVisited((current) => (current.includes(next) ? current : [...current, next]));
+              if (props.contentManagement) props.onSettingsOpen?.();
+            }}
+            onContentManagementOpen={props.onContentManagementOpen}
+          />
+        </div>
+        <div
+          className={cn(
+            'min-w-0 border-t @[56rem]/settings:border-t-0 @[56rem]/settings:border-l',
+            props.contentManagement
+              ? 'flex min-h-[28rem] flex-col @[56rem]/settings:min-h-0'
+              : 'p-5 @[56rem]/settings:overflow-y-auto @[56rem]/settings:p-6',
+          )}
+        >
+          {(Object.keys(titles) as SettingsArea[]).map((item) => (
+            <section
+              key={item}
+              id={panelId + '-' + item}
+              aria-labelledby={panelId + '-' + item + '-title'}
+              hidden={item !== area || Boolean(props.contentManagement)}
+              className={item === area && !props.contentManagement ? 'grid w-full max-w-2xl gap-6' : 'hidden'}
+            >
+              <h2 id={panelId + '-' + item + '-title'} className="text-sm font-semibold">
+                {titles[item]}
+              </h2>
+              {visited.includes(item) && <SettingsAreaContent area={item} {...props} />}
+            </section>
+          ))}
+          {props.contentManagement && (
+            <section
+              id={`${panelId}-contentManagement`}
+              className="flex min-h-0 flex-1 flex-col"
+              aria-label={labels.manageContent}
+            >
+              {props.contentManagement}
+            </section>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -85,7 +110,7 @@ function SettingsAreaContent({
     case 'interface':
       return (
         <>
-          <div className="grid gap-2">
+          <div className="grid grid-cols-[minmax(5rem,1fr)_minmax(0,2fr)] items-center gap-4">
             <Label>{labels.interfaceLanguage}</Label>
             <Segmented
               type="single"

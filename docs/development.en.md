@@ -124,6 +124,9 @@ Read UI text through `useI18n().messages`. Maintain English in `src/renderer/i18
 - Development log: `dev-logs/desktop-dev-current.log`.
 - Preview log: `dev-logs/desktop-preview-current.log`.
 - Renderer diagnostics: `diagnostics/renderer/renderer-current.jsonl` under the application user-data directory.
+- Native crash dumps: `crashes/` inside the same diagnostics directory. Crashpad initializes during startup and stores dumps locally without automatic uploads. Dumps may contain process memory and must not be published as ordinary redacted logs.
+
+The `crash-reporter-ready` diagnostic records the application, Electron and Chromium versions and platform. `crash-reporter-failed` indicates that dump initialization failed; the application still starts. Windows exit code `-36861` (`0xffff7003`) means the process was not connected to a Crashpad handler. It does not identify the original crash cause; inspect the native dump alongside preceding operations and memory records.
 
 Set `AIY_USER_DATA_DIR` to use a separate application data directory. Investigate migrations, imports and recovery using a copy of the data, rather than modifying the only user database. Include the source commit, execution command and redacted logs in problem reports.
 

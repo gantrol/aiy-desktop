@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { FilePlus2Icon, LoaderCircleIcon } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ChevronUpIcon, FilePlus2Icon, LoaderCircleIcon } from 'lucide-react';
 import type { AssetDto, AssetFileRevealContext, TermListItem } from '@/shared/contracts';
 import {
   resolveLocalizedName,
@@ -35,6 +35,8 @@ interface Props {
   notify(message: string): void;
   revealContext?: AssetFileRevealContext;
   hidePromptMaterials?: boolean;
+  addAction?: ReactNode;
+  className?: string;
 }
 
 function reorderAssets(assets: readonly AssetDto[], sourceId: string, targetId: string, placeAfterTarget: boolean) {
@@ -226,6 +228,33 @@ function RecipeSourceControl({
   );
 }
 
+function ReferenceImageExpansion({
+  expanded,
+  count,
+  onToggle,
+}: {
+  expanded: boolean;
+  count: number;
+  onToggle(): void;
+}) {
+  const { locale, messages } = useI18n();
+  const labels = messages.creator.starter;
+  const label = expanded ? labels.showFewerReferences : labels.showAllReferences;
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      aria-expanded={expanded}
+      aria-label={label}
+      title={label}
+      onClick={onToggle}
+    >
+      {expanded ? <ChevronUpIcon className="size-4" /> : `+${new Intl.NumberFormat(locale).format(count)}`}
+    </Button>
+  );
+}
+
 export function CreationReferenceStrip({
   assets,
   imageImporting = false,
@@ -241,12 +270,18 @@ export function CreationReferenceStrip({
   notify,
   revealContext,
   hidePromptMaterials = false,
+  addAction,
+  className,
 }: Props) {
   const { locale, messages } = useI18n();
   const fileLabels = messages.assetFile;
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
   const [copyingAssetId, setCopyingAssetId] = useState<string | null>(null);
   const [dragTargetAssetId, setDragTargetAssetId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const stripRef = useRef<HTMLDivElement>(null);
+  const compact = Boolean(addAction);
+  const visibleAssets = compact && !expanded ? assets.slice(0, 3) : assets;
   const assetsById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
   const directTerms = hidePromptMaterials
     ? []
@@ -272,18 +307,37 @@ export function CreationReferenceStrip({
   }
 
   function removeAsset(assetId: string) {
+    const restoreFocus = stripRef.current?.contains(document.activeElement);
     const index = assets.findIndex((asset) => asset.id === assetId);
     const nextPreviewId = assets[index + 1]?.id ?? assets[index - 1]?.id ?? null;
     onRemoveAsset(assetId);
     if (previewAssetId === assetId) setPreviewAssetId(nextPreviewId);
+    if (restoreFocus)
+      requestAnimationFrame(() => {
+        const buttons = stripRef.current?.querySelectorAll<HTMLButtonElement>(
+          '[data-action="preview-reference-image"]',
+        );
+        const next = Array.from(buttons ?? []).find((button) => button.dataset.assetId === nextPreviewId);
+        (
+          next ?? stripRef.current?.querySelector<HTMLButtonElement>('[data-action="creation-material-picker"]')
+        )?.focus();
+      });
   }
 
-  if (!assets.length && !imageImporting && !recipeSources.length && !directTerms.length) return null;
+  if (!addAction && !assets.length && !imageImporting && !recipeSources.length && !directTerms.length) return null;
 
   return (
     <>
-      <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">
-        {assets.map((asset, index) => (
+      <div
+        ref={stripRef}
+        className={cn('flex flex-wrap items-center gap-2', compact ? 'py-2' : 'mt-3 border-t pt-3', className)}
+      >
+        {compact && assets.length > 0 && (
+          <span className="text-xs text-muted-foreground">
+            {messages.creator.starter.referenceImages} {new Intl.NumberFormat(locale).format(assets.length)}
+          </span>
+        )}
+        {visibleAssets.map((asset, index) => (
           <span
             className={cn(
               'group/item relative isolate size-12 rounded-md bg-surface-sunken',
@@ -370,6 +424,14 @@ export function CreationReferenceStrip({
             </Button>
           </span>
         ))}
+        {addAction}
+        {compact && assets.length > 3 && (
+          <ReferenceImageExpansion
+            expanded={expanded}
+            count={assets.length - 3}
+            onToggle={() => setExpanded((current) => !current)}
+          />
+        )}
         {imageImporting ? (
           <span
             role="status"

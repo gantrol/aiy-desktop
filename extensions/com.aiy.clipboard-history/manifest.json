@@ -1,0 +1,20 @@
+{
+  "manifestVersion": 1,
+  "kind": "CAPABILITY",
+  "id": "com.aiy.clipboard-history",
+  "version": "0.1.0",
+  "displayName": "Clipboard History",
+  "description": "Local clipboard history.",
+  "engines": { "aiy": "^0.3.10" },
+  "runtime": { "kind": "HOST", "id": "clipboard-history" },
+  "contributes": { "commands": ["clipboardHistory.open"] },
+  "permissions": ["clipboard.read:history"],
+  "optionalPermissions": ["clipboard.read:image-files", "library.create:creations"],
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": { "displayName": "Clipboard History", "description": "Local clipboard history." },
+      "zh": { "displayName": "剪贴板历史", "description": "本地剪贴板历史。" }
+    }
+  }
+}

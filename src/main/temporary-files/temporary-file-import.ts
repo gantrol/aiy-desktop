@@ -16,12 +16,18 @@ const mimeTypes: Record<string, 'image/png' | 'image/jpeg' | 'image/webp' | 'ima
   '.webp': 'image/webp',
   '.gif': 'image/gif',
 };
-export async function importTemporaryFile(store: TemporaryFilesStore, id: string, source: string) {
+export async function importTemporaryFile(
+  store: TemporaryFilesStore,
+  id: string,
+  source: string,
+  imageEditing = false,
+) {
   if (/trash/i.test(source)) throw petalError('sourceUnavailable');
   const resolved = await realpath(source);
   if (/trash/i.test(resolved)) throw petalError('sourceUnavailable');
   const extension = path.extname(resolved).toLowerCase();
   const mimeType = mimeTypes[extension];
+  if (imageEditing && mimeType !== 'image/png' && mimeType !== 'image/jpeg') throw petalError('imageEditUnsupported');
   const title = path.basename(source, extension).slice(0, 200);
   const bytes =
     (await stat(resolved)).size === 0

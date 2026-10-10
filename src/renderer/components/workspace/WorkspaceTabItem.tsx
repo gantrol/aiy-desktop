@@ -1,9 +1,11 @@
 import {
-  ArrowDownIcon,
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  ArrowUpIcon,
+  ArrowRightLeftIcon,
+  ChevronsLeftIcon,
+  ChevronsRightIcon,
   LoaderCircleIcon,
+  PanelsTopLeftIcon,
+  PinIcon,
+  PinOffIcon,
   XIcon,
   type LucideIcon,
 } from 'lucide-react';
@@ -14,6 +16,9 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/renderer/components/ui/context-menu';
 import { commandAriaShortcut, commandShortcutText } from '@/renderer/commands/app-shortcuts';
@@ -21,18 +26,23 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 import { WorkspaceTabShape } from '@/renderer/components/workspace/WorkspaceTabShape';
+import { workspacePinnedTabClassName } from '@/renderer/components/workspace/workspace-pinned-tab-styles';
+import type { WorkspaceTabCloseScope, WorkspaceTabMove } from '@/renderer/components/workspace/workspace-state';
 
-interface Props {
+export interface WorkspaceTabItemProps {
   id: string;
   title: string;
   icon?: LucideIcon;
-  index: number;
-  count: number;
+  pinned: boolean;
+  canMoveBefore: boolean;
+  canMoveAfter: boolean;
+  canClose: Record<WorkspaceTabCloseScope, boolean>;
   selected: boolean;
   active: boolean;
   pending: boolean;
   focusable: boolean;
   split: boolean;
+  canMoveToOtherGroup: boolean;
   compact?: 'horizontal' | 'vertical';
   register: RefCallback<HTMLButtonElement>;
   onFocus(): void;
@@ -40,11 +50,29 @@ interface Props {
   onActivate(): void;
   onClose(): void;
   onCloseOthers(): void;
-  onReorder(delta: -1 | 1): void;
+  onCloseTabs(scope: WorkspaceTabCloseScope): void;
+  onPinnedChange(pinned: boolean): void;
+  onReorder(move: WorkspaceTabMove): void;
   onMove(): void;
+  moveTargets?: { id: string; title: string }[];
+  onMoveBefore?(tabId: string): void;
+  dragging?: boolean;
 }
 
-function tabContainerClassName({ selected, pending, compact }: Pick<Props, 'selected' | 'pending' | 'compact'>) {
+type Props = WorkspaceTabItemProps;
+
+function tabContainerClassName({
+  selected,
+  pending,
+  compact,
+  pinned,
+}: Pick<Props, 'selected' | 'pending' | 'compact' | 'pinned'>) {
+  if (pinned) {
+    return cn(
+      'group/tab relative flex min-w-0 max-w-none items-center',
+      workspacePinnedTabClassName({ compact: Boolean(compact), selected, pending }),
+    );
+  }
   return cn(
     'group/tab relative flex h-8 min-w-30 max-w-55 shrink items-center text-muted-foreground transition-colors duration-fast motion-reduce:transition-none',
     selected ? 'z-10 text-foreground' : 'rounded-t-sm hover:bg-hover hover:text-foreground-secondary',
@@ -59,9 +87,8 @@ function tabContainerClassName({ selected, pending, compact }: Pick<Props, 'sele
 export function WorkspaceTabItem(props: Props) {
   const { messages } = useI18n();
   const labels = messages.app.workspace;
-  const { id, title, selected, active, pending, compact } = props;
+  const { id, title, selected, active, pending, compact, pinned } = props;
   const vertical = compact === 'vertical';
-  const Icon = props.icon;
   const platform = window.desktopApi.appPlatform;
   const closeShortcut = selected && active ? commandShortcutText('workspace.close-tab', platform) : '';
   return (
@@ -69,6 +96,7 @@ export function WorkspaceTabItem(props: Props) {
       <ContextMenuTrigger asChild>
         <div
           role="presentation"
+          data-workspace-tab-item={id}
           className={tabContainerClassName(props)}
           onMouseDown={(event) => {
             if (event.button === 1) event.preventDefault();
@@ -80,8 +108,8 @@ export function WorkspaceTabItem(props: Props) {
             }
           }}
         >
-          {!compact && <WorkspaceTabShape selected={selected} />}
-          <Tooltip>
+          {!compact && !pinned && <WorkspaceTabShape selected={selected} />}
+          <Tooltip open={props.dragging ? false : undefined}>
             <TooltipTrigger asChild>
               <Button
                 ref={props.register}
@@ -89,6 +117,7 @@ export function WorkspaceTabItem(props: Props) {
                 variant="ghost"
                 size="sm"
                 role="tab"
+                data-workspace-tab-handle={id}
                 id={`workspace-tab-${id}`}
                 tabIndex={props.focusable ? 0 : -1}
                 aria-selected={selected}
@@ -97,29 +126,28 @@ export function WorkspaceTabItem(props: Props) {
                 className={cn(
                   'relative z-10 h-full min-w-0 flex-1 shrink justify-start gap-2 rounded-sm px-3 py-0 text-left text-sm text-inherit hover:bg-transparent active:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0',
                   active ? (selected ? 'font-semibold' : 'font-medium') : 'font-normal',
-                  !compact && 'scroll-ms-2 scroll-me-9',
+                  !compact && (pinned ? 'scroll-mx-2' : 'scroll-ms-2 scroll-me-9'),
                   compact === 'horizontal' && 'px-2',
-                  vertical && 'h-auto min-h-12 w-full flex-none justify-center px-1 py-2',
+                  vertical && !pinned && 'h-auto min-h-12 w-full flex-none flex-col justify-center px-1 py-2',
+                  pinned && 'justify-center px-0',
                 )}
                 onFocus={props.onFocus}
                 onClick={props.onActivate}
                 onKeyDown={props.onKeyDown}
               >
-                {!compact &&
-                  (pending ? (
-                    <LoaderCircleIcon
-                      className="size-3.5 shrink-0 animate-spin motion-reduce:animate-none"
-                      aria-hidden="true"
-                    />
-                  ) : (
-                    Icon && <Icon className="size-3.5 shrink-0" aria-hidden="true" />
-                  ))}
-                <span className={cn('truncate', vertical && 'max-h-36 [writing-mode:vertical-rl]')}>{title}</span>
+                {(!compact || pinned) && <WorkspaceTabIcon icon={props.icon} pinned={pinned} pending={pending} />}
+                <span
+                  data-workspace-tab-title=""
+                  className={pinned ? 'sr-only' : cn('truncate', vertical && 'max-h-36 [writing-mode:vertical-rl]')}
+                >
+                  {title}
+                </span>
+                {pinned && <span className="sr-only">{labels.pinnedTab}</span>}
               </Button>
             </TooltipTrigger>
             <TooltipContent className="max-w-80 break-words">{title}</TooltipContent>
           </Tooltip>
-          {!compact && (
+          {!compact && !pinned && (
             <Button
               type="button"
               variant="ghost"
@@ -141,30 +169,83 @@ export function WorkspaceTabItem(props: Props) {
           )}
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem onSelect={props.onClose}>
-          {labels.closeTab}
-          {closeShortcut && <span className="ml-auto pl-4 text-xs text-muted-foreground">{closeShortcut}</span>}
-        </ContextMenuItem>
-        <ContextMenuItem disabled={props.count === 1} onSelect={props.onCloseOthers}>
-          {labels.closeOthers}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem disabled={props.index === 0} onSelect={() => props.onReorder(-1)}>
-          {vertical ? <ArrowUpIcon /> : <ArrowLeftIcon />}
-          {vertical ? labels.moveUp : labels.moveLeft}
-        </ContextMenuItem>
-        <ContextMenuItem disabled={props.index === props.count - 1} onSelect={() => props.onReorder(1)}>
-          {vertical ? <ArrowDownIcon /> : <ArrowRightIcon />}
-          {vertical ? labels.moveDown : labels.moveRight}
-        </ContextMenuItem>
-        {props.split && (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem onSelect={props.onMove}>{labels.moveToOtherGroup}</ContextMenuItem>
-          </>
-        )}
-      </ContextMenuContent>
+      <WorkspaceTabContextMenu {...props} vertical={vertical} closeShortcut={closeShortcut} />
     </ContextMenu>
+  );
+}
+
+export function WorkspaceTabIcon({ icon, pinned, pending }: Pick<Props, 'icon' | 'pinned' | 'pending'>) {
+  const Icon = icon ?? (pinned ? PanelsTopLeftIcon : undefined);
+  if (!pending && !Icon) return null;
+  return (
+    <span data-workspace-tab-icon="" className="inline-flex shrink-0">
+      {pending ? (
+        <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+      ) : (
+        Icon && <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+      )}
+    </span>
+  );
+}
+
+export function WorkspaceTabContextMenu({
+  vertical,
+  closeShortcut,
+  ...props
+}: Props & { vertical: boolean; closeShortcut: string }) {
+  const { messages } = useI18n();
+  const labels = messages.app.workspace;
+  return (
+    <ContextMenuContent className="max-h-[var(--radix-context-menu-content-available-height)] overflow-y-auto">
+      <ContextMenuItem onSelect={() => props.onPinnedChange(!props.pinned)}>
+        {props.pinned ? <PinOffIcon /> : <PinIcon />}
+        {props.pinned ? labels.unpinTab : labels.pinTab}
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      {Boolean(props.moveTargets?.length) && (
+        <ContextMenuSub>
+          <ContextMenuSubTrigger>{labels.moveToPosition}</ContextMenuSubTrigger>
+          <ContextMenuSubContent className="max-h-[var(--radix-context-menu-content-available-height)] max-w-80 overflow-y-auto">
+            {props.moveTargets?.map((target) => (
+              <ContextMenuItem key={target.id} onSelect={() => props.onMoveBefore?.(target.id)}>
+                <span className="truncate">{labels.moveBeforeTab(target.title)}</span>
+              </ContextMenuItem>
+            ))}
+          </ContextMenuSubContent>
+        </ContextMenuSub>
+      )}
+      <ContextMenuItem disabled={!props.canMoveBefore} onSelect={() => props.onReorder('start')}>
+        <ChevronsLeftIcon className={cn(vertical && 'rotate-90')} />
+        {labels.moveToStart}
+      </ContextMenuItem>
+      <ContextMenuItem disabled={!props.canMoveAfter} onSelect={() => props.onReorder('end')}>
+        <ChevronsRightIcon className={cn(vertical && 'rotate-90')} />
+        {labels.moveToEnd}
+      </ContextMenuItem>
+      {props.split && (
+        <ContextMenuItem disabled={!props.canMoveToOtherGroup} onSelect={props.onMove}>
+          <ArrowRightLeftIcon />
+          {labels.moveToOtherGroup}
+        </ContextMenuItem>
+      )}
+      <ContextMenuSeparator />
+      <ContextMenuItem onSelect={props.onClose}>
+        <XIcon />
+        {labels.closeTab}
+        {closeShortcut && <span className="ml-auto pl-4 text-xs text-muted-foreground">{closeShortcut}</span>}
+      </ContextMenuItem>
+      <ContextMenuItem inset disabled={!props.canClose.others} onSelect={props.onCloseOthers}>
+        {labels.closeOthers}
+      </ContextMenuItem>
+      <ContextMenuItem inset disabled={!props.canClose.left} onSelect={() => props.onCloseTabs('left')}>
+        {vertical ? labels.closeAbove : labels.closeLeft}
+      </ContextMenuItem>
+      <ContextMenuItem inset disabled={!props.canClose.right} onSelect={() => props.onCloseTabs('right')}>
+        {vertical ? labels.closeBelow : labels.closeRight}
+      </ContextMenuItem>
+      <ContextMenuItem inset disabled={!props.canClose.all} onSelect={() => props.onCloseTabs('all')}>
+        {labels.closeAll}
+      </ContextMenuItem>
+    </ContextMenuContent>
   );
 }

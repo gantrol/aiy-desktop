@@ -12,6 +12,7 @@ import { onArticleEditorDrain } from '@/preload/article-editor-drain';
 import { createBackgroundIssuePreloadApi } from '@/preload/background-issue-api';
 import { createCodexPreloadApi } from '@/preload/codex-api';
 import { createCodexArtifactsPreloadApi } from '@/preload/codex-artifacts-api';
+import { createEmbeddedWebApi } from '@/preload/embedded-web-api';
 import { contentImageImportsApi } from '@/preload/content-image-imports-api';
 import { createContentLibraryBridge } from '@/preload/content-library-api';
 import { contentReferenceChangesSchema } from '@/shared/contracts/content-reference-changes';
@@ -23,12 +24,21 @@ import { createDesktopPetalsApi } from '@/preload/desktop-petals-api';
 import { createEvaluationSuitePreloadApi } from '@/preload/evaluation-suite-api';
 import { createMaintenanceGuideApi } from '@/preload/maintenance-guide-api';
 import { createWorkTrackingApi } from '@/preload/work-tracking-api';
+import { createClipboardCaptureApi } from '@/preload/clipboard-capture-api';
 import { createAgentPermissionsApi } from '@/preload/agent-permissions-api';
 import { createProviderConnectionPreloadApi } from '@/preload/provider-connection-api';
 import { recordRendererDiagnostic, traceRendererRequest } from '@/preload/renderer-diagnostics';
 import { socialPostRecoveryApi } from '@/preload/social-post-recovery-api';
 import type { DesktopApi } from '@/shared/contracts';
+import { imageSearchApi } from '@/preload/image-search-api';
+import { imageVisibilityUpdateSchema } from '@/shared/contracts/image-visibility';
 import { appSupportDestinationSchema } from '@/shared/contracts/app-support';
+import {
+  promptRecipeDefaultsSchema,
+  promptRecipeSelectionSchema,
+  promptRecipeSpaceSchema,
+} from '@/shared/contracts/prompt-recipes';
+import { taskRecipeInputSchema, taskRecipeTaskSchema } from '@/shared/contracts/task-recipe';
 import { appUpdateStateSchema } from '@/shared/contracts/app-update';
 import { desktopPlatformSchema } from '@/shared/contracts/app-window';
 import {
@@ -187,6 +197,7 @@ const api: DesktopApi = {
   publishingMasks: createPublishingMasksApi(ipcRenderer),
   maintenanceGuide: createMaintenanceGuideApi(),
   workTracking: createWorkTrackingApi(),
+  clipboardCapture: createClipboardCaptureApi(),
   agentPermissions: createAgentPermissionsApi(),
   ...creatorInputRecoveryApi,
   ...socialPostRecoveryApi,
@@ -240,6 +251,24 @@ const api: DesktopApi = {
   appUpdateDownload: async () => appUpdateStateSchema.parse(await ipcRenderer.invoke('app-update:download')),
   appUpdateInstall: async () => appUpdateStateSchema.parse(await ipcRenderer.invoke('app-update:install')),
   extensionsList: () => ipcRenderer.invoke('extensions:list'),
+  promptRecipesGet: async (spaceId) =>
+    promptRecipeDefaultsSchema.parse(
+      await ipcRenderer.invoke('prompt-recipes:get', promptRecipeSpaceSchema.parse(spaceId)),
+    ),
+  promptRecipeSelect: async (input) =>
+    promptRecipeDefaultsSchema.parse(
+      await ipcRenderer.invoke('prompt-recipes:select', promptRecipeSelectionSchema.parse(input)),
+    ),
+  promptRecipeResolve: async (task, spaceId) =>
+    taskRecipeInputSchema
+      .nullable()
+      .parse(
+        await ipcRenderer.invoke(
+          'prompt-recipes:resolve',
+          taskRecipeTaskSchema.parse(task),
+          promptRecipeSpaceSchema.parse(spaceId),
+        ),
+      ),
   extensionsReload: () => ipcRenderer.invoke('extensions:reload'),
   extensionLanguagePacksList: () => ipcRenderer.invoke('extension-language-packs:list'),
   extensionInstallLocal: () => ipcRenderer.invoke('extension:install-local'),
@@ -274,6 +303,7 @@ const api: DesktopApi = {
   ...createArticleDeliveryPreloadApi(ipcRenderer),
   ...createProviderConnectionPreloadApi(ipcRenderer),
   ...createCodexArtifactsPreloadApi(ipcRenderer),
+  ...createEmbeddedWebApi(ipcRenderer),
   ...codexUsageApi,
   localQwenAsrSidecarGet: async () =>
     localQwenAsrSidecarSchema.parse(await ipcRenderer.invoke('local-qwen-asr-sidecar:get')),
@@ -706,8 +736,10 @@ const api: DesktopApi = {
   annotationsReuseHistory: (input) => ipcRenderer.invoke('annotations:reuse-history', input),
   annotationsSetStatus: (input) => ipcRenderer.invoke('annotations:set-status', input),
   galleryList: (input) => ipcRenderer.invoke('gallery:list', input),
+  imageSearch: imageSearchApi,
   galleryMaterialGet: (materialId, locale) => ipcRenderer.invoke('gallery:material-get', materialId, locale),
   assetRelationshipGet: (assetId, locale) => ipcRenderer.invoke('asset-relationship:get', assetId, locale),
+  assetNavigationGet: (assetId, locale) => ipcRenderer.invoke('asset-navigation:get', assetId, locale),
   assetFileAvailability: (assetId) => ipcRenderer.invoke('asset-file:availability', assetId),
   assetFileCopy: (assetId) => ipcRenderer.invoke('asset-file:copy', assetId),
   assetFileSaveAs: (assetId) => ipcRenderer.invoke('asset-file:save-as', assetId),
@@ -723,6 +755,10 @@ const api: DesktopApi = {
   assetFileReveal: (assetId, context) => ipcRenderer.invoke('asset-file:reveal', assetId, context),
   assetFileOpen: (assetId, context) => ipcRenderer.invoke('asset-file:open', assetId, context),
   favoriteTextsList: () => ipcRenderer.invoke('favorites:text-list'),
+  imageVisibility: {
+    list: () => ipcRenderer.invoke('image-visibility:list'),
+    set: (input) => ipcRenderer.invoke('image-visibility:set', imageVisibilityUpdateSchema.parse(input)),
+  },
   favoriteAdd: (target) => ipcRenderer.invoke('favorites:add', target),
   favoriteRemove: (materialId) => ipcRenderer.invoke('favorites:remove', materialId),
   imageRatingSet: (imageAssetId, dimension, score) =>

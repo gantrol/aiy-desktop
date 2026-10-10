@@ -18,6 +18,11 @@ import {
   Copy,
   ChevronDown,
   ShieldCheck,
+  Minus,
+  Circle,
+  Grid2X2,
+  Droplets,
+  Hand,
 } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/renderer/components/ui/tooltip';
@@ -32,6 +37,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import type { ImageEditTool } from '@/renderer/features/image-editing/image-edit-geometry';
 
 interface Props {
+  captureMode?: boolean;
   tool: ImageEditTool;
   disabled: boolean;
   canUndo: boolean;
@@ -41,7 +47,10 @@ interface Props {
   onUndo(): void;
   onRedo(): void;
   onPrivacy(): void;
-  onAction(action: 'rotate' | 'flipX' | 'flipY' | 'delete' | 'duplicate' | 'front' | 'back'): void;
+  onRecognize(mode: 'ocr' | 'qr'): void;
+  onAction(
+    action: 'rotate' | 'flipX' | 'flipY' | 'delete' | 'duplicate' | 'front' | 'back' | 'clear' | 'restore',
+  ): void;
   onCancel(): void;
   onFinish(action: 'done' | 'copy' | 'convert'): void;
 }
@@ -50,6 +59,7 @@ export function ImageEditToolbar(props: Props) {
   const copy = messages.desktopPetals.imageEditor;
   const tools = {
     select: MousePointer2,
+    pan: Hand,
     crop: Crop,
     arrow: ArrowUpRight,
     rectangle: RectangleHorizontal,
@@ -80,7 +90,11 @@ export function ImageEditToolbar(props: Props) {
         <DropdownMenuTrigger asChild>
           <Button
             size="icon"
-            variant={['pen', 'highlight', 'number'].includes(props.tool) ? 'secondary' : 'ghost'}
+            variant={
+              ['line', 'ellipse', 'pen', 'highlight', 'number', 'mosaic', 'blur'].includes(props.tool)
+                ? 'secondary'
+                : 'ghost'
+            }
             className="size-8"
             aria-label={copy.more}
             data-image-tools
@@ -90,6 +104,8 @@ export function ImageEditToolbar(props: Props) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
+          <DropdownMenuItem onSelect={() => props.onRecognize('ocr')}>{copy.recognition.ocr}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => props.onRecognize('qr')}>{copy.recognition.qr}</DropdownMenuItem>
           <DropdownMenuItem onSelect={props.onPrivacy}>
             <ShieldCheck />
             {copy.privacy.title}
@@ -100,6 +116,10 @@ export function ImageEditToolbar(props: Props) {
               ['pen', Pencil],
               ['highlight', Highlighter],
               ['number', ListOrdered],
+              ['line', Minus],
+              ['ellipse', Circle],
+              ['mosaic', Grid2X2],
+              ['blur', Droplets],
             ] as const
           ).map(([tool, Icon]) => (
             <DropdownMenuItem key={tool} onSelect={() => props.onTool(tool)}>
@@ -135,6 +155,9 @@ export function ImageEditToolbar(props: Props) {
             <Trash2 />
             {copy.delete}
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => props.onAction('clear')}>{copy.clear}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => props.onAction('restore')}>{copy.restore}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <Button
@@ -164,17 +187,19 @@ export function ImageEditToolbar(props: Props) {
         <Button size="sm" disabled={props.disabled} onClick={() => props.onFinish('done')}>
           {copy.done}
         </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button size="icon" className="size-8" aria-label={copy.finishActions} disabled={props.disabled}>
-              <ChevronDown className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => props.onFinish('copy')}>{copy.doneCopy}</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => props.onFinish('convert')}>{copy.doneConvert}</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {!props.captureMode && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" className="size-8" aria-label={copy.finishActions} disabled={props.disabled}>
+                <ChevronDown className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => props.onFinish('copy')}>{copy.doneCopy}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => props.onFinish('convert')}>{copy.doneConvert}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     </div>
   );

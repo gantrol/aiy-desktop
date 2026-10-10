@@ -3,21 +3,21 @@
   "kind": "CAPABILITY",
   "id": "com.aiy.maintenance-guide",
   "version": "0.1.0",
-  "displayName": "Maintenance Guide",
-  "description": "Project handbooks, maintenance notes, and operations resources.",
+  "displayName": "Project Commands",
+  "description": "Project configuration and reference documents.",
   "engines": { "aiy": "^0.3.0" },
   "runtime": { "kind": "HOST", "id": "maintenance-guide" },
   "contributes": { "commands": ["maintenanceGuide.open"] },
   "permissions": ["filesystem.read:maintenance-guides"],
-  "optionalPermissions": [],
+  "optionalPermissions": ["filesystem.read:project-command-configs"],
   "i18n": {
     "defaultLocale": "en",
     "locales": {
       "en": {
-        "displayName": "Maintenance Guide",
-        "description": "Project handbooks, maintenance notes, and operations resources."
+        "displayName": "Project Commands",
+        "description": "Project configuration and reference documents."
       },
-      "zh": { "displayName": "维护指南", "description": "项目手册、维护记录与运营工具入口。" }
+      "zh": { "displayName": "项目命令", "description": "项目配置与参考资料。" }
     }
   }
 }

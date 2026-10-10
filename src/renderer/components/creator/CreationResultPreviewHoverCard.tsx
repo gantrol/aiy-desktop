@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import { useMemo, useState } from 'react';
 import type { PromptVersionDto } from '@/shared/contracts';
 import type { CreationResultDraftRow } from '@/renderer/components/creator/creationResultsOrganizer';
@@ -63,7 +64,7 @@ export function CreationResultPreviewHoverCard({ row, belowRow, versions }: Prop
         <div className="grid h-[min(58vh,30rem)] grid-cols-2">
           <div className="relative isolate min-h-0 overflow-hidden bg-surface-sunken p-3">
             <ImageAmbientBackdrop src={row.output.asset.mediaUrl} />
-            <img
+            <ScratchImage
               src={row.output.asset.mediaUrl}
               alt={row.displayName}
               className="relative z-10 size-full object-contain"

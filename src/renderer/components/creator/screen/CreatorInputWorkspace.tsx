@@ -19,6 +19,7 @@ import { StyleExplorationPanel } from '@/renderer/components/creator/StyleExplor
 import { useCreatorVideoImport } from '@/renderer/components/creator/workflows/useCreatorVideoImport';
 import { AssetBreakdownSourceFormProvider } from '@/renderer/components/media/AssetMenuActionsProvider';
 import { Button } from '@/renderer/components/ui/button';
+import { ResponsiveButton } from '@/renderer/components/ui/responsive-button';
 import { Input } from '@/renderer/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
 import { PinNoteButton } from '@/renderer/features/desktop-petals/PinNoteButton';
@@ -29,7 +30,7 @@ import { DictionaryIcon, ImageIcon } from '@/renderer/icons';
 import { cn } from '@/renderer/lib/utils';
 import type { AssetDto } from '@/shared/contracts';
 import { FileTextIcon, VideoIcon } from 'lucide-react';
-import { useEffect, useRef, type ComponentProps, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 
 interface Props {
   model: CreatorScreenViewModel;
@@ -42,7 +43,7 @@ interface Accessories {
   dictionarySidebar: ReactNode;
   experiments: ReactNode;
   material: ReactNode;
-  references: ReactNode;
+  references(addAction?: ReactNode): ReactNode;
   sourceContext: ReactNode;
   video: ReactNode;
 }
@@ -127,16 +128,16 @@ function useCreatorInputAccessories(
     dictionary: (
       <Popover open={dictionary.dictionaryOpen} onOpenChange={dictionary.changeDictionaryOpen}>
         <PopoverTrigger asChild>
-          <Button
+          <ResponsiveButton
             data-action="dictionary-picker"
-            variant={dictionary.dictionaryOpen || projection.dictionarySelectionCount > 0 ? 'secondary' : 'outline'}
-            size="icon"
-            className="rounded-full shadow-none"
+            variant={dictionary.dictionaryOpen || projection.dictionarySelectionCount > 0 ? 'secondary' : 'ghost'}
+            size="sm"
+            label={c.dictionary}
             title={c.dictionary}
             aria-label={c.dictionary}
           >
             <DictionaryIcon className="size-4" />
-          </Button>
+          </ResponsiveButton>
         </PopoverTrigger>
         <PopoverContent
           align="start"
@@ -198,8 +199,10 @@ function useCreatorInputAccessories(
         }
       />
     ),
-    references: (
+    references: (addAction) => (
       <CreationReferenceStrip
+        addAction={addAction}
+        className={documentEntry ? 'mt-0 border-0 pt-0' : undefined}
         assets={document.referenceAssets}
         imageImporting={generation.referenceImport.referenceImporting}
         promptResolution={generation.promptResolution}
@@ -218,6 +221,7 @@ function useCreatorInputAccessories(
     ),
     sourceContext: workbench.editorDerivedVisual ? (
       <DerivedVisualSourceContext
+        recipe={workbench.editorDerivedVisual.recipe}
         sourceTitle={workbench.editorDerivedVisualSourceTitle}
         assets={workbench.editorDerivedVisualSourceAssets}
         referenceAssetIds={document.referenceAssets.map((asset) => asset.id)}
@@ -370,6 +374,7 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
   const hidden = creatorInputHidden(model);
   const noteWorkspace = useCreatorNoteWorkspace(model, Boolean(hidden));
   const newEntry = isNewCreationEntry(model);
+  const [outputToggleHost, setOutputToggleHost] = useState<HTMLSpanElement | null>(null);
   const inputScope = useRef(generation.inputScopeKey);
   inputScope.current = generation.inputScopeKey;
   if (noteWorkspace.editor)
@@ -377,6 +382,7 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
   return (
     <AssetBreakdownSourceFormProvider sourceFormId={sourceFormId}>
       <PasteDropSurface
+        accessibleName={messages.workbench.inputs}
         respectEditableImagePaste
         disabled={Boolean(hidden) || generation.referenceImport.referenceImporting || videos.importing}
         onImages={(files, source, sourceUrl) => {
@@ -401,9 +407,14 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
         className={creatorInputClassName(model, Boolean(hidden))}
       >
         <CreatorInputHeader
+          endAction={
+            newEntry ? (
+              <span ref={setOutputToggleHost} className="flex shrink-0 items-center empty:hidden" />
+            ) : undefined
+          }
           startAction={
             newEntry ? (
-              <span className="font-semibold">
+              <span className="shrink-0 whitespace-nowrap text-sm font-semibold">
                 {selection.creationDraftSession.getSavedDraft()?.creationSource
                   ? messages.creator.outputs.inputDraft
                   : selection.creationStartMode === 'outline'
@@ -468,6 +479,7 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
         <NewCreationOutputWorkspace
           model={model}
           enabled={newEntry && !app.promptFullWindow}
+          toggleHost={outputToggleHost}
           materialsImporting={materialsImporting}
         >
           <CreatorDraftVideos model={model} importing={videos.importing} />
@@ -478,7 +490,7 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
               autoFocus={!hidden && app.active !== false}
               materialsImporting={materialsImporting}
               materials={accessories.material}
-              references={accessories.references}
+              references={accessories.references()}
               onImageImported={(image) => appendPromptImage(model, image)}
             />
           ) : newEntry && selection.creationStartMode === 'video-document' ? (
@@ -522,12 +534,11 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
               startReady={hasPromptNodes(document.promptNodes) || document.referenceAssets.length > 0}
               fullWindow={app.promptFullWindow}
               annotationRefinement={outputUi.annotationRefinement}
-              materialPicker={accessories.material}
               dictionaryPicker={accessories.dictionary}
               dictionarySidebar={accessories.dictionarySidebar}
               canvasPicker={accessories.canvas}
               videoPicker={accessories.video}
-              references={accessories.references}
+              references={accessories.references(accessories.material)}
               sourceContext={accessories.sourceContext}
               titleInput={
                 selection.creationMode === 'new' && !workbench.editorDerivedVisual ? (
@@ -536,7 +547,7 @@ export function CreatorInputWorkspace({ model, sourceFormId }: Props) {
                     aria-label={messages.creator.starter.title}
                     placeholder={messages.creator.starter.title}
                     maxLength={200}
-                    className="h-11 shrink-0 rounded-none border-0 bg-transparent px-12 text-lg font-medium focus-visible:ring-inset focus-visible:ring-offset-0"
+                    className="h-11 shrink-0 rounded-none border-0 bg-transparent px-8 text-lg font-medium focus-visible:ring-inset focus-visible:ring-offset-0"
                     onChange={(event) => generation.setTitle(event.target.value)}
                   />
                 ) : undefined

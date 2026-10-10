@@ -28,6 +28,9 @@ const placementSchema = petalPointSchema.extend({
   expanded: z.boolean(),
   home: z.enum(['desktop', 'drawer']).default('desktop'),
   noteSize: petalNoteSizeSchema.optional(),
+  imageSize: z
+    .object({ width: z.number().int().min(32).max(16384), height: z.number().int().min(32).max(16384) })
+    .optional(),
   contentScale: petalContentScaleSchema.optional(),
   dockEdge: z.enum(['left', 'right', 'top', 'bottom']).optional(),
 });

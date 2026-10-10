@@ -1,3 +1,5 @@
+import { CLIPBOARD_CAPTURE_ID, CLIPBOARD_HISTORY_ID } from '@/shared/contracts/clipboard-capture';
+import { EMBEDDED_WEB_EXTENSION_ID } from '@/shared/contracts/embedded-web';
 import type {
   AntigravityCliStatusDto,
   CodexHealth,
@@ -15,6 +17,7 @@ import {
   EXTERNAL_IMAGE_API_EXTENSION_IDS,
   LEGACY_CODEX_EXTENSION_IDS,
   NATURAL_WATERMARK_EXTENSION_ID,
+  IMAGE_SEARCH_EXTENSION_ID,
   SCREEN_MAGNIFIER_EXTENSION_ID,
   OPENAI_IMAGE_API_EXTENSION_ID,
   type ExternalImageApiExtensionId,
@@ -29,6 +32,7 @@ import {
   type ExtensionPackageRoot,
 } from '@/main/extensions/package-loader';
 import { LocalExtensionPackageManager } from '@/main/extensions/local-package-manager';
+import { isExtensionSourceAllowed, ReservedExtensionIdentityError } from '@/main/extensions/source-policy';
 import type { ExtensionInstallationState } from '@/main/database/extensions/extension-repository';
 import {
   extensionRuntimePermissionMatchesTemplate,
@@ -56,10 +60,14 @@ interface ExtensionRegistryOptions {
 const externalImageApiExtensionIds = new Set<string>(EXTERNAL_IMAGE_API_EXTENSION_IDS);
 const legacyCodexExtensionIds = new Set<string>(LEGACY_CODEX_EXTENSION_IDS);
 const disabledByDefaultExtensionIds = new Set<string>([
+  EMBEDDED_WEB_EXTENSION_ID,
+  CLIPBOARD_CAPTURE_ID,
+  CLIPBOARD_HISTORY_ID,
   SCREEN_MAGNIFIER_EXTENSION_ID,
   ...EXTERNAL_IMAGE_API_EXTENSION_IDS,
   CPA_IMAGE_API_EXTENSION_ID,
   NATURAL_WATERMARK_EXTENSION_ID,
+  IMAGE_SEARCH_EXTENSION_ID,
 ]);
 
 export class ExtensionRegistry {
@@ -180,9 +188,17 @@ export class ExtensionRegistry {
       definitions.map(({ manifest, source }) => ({
         manifest,
         source,
-        legacyExtensionIds: manifest.id === CODEX_APP_SERVER_EXTENSION_ID ? LEGACY_CODEX_EXTENSION_IDS : undefined,
+        legacyExtensionIds:
+          manifest.id === CODEX_APP_SERVER_EXTENSION_ID
+            ? LEGACY_CODEX_EXTENSION_IDS
+            : manifest.id === CLIPBOARD_HISTORY_ID && source === 'BUILT_IN'
+              ? [CLIPBOARD_CAPTURE_ID]
+              : undefined,
         enabledByDefault:
-          manifest.kind === 'LANGUAGE' || (source === 'BUILT_IN' && !disabledByDefaultExtensionIds.has(manifest.id)),
+          manifest.kind === 'LANGUAGE' ||
+          (source === 'BUILT_IN' &&
+            (!disabledByDefaultExtensionIds.has(manifest.id) ||
+              (manifest.id === IMAGE_SEARCH_EXTENSION_ID && process.env.AIY_IMAGE_SEARCH_ENABLED === '1'))),
         grantRequiredPermissionsByDefault: source === 'BUILT_IN',
       })),
     );
@@ -207,7 +223,7 @@ export class ExtensionRegistry {
   }
 
   installLocal(sourcePath: string, expectedExtensionId?: string): Promise<ExtensionInstallLocalResult> {
-    return this.mutatePackages(async () => {
+    return this.mutatePackages<ExtensionInstallLocalResult>(async () => {
       if (!this.localPackages) throw new Error('Local extension directory is unavailable');
       if (expectedExtensionId && this.sourceById.get(expectedExtensionId) !== 'LOCAL') {
         return { extensionId: null, extensions: this.list(), errorCode: 'UPDATE_UNAVAILABLE' };
@@ -243,6 +259,10 @@ export class ExtensionRegistry {
       await this.reloadPackages();
       this.notifyChanged();
       return { extensionId: installed.manifest.id, extensions: this.list() };
+    }).catch((error): ExtensionInstallLocalResult => {
+      if (error instanceof ReservedExtensionIdentityError)
+        return { extensionId: null, extensions: this.list(), errorCode: 'BUILT_IN_IDENTITY' };
+      throw error;
     });
   }
 
@@ -301,7 +321,7 @@ export class ExtensionRegistry {
       const connection = this.connectionFor(manifest, installation.enabled, compatible, requiredPermissionsGranted);
       return {
         manifest,
-        source: installation.source,
+        source: this.sourceById.get(manifest.id) ?? 'LOCAL',
         enabled: installation.enabled,
         compatible,
         effective: connection.state === 'READY',
@@ -358,12 +378,18 @@ export class ExtensionRegistry {
     return this.list().find((extension) => extension.manifest.id === extensionId) ?? null;
   }
 
+  /** User enablement, independent of missing permissions or runtime readiness. */
+  isEnabled(extensionId: string) {
+    return this.installationById.get(extensionId)?.enabled === true;
+  }
+
   /** Persisted activation gate. Runtime connection readiness is checked by the provider itself. */
   isActivated(extensionId: string) {
     const manifest = this.byId.get(extensionId);
     const installation = this.installationById.get(extensionId);
     if (!manifest || !installation) return false;
     return (
+      isExtensionSourceAllowed(manifest, this.sourceById.get(extensionId)) &&
       installation.enabled &&
       extensionSupportsHost(manifest.engines[EXTENSION_HOST_ENGINE_KEY], EXTENSION_HOST_VERSION) &&
       manifest.permissions.every((permission) => installation.permissions.get(permission) === true)

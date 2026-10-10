@@ -180,7 +180,7 @@ export class CreationCopyRepository {
     while (pending.length) {
       const index = pending.findIndex(
         (form) =>
-          (!form.sourceFormId || forms.has(form.sourceFormId)) &&
+          (!form.sourceFormId || form.sourceCreationItemId || forms.has(form.sourceFormId)) &&
           (copiedId || creationPrimaryFormRoleSchema.safeParse(form.role).success || form.role === 'INSPIRATION'),
       );
       if (index < 0) throw new Error('COPY_INVALID_LINEAGE');
@@ -189,7 +189,7 @@ export class CreationCopyRepository {
       const input = {
         role: form.role,
         entity,
-        sourceFormId: form.sourceFormId ? forms.get(form.sourceFormId)! : null,
+        sourceFormId: form.sourceFormId && !form.sourceCreationItemId ? forms.get(form.sourceFormId)! : null,
         anchorKey: form.anchorKey
           ? form.anchorKey
               .split(':')
@@ -209,6 +209,14 @@ export class CreationCopyRepository {
           );
       copiedId = result.item.id;
       forms.set(form.id, result.form.id);
+      if (form.sourceCreationItemId && form.sourceFormId) {
+        this.db
+          .prepare('UPDATE creation_forms SET source_form_id = ? WHERE id = ?')
+          .run(form.sourceFormId, result.form.id);
+        this.repositories.storage.recordChange('CREATION_FORM', result.form.id, 'UPDATE', {
+          sourceFormId: form.sourceFormId,
+        });
+      }
       this.db.prepare('UPDATE creation_forms SET sort_order = ? WHERE id = ?').run(form.sortOrder, result.form.id);
     }
     if (!copiedId) throw new Error('COPY_EMPTY_CREATION');

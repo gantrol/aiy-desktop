@@ -1,4 +1,5 @@
 import { assertPublicContentLinks } from '@/shared/content-public-links';
+import { discardTablePreviews } from '@/renderer/features/browser-companion/prepareTableImagePost';
 import { referenceFailure } from '@/shared/i18n/reference-outline';
 import type { ArticleDto, BrowserCompanionStageInput, BrowserCompanionWatermarkSelection } from '@/shared/contracts';
 import type { ArticleDeliveryUploadInput } from '@/shared/contracts/article-delivery';
@@ -42,6 +43,7 @@ export async function prepareArticleDeliveryBatch({
   profiles,
   watermark,
   messages,
+  signal,
 }: {
   article: ArticleDto;
   spaceId: string;
@@ -50,6 +52,7 @@ export async function prepareArticleDeliveryBatch({
   profiles: Readonly<Record<string, ArticleDeliveryProfileSelection>>;
   watermark: BrowserCompanionWatermarkSelection;
   messages: MessageCatalog;
+  signal?: AbortSignal;
 }) {
   const apiInputs: PreparedArticleApiDelivery[] = [];
   const browserInputs: { key: string; input: BrowserCompanionStageInput }[] = [];
@@ -74,6 +77,13 @@ export async function prepareArticleDeliveryBatch({
     }
   }
   for (const target of preferences.targets) {
+    if (signal?.aborted) {
+      discardTablePreviews(
+        spaceId,
+        browserInputs.map((plan) => plan.input),
+      );
+      signal.throwIfAborted();
+    }
     const key = articleUploadTargetKey(target);
     try {
       if (!expanded) {
@@ -134,6 +144,9 @@ export async function prepareArticleDeliveryBatch({
               spaceId,
               expandedContent: expanded,
               target: target.target,
+              watermark,
+              tableLabel: messages.publishing.tables.table,
+              signal,
               copy: messages.desktopPetals.document,
               notify,
             });

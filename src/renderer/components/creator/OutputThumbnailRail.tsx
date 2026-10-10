@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import { WorkbenchPaneToggle } from '@/renderer/components/workbench/WorkbenchPane';
 import { DownloadIcon, LoaderCircleIcon } from 'lucide-react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
@@ -118,7 +119,7 @@ export function OutputThumbnailRail({
                     }}
                   >
                     <ImageAmbientBackdrop src={thumbnailUrl} loading="lazy" />
-                    <img
+                    <ScratchImage
                       src={thumbnailUrl}
                       alt=""
                       className="relative z-10 size-full rounded-sm object-contain"

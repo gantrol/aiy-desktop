@@ -66,24 +66,16 @@ export class WorkspaceSidebarMotion extends Component<Props, MotionState> {
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return null;
     const sidebar = visibleSidebar(root);
     if (!sidebar) return null;
-    const header = root.querySelector<HTMLElement>('[data-workspace-sidebar-header]:not([hidden])');
-    return [sidebar, header].flatMap((element) => {
-      if (!element) return [];
-      const bounds = element.getBoundingClientRect();
-      const clone = element.cloneNode(true) as HTMLElement;
-      // Preserve the visible scroll positions without mounting another React tree or editor session.
-      const source = [element, ...element.querySelectorAll<HTMLElement>('*')];
-      const target = [clone, ...clone.querySelectorAll<HTMLElement>('*')];
-      target.forEach((node) => {
-        node.removeAttribute('id');
-        node.removeAttribute('data-workspace-sidebar-body');
-        node.removeAttribute('data-workspace-sidebar-tab-id');
-        node.removeAttribute('data-workspace-sidebar-header');
-      });
-      return [
-        { element: clone, bounds, scroll: source.map((node) => ({ top: node.scrollTop, left: node.scrollLeft })) },
-      ];
+    const bounds = sidebar.getBoundingClientRect();
+    const clone = sidebar.cloneNode(true) as HTMLElement;
+    // Preserve the visible scroll positions without mounting another React tree or editor session.
+    const source = [sidebar, ...sidebar.querySelectorAll<HTMLElement>('*')];
+    const target = [clone, ...clone.querySelectorAll<HTMLElement>('*')];
+    target.forEach((node) => {
+      node.removeAttribute('id');
+      node.removeAttribute('data-workspace-sidebar-body');
     });
+    return [{ element: clone, bounds, scroll: source.map((node) => ({ top: node.scrollTop, left: node.scrollLeft })) }];
   }
 
   componentDidUpdate(_previous: Props, _state: unknown, snapshot: SidebarSnapshot[] | null) {

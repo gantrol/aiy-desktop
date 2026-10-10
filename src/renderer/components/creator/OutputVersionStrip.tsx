@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import { ChevronRightIcon, CircleXIcon, RotateCcwIcon, StarIcon, TablePropertiesIcon } from 'lucide-react';
 import { useState } from 'react';
 import type { AssetDto, AssetFileRevealContext, Locale } from '@/shared/contracts';
@@ -213,7 +214,7 @@ function AssetStack({
                 onClick={() => onSelect(item.asset.id)}
               >
                 {frame.needsEdgeFill && outputThumbnailBackdrop(thumbnailUrl)}
-                <img
+                <ScratchImage
                   data-asset-id={item.asset.id}
                   src={thumbnailUrl}
                   alt=""
@@ -450,7 +451,7 @@ export function OutputVersionStrip({
                     onClick={() => onSelect(asset.id)}
                   >
                     {frame.needsEdgeFill && outputThumbnailBackdrop(thumbnailUrl)}
-                    <img
+                    <ScratchImage
                       data-asset-id={asset.id}
                       src={thumbnailUrl}
                       alt=""

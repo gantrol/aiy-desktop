@@ -11,7 +11,10 @@ export class RendererDiagnosticLog {
   private size: number | null = null;
   private warned = false;
 
-  constructor(private readonly directory: string) {}
+  constructor(
+    private readonly directory: string,
+    private readonly prefix = 'renderer',
+  ) {}
 
   write(record: object) {
     const line =
@@ -28,7 +31,7 @@ export class RendererDiagnosticLog {
       .catch(() => {
         this.size = null;
         this.dropped += 1;
-        if (!this.warned) console.warn('[renderer-diagnostics] Local log write failed');
+        if (!this.warned) console.warn(`[${this.prefix}-diagnostics] Local log write failed`);
         this.warned = true;
       })
       .finally(() => {
@@ -37,7 +40,7 @@ export class RendererDiagnosticLog {
   }
 
   private async append(line: string, bytes: number) {
-    const current = path.join(this.directory, 'renderer-current.jsonl');
+    const current = path.join(this.directory, `${this.prefix}-current.jsonl`);
     if (this.size === null) {
       await mkdir(this.directory, { recursive: true });
       this.size = await stat(current)
@@ -48,7 +51,7 @@ export class RendererDiagnosticLog {
         });
     }
     if (this.size + bytes > fileLimit) {
-      const previous = path.join(this.directory, 'renderer-previous.jsonl');
+      const previous = path.join(this.directory, `${this.prefix}-previous.jsonl`);
       await rm(previous, { force: true });
       await rename(current, previous);
       this.size = 0;

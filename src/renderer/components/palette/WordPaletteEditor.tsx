@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { TaskRecipeEditor } from '@/renderer/components/palette/TaskRecipeEditor';
+import type { TaskRecipeTask } from '@/shared/contracts/task-recipe';
 import {
   ArchiveIcon,
   ArrowLeftIcon,
@@ -64,6 +66,8 @@ import {
 } from '@/renderer/components/palette/wordPalettePromptDocument';
 
 interface Props {
+  initialTask?: TaskRecipeTask | 'IMAGE_PROMPT';
+  onDirtyChange?(dirty: boolean): void;
   locale: Locale;
   palette?: WordPaletteDto | null;
   initialTermIds?: string[];
@@ -151,7 +155,36 @@ function ReferenceAssetCard({
   );
 }
 
-export function WordPaletteEditor({
+export function WordPaletteEditor(props: Props) {
+  const l = useI18n().messages.recipe.task;
+  const back = useI18n().messages.recipe.editor.back;
+  const [task, setTask] = useState<TaskRecipeTask | 'IMAGE_PROMPT' | null>(
+    props.palette?.method?.task ??
+      props.initialTask ??
+      (props.palette || props.initialTermIds?.length ? 'IMAGE_PROMPT' : null),
+  );
+  if (!task)
+    return (
+      <section className="flex min-h-0 flex-1 flex-col items-start gap-3 p-4">
+        <Button variant="ghost" onClick={props.onBack}>
+          {back}
+        </Button>
+        <strong>{l.task}</strong>
+        {(['IMAGE_PROMPT', 'ARTICLE_COMMENT', 'IMAGE_COVER'] as const).map((kind) => (
+          <Button key={kind} variant="outline" onClick={() => setTask(kind)}>
+            {l.tasks[kind]}
+          </Button>
+        ))}
+      </section>
+    );
+  return task === 'IMAGE_PROMPT' ? (
+    <ImageWordPaletteEditor {...props} />
+  ) : (
+    <TaskRecipeEditor key={`${task}:${props.palette?.revisionId ?? ''}`} {...props} task={task} />
+  );
+}
+
+function ImageWordPaletteEditor({
   locale,
   palette = null,
   initialTermIds = [],

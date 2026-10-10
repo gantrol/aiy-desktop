@@ -18,6 +18,7 @@ import {
   type ForwardedRef,
 } from 'react';
 import type { AssetDto } from '@/shared/contracts';
+import { ScratchImageBoundary } from '@/renderer/components/media/ScratchImage';
 import { readCssToken, type RuntimeTokenName } from '@/renderer/lib/tokens';
 import { cn } from '@/renderer/lib/utils';
 import type {
@@ -136,6 +137,17 @@ function OutputImageMagnifier({
 }
 
 export const AnnotationImageStage = forwardRef(function AnnotationImageStage(
+  props: Props,
+  ref: ForwardedRef<AnnotationImageStageHandle>,
+) {
+  return (
+    <ScratchImageBoundary asset={props.asset} className={props.className}>
+      <AnnotationImageStageContent {...props} ref={ref} />
+    </ScratchImageBoundary>
+  );
+});
+
+const AnnotationImageStageContent = forwardRef(function AnnotationImageStageContent(
   {
     active,
     asset,

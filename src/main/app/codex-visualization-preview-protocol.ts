@@ -8,6 +8,9 @@ import {
 } from '@/main/app/codex-visualization-preview-policy';
 import { imageDimensions } from '@/main/media/image-dimensions';
 import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
+import { EMBEDDED_WEB_EXTENSION_ID } from '@/shared/contracts/embedded-web';
+import { embeddedWebContentSecurityPolicy } from '@/main/embedded-web/policy';
+import { htmlFilePreviews } from '@/main/embedded-web/html-file-previews';
 
 const previewIdPattern = /^[a-f0-9]{48}$/;
 const maximumPreviewImageDimension = 8_192;
@@ -29,7 +32,14 @@ async function readVerifiedPreviewFile(filePath: string, expectedBytes: number) 
     if (!opened.isFile() || !isSameFile(before, opened) || opened.size !== expectedBytes) {
       throw new Error('HTML preview resource changed before it could be read');
     }
-    const bytes = await handle.readFile();
+    const buffer = Buffer.alloc(expectedBytes + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const { bytesRead } = await handle.read(buffer, length, buffer.length - length, null);
+      if (!bytesRead) break;
+      length += bytesRead;
+    }
+    const bytes = buffer.subarray(0, length);
     const [afterRead, afterPath] = await Promise.all([handle.stat(), lstat(filePath)]);
     if (
       !afterPath.isFile() ||
@@ -105,30 +115,35 @@ function validatePreviewImage(bytes: Buffer, extension: string) {
   }
 }
 
-function staticHtml(bytes: Buffer) {
+function previewHtml(bytes: Buffer, scriptsAllowed: boolean) {
   const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   if (source.includes('\0')) throw new Error('HTML preview is not valid UTF-8');
-  return `${source}\n${staticPreviewStyle}`;
+  return scriptsAllowed ? source : `${source}\n${staticPreviewStyle}`;
 }
 
-function previewHeaders(contentType: string, contentLength: number) {
+function previewHeaders(contentType: string, contentLength: number, executablePreviewId?: string) {
   return {
     'access-control-allow-origin': '*',
     'cache-control': 'private, no-store',
     'content-length': String(contentLength),
-    'content-security-policy': codexVisualizationPreviewContentSecurityPolicy(),
+    'content-security-policy': executablePreviewId
+      ? embeddedWebContentSecurityPolicy(executablePreviewId)
+      : codexVisualizationPreviewContentSecurityPolicy(),
     'content-type': contentType,
     'cross-origin-resource-policy': 'cross-origin',
     'permissions-policy':
       'camera=(), microphone=(), geolocation=(), fullscreen=(), clipboard-read=(), clipboard-write=()',
     'referrer-policy': 'no-referrer',
     'x-content-type-options': 'nosniff',
+    'x-dns-prefetch-control': 'off',
+    ...(executablePreviewId ? { 'connection-allowlist': '(response-origin)' } : {}),
   };
 }
 
 export function installCodexVisualizationPreviewProtocol(
   targetProtocol: Protocol,
   getContext: () => ActiveLibraryContext | null,
+  canRunScripts: (previewId: string) => boolean = () => false,
 ) {
   targetProtocol.handle(CODEX_VISUALIZATION_PREVIEW_SCHEME, async (request) => {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -153,26 +168,48 @@ export function installCodexVisualizationPreviewProtocol(
     }
 
     const context = getContext();
-    if (!context?.extensions.isActivated(CODEX_EXTENSION_ID)) {
+    if (!context || context.state !== 'ACTIVE') {
       return new Response('Not found', { status: 404 });
     }
     const release = context.acquireOperation();
     try {
-      const resource = await context.visualizationDiscovery.resolveHtmlPreviewResource(
-        url.hostname,
-        relativePath,
-        request.method === 'GET',
-      );
+      const imported = htmlFilePreviews(context);
+      const fromLibrary = imported.has(url.hostname);
+      if (!fromLibrary && !context.extensions.isActivated(CODEX_EXTENSION_ID)) throw new Error('Preview unavailable');
+      const libraryResource = fromLibrary ? imported.resource(url.hostname, relativePath) : null;
+      const resource =
+        libraryResource ??
+        (await context.visualizationDiscovery.resolveHtmlPreviewResource(
+          url.hostname,
+          relativePath,
+          request.method === 'GET',
+        ));
+      const executablePreviewId = resource.scriptsAllowed ? url.hostname : undefined;
+      const authorized = () =>
+        context === getContext() &&
+        context.state === 'ACTIVE' &&
+        (fromLibrary ? imported.has(url.hostname) : context.extensions.isActivated(CODEX_EXTENSION_ID)) &&
+        (!resource.scriptsAllowed ||
+          (context.extensions.isActivated(EMBEDDED_WEB_EXTENSION_ID) && canRunScripts(url.hostname)));
+      // Active pages are only served inside the dedicated offline session.
+      if (!authorized()) throw new Error('Executable preview is unavailable');
       if (request.method === 'HEAD') {
-        return new Response(null, { status: 200, headers: previewHeaders(resource.contentType, resource.byteSize) });
+        return new Response(null, {
+          status: 200,
+          headers: previewHeaders(resource.contentType, resource.byteSize, executablePreviewId),
+        });
       }
-      const bytes = await readVerifiedPreviewFile(resource.filePath, resource.byteSize);
+      const bytes = libraryResource?.bytes ?? (await readVerifiedPreviewFile(resource.filePath, resource.byteSize));
       const extension = path.extname(resource.filePath).toLowerCase();
       if (extension === '.png' || extension === '.jpg' || extension === '.jpeg' || extension === '.webp') {
         validatePreviewImage(bytes, extension);
       }
-      const body = resource.entryDocument ? Buffer.from(staticHtml(bytes), 'utf8') : bytes;
-      return new Response(body, { status: 200, headers: previewHeaders(resource.contentType, body.byteLength) });
+      if (!authorized()) throw new Error('Executable preview was revoked');
+      const body = resource.entryDocument ? Buffer.from(previewHtml(bytes, resource.scriptsAllowed), 'utf8') : bytes;
+      return new Response(body, {
+        status: 200,
+        headers: previewHeaders(resource.contentType, body.byteLength, executablePreviewId),
+      });
     } catch {
       return new Response('Preview unavailable', { status: 404, headers: { 'cache-control': 'private, no-store' } });
     } finally {

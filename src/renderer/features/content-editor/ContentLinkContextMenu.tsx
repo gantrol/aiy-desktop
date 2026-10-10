@@ -33,9 +33,20 @@ import { canAssociateSelection, openContentAssociation } from '@/renderer/featur
 import { useOutlineContentLinkHost } from '@/renderer/features/content-editor/OutlineContentLinkHost';
 import { useReferenceNavigation } from '@/renderer/features/content-editor/contentReferenceNavigation';
 import { referenceFailure } from '@/shared/i18n/reference-outline';
+import { parseReadingCitationLink } from '@/shared/reading-citation-link';
+import { useReadingHost } from '@/renderer/features/creation-reading/ReadingHost';
 
 function supportedLink(href: string) {
-  return Boolean(contentFigureReferenceAssetId(href) || linkCardTarget(href) || parseAiyDeepLink(href));
+  return Boolean(
+    parseReadingCitationLink(href) ||
+    contentFigureReferenceAssetId(href) ||
+    linkCardTarget(href) ||
+    parseAiyDeepLink(href),
+  );
+}
+
+function isSourceLink(href: string) {
+  return Boolean(contentFigureReferenceAssetId(href) || parseReadingCitationLink(href));
 }
 
 type Menu = { blockId?: string; link?: InlineLinkTarget; selection?: Selection; x: number; y: number };
@@ -64,7 +75,22 @@ function useContentLinkMenu({ editor, source, onFigureReferenceClick }: ContentL
   const figureCopy = figureReferenceMessages(locale);
   const associationHost = useOutlineContentLinkHost();
   const navigateReference = useReferenceNavigation();
+  const readingHost = useReadingHost();
+  const linkLabel = (href: string, fallback = copy.openLink) =>
+    parseReadingCitationLink(href)
+      ? messages.creationReading.openCitation
+      : contentFigureReferenceAssetId(href)
+        ? figureCopy.open
+        : fallback;
   const openLink = async (href: string) => {
+    const citation = parseReadingCitationLink(href);
+    if (citation) {
+      const opened = readingHost?.openCitation(citation, () => {
+        if (!editor.isDestroyed) editor.commands.focus();
+      });
+      setStatus(opened ? '' : messages.creationReading.citationUnavailable);
+      return;
+    }
     const assetId = contentFigureReferenceAssetId(href);
     if (assetId) {
       setStatus(openFigureReference(editor, assetId, onFigureReferenceClick) ? '' : figureCopy.unavailable);
@@ -142,7 +168,7 @@ function useContentLinkMenu({ editor, source, onFigureReferenceClick }: ContentL
     setStatus,
     messages,
     copy,
-    figureCopy,
+    linkLabel,
     associationHost,
     openLink,
     blockAtElement,
@@ -164,7 +190,7 @@ export function ContentLinkContextMenu(props: ContentLinkContextMenuProps) {
     setStatus,
     messages,
     copy,
-    figureCopy,
+    linkLabel,
     associationHost,
     openLink,
     blockAtElement,
@@ -205,8 +231,7 @@ export function ContentLinkContextMenu(props: ContentLinkContextMenuProps) {
           if (event.defaultPrevented || editor.isDestroyed || editor.view.composing) return;
           const link = inlineLinkFromElement(editor, event.target instanceof Element ? event.target : null);
           if (!link || !supportedLink(link.href)) return;
-          if (editor.isEditable && !event.ctrlKey && !event.metaKey && !contentFigureReferenceAssetId(link.href))
-            return;
+          if (editor.isEditable && !event.ctrlKey && !event.metaKey && !isSourceLink(link.href)) return;
           event.preventDefault();
           event.stopPropagation();
           void openLink(link.href);
@@ -215,10 +240,7 @@ export function ContentLinkContextMenu(props: ContentLinkContextMenuProps) {
           if (!editor.isEditable) return;
           const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
           if (anchor && !anchor.hasAttribute('title'))
-            anchor.setAttribute(
-              'title',
-              contentFigureReferenceAssetId(anchor.getAttribute('href') ?? '') ? figureCopy.open : copy.linkHint,
-            );
+            anchor.setAttribute('title', linkLabel(anchor.getAttribute('href') ?? '', copy.linkHint));
         }}
         onKeyDown={(event) => {
           if (
@@ -253,10 +275,7 @@ export function ContentLinkContextMenu(props: ContentLinkContextMenuProps) {
             return;
           }
           const point = editor.view.coordsAtPos(link.from);
-          show(
-            { link, x: point.left, y: point.bottom },
-            edit && editor.isEditable && !contentFigureReferenceAssetId(link.href),
-          );
+          show({ link, x: point.left, y: point.bottom }, edit && editor.isEditable && !isSourceLink(link.href));
         }}
       >
         {children}
@@ -339,7 +358,7 @@ export function ContentLinkContextMenu(props: ContentLinkContextMenuProps) {
                     onSelect={() => void openLink(menu.link!.href)}
                   >
                     <ExternalLink />
-                    {contentFigureReferenceAssetId(menu.link.href) ? figureCopy.open : copy.openLink}
+                    {linkLabel(menu.link.href)}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={() => {
@@ -355,7 +374,9 @@ export function ContentLinkContextMenu(props: ContentLinkContextMenuProps) {
                   {editor.isEditable && (
                     <>
                       <DropdownMenuItem
-                        disabled={Boolean(contentFigureReferenceAssetId(menu.link.href))}
+                        disabled={Boolean(
+                          contentFigureReferenceAssetId(menu.link.href) || parseReadingCitationLink(menu.link.href),
+                        )}
                         onSelect={(event) => {
                           event.preventDefault();
                           setEditing(true);

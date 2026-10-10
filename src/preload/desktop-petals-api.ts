@@ -31,6 +31,7 @@ import { contentAlbumOptionSchema } from '@/shared/content-album-options';
 import { temporaryFilesCommandSchema, temporaryFilesSnapshotSchema } from '@/shared/contracts/temporary-files';
 import { imageEditCommandSchema, imageEditSnapshotSchema } from '@/shared/contracts/image-edit';
 import { imagePrivacyCommandSchema, imagePrivacyResultSchema } from '@/shared/contracts/image-privacy';
+import { petalWindowToolsCommandSchema, petalWindowToolsStateSchema } from '@/shared/contracts/petal-window-tools';
 
 export function createDesktopPetalsApi(): DesktopPetalsApi {
   const command = async <T = unknown>(name: string, value?: unknown): Promise<T> => {
@@ -210,6 +211,8 @@ export function createDesktopPetalsApi(): DesktopPetalsApi {
     setAlwaysOnTop: (alwaysOnTop) => command('always-on-top', alwaysOnTop),
     undoCollection: (token) => command('undo-collection', token),
     resize: (size) => command('resize', size),
+    windowTools: async (input) =>
+      petalWindowToolsStateSchema.parse(await command('window-tools', petalWindowToolsCommandSchema.parse(input))),
     setContentScale: (scale) => command('content-scale', petalContentScaleSchema.parse(scale)),
     setApplicationPanelHeight: async (height) =>
       z
@@ -222,7 +225,7 @@ export function createDesktopPetalsApi(): DesktopPetalsApi {
     remove: () => command('remove'),
     move: (point) => command('move', point),
     openMain: () => command('main'),
-    beginDrag: (point) => command('begin-drag', point),
+    beginDrag: (point, localPoint) => command('begin-drag', { ...point, ...(localPoint && { local: localPoint }) }),
     endDrag: (cancel, released = false, point) => command('end-drag', { cancel, released, point }),
     onChanged(callback) {
       const listener = () => callback();

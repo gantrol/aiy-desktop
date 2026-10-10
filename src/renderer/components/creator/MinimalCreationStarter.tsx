@@ -12,7 +12,7 @@ import { ImagePromptPlanButton } from '@/renderer/components/creator/ImagePrompt
 import type { GenerationReadiness } from '@/renderer/components/creator/generationReadiness';
 import { InspirationStashAction } from '@/renderer/components/creator/InspirationStashAction';
 import type { AppliedWordPalette } from '@/renderer/components/creator/utils';
-import { Button } from '@/renderer/components/ui/button';
+import { ResponsiveButton } from '@/renderer/components/ui/responsive-button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { CompanionHandoffButton } from '@/renderer/features/browser-companion/CompanionHandoffButton';
 import type { ImportedEditorImage } from '@/renderer/features/video-documents/VideoDocumentWysiwygToolbar';
@@ -28,7 +28,7 @@ import type {
   WordPaletteDto,
 } from '@/shared/contracts';
 import type { BlockDocument } from '@/shared/contracts/block-document';
-import { LightbulbIcon, LoaderCircleIcon, Maximize2Icon, Minimize2Icon } from 'lucide-react';
+import { Maximize2Icon, Minimize2Icon } from 'lucide-react';
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 
 interface Props {
@@ -62,7 +62,6 @@ interface Props {
   startReady: boolean;
   fullWindow: boolean;
   annotationRefinement: AnnotationRefinementState | null;
-  materialPicker: ReactNode;
   dictionaryPicker: ReactNode;
   dictionarySidebar: ReactNode;
   canvasPicker: ReactNode;
@@ -126,7 +125,6 @@ export function MinimalCreationStarter({
   appliedPalettes,
   composerRef,
   assistantBusy,
-  assistantMode,
   companionHandoffBusy,
   canRequestIdeas,
   canBuildPrompt,
@@ -143,7 +141,6 @@ export function MinimalCreationStarter({
   startReady,
   fullWindow,
   annotationRefinement,
-  materialPicker,
   dictionaryPicker,
   dictionarySidebar,
   canvasPicker,
@@ -176,22 +173,34 @@ export function MinimalCreationStarter({
   const characterCount = Array.from(prompt).length;
   const fullWindowButtonRef = usePromptFullWindowEscape(fullWindow, onFullWindowChange);
   const activeComposerRef = useComposerRef(composerRef);
+  const handoffAction = (
+    <CompanionHandoffButton
+      variant="ghost"
+      responsive
+      disabled={!canBuildPrompt || assistantBusy || companionHandoffBusy}
+      busy={companionHandoffBusy}
+      onHandoff={() => onHandoffPrompt()}
+      targets={['chatgpt']}
+    />
+  );
 
   return (
     <ScrollArea
       type="always"
       data-creation-prompt-full-window={fullWindow ? 'true' : 'false'}
-      className={cn('min-h-0 flex-1 bg-background', fullWindow && 'size-full')}
+      className={cn('@container/starter min-h-0 flex-1 bg-background', fullWindow && 'size-full')}
     >
       <div
         className={cn(
           'mx-auto flex min-h-full w-full max-w-4xl flex-col px-5 py-6 lg:px-8',
           fullWindow &&
-            'grid size-full max-w-none grid-cols-[minmax(500px,44vw)_minmax(0,1fr)] overflow-hidden p-0 lg:p-0',
+            'grid size-full max-w-none grid-cols-[minmax(0,1fr)] overflow-hidden p-0 @min-[1000px]/starter:grid-cols-[minmax(20rem,40%)_minmax(0,1fr)] lg:p-0',
         )}
       >
         {fullWindow && (
-          <aside className="min-h-0 min-w-0 overflow-hidden border-r bg-background">{dictionarySidebar}</aside>
+          <aside className="hidden min-h-0 min-w-0 overflow-hidden border-r bg-background @min-[1000px]/starter:block">
+            {dictionarySidebar}
+          </aside>
         )}
         <div
           className={cn('my-auto flex w-full flex-col', fullWindow && 'my-0 min-h-0 min-w-0 overflow-hidden p-5 pt-14')}
@@ -199,12 +208,12 @@ export function MinimalCreationStarter({
           <section
             data-prompt-composer
             className={cn(
-              'corner-continuous overflow-hidden rounded-xl border bg-surface transition-colors duration-fast focus-within:border-ring',
+              '@container/composer overflow-hidden rounded-md border bg-surface transition-colors duration-fast focus-within:border-ring',
               fullWindow && 'flex min-h-0 flex-1 flex-col',
             )}
           >
             {sourceContext}
-            <div className="flex h-10 shrink-0 items-center justify-between gap-3 px-5 pt-1">
+            <div className="flex h-10 shrink-0 items-center justify-between gap-3 px-8 pt-1">
               <span className="text-xs font-semibold text-foreground-secondary">{inputLabel}</span>
               <div className="flex items-center gap-2">
                 {characterCount > 0 && (
@@ -212,16 +221,16 @@ export function MinimalCreationStarter({
                     {labels.characters(characterCount)}
                   </span>
                 )}
-                <Button
+                <ResponsiveButton
                   ref={fullWindowButtonRef}
                   type="button"
                   variant={fullWindow ? 'secondary' : 'ghost'}
                   size="sm"
+                  label={fullWindow ? labels.exitFullWindow : labels.fullWindow}
                   onClick={() => onFullWindowChange(!fullWindow)}
                 >
                   {fullWindow ? <Minimize2Icon className="size-3.5" /> : <Maximize2Icon className="size-3.5" />}
-                  {fullWindow ? labels.exitFullWindow : labels.fullWindow}
-                </Button>
+                </ResponsiveButton>
               </div>
             </div>
             {titleInput}
@@ -247,56 +256,29 @@ export function MinimalCreationStarter({
               onRecipePromptLocaleChange={onRecipePromptLocaleChange}
               onRequestRecipeInsert={onRequestRecipeInsert}
             />
-            <div
-              className={cn(
-                'max-h-[min(12rem,30vh)] overflow-y-auto px-4 pb-3 [scrollbar-gutter:stable]',
-                fullWindow && 'max-h-[min(10rem,22vh)] shrink-0',
-              )}
-            >
-              {references}
-            </div>
+            <div className="shrink-0 px-8 pb-2">{references}</div>
             {annotationRefinement && <AnnotationRefinementInput refinement={annotationRefinement} />}
-            <div className="flex flex-wrap items-center gap-2 border-t bg-surface-sunken/30 px-3 py-2.5">
-              <div className="flex items-center gap-1.5">
-                {materialPicker}
+            <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border/60 px-6 py-1.5">
+              <div className="flex min-w-0 flex-wrap items-center gap-1">
                 {planning && videoPicker}
-                {!fullWindow && dictionaryPicker}
+                <div className={cn('contents', fullWindow && '@min-[1000px]/starter:hidden')}>{dictionaryPicker}</div>
                 {canvasPicker}
                 <ImagePromptPlanButton
                   composerRef={activeComposerRef}
                   disabled={assistantBusy || companionHandoffBusy || starting}
                 />
               </div>
-              <div data-prompt-assistant-actions className="ml-auto flex items-center gap-1">
-                <CompanionHandoffButton
-                  variant="ghost"
-                  disabled={!canBuildPrompt || assistantBusy || companionHandoffBusy}
-                  busy={companionHandoffBusy}
-                  onHandoff={() => onHandoffPrompt()}
-                  targets={['chatgpt']}
-                  zh={locale === 'zh'}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={!canRequestIdeas || assistantBusy}
-                  onClick={() => void onRequestIdeas()}
-                >
-                  {assistantBusy && assistantMode === 'directions' ? (
-                    <LoaderCircleIcon className="size-4 animate-spin" />
-                  ) : (
-                    <LightbulbIcon className="size-4" />
-                  )}
-                  {labels.ideas}
-                </Button>
+              <div data-prompt-assistant-actions className="ml-auto flex flex-wrap items-center justify-end gap-1">
+                {planning && handoffAction}
                 <AssistantWritingAction
                   variant="ghost"
+                  responsive
                   disabled={!canBuildPrompt || assistantBusy}
-                  busy={assistantBusy && assistantMode === 'optimize'}
+                  busy={assistantBusy}
                   label={labels.buildPrompt}
                   searchLabel={labels.searchAndOptimize}
                   optionsLabel={labels.writingOptions}
+                  ideas={{ label: labels.ideas, disabled: !canRequestIdeas || assistantBusy, onRun: onRequestIdeas }}
                   onRun={onBuildPrompt}
                 />
               </div>
@@ -312,16 +294,19 @@ export function MinimalCreationStarter({
                 starting={starting}
                 interactionBlocked={showStashAction && stashing}
                 secondaryAction={
-                  showStashAction ? (
-                    <InspirationStashAction
-                      locale={locale}
-                      ready={stashReady}
-                      busy={stashing}
-                      saved={stashed}
-                      blocked={starting}
-                      onClick={onStashInspiration}
-                    />
-                  ) : undefined
+                  <>
+                    {showStashAction && (
+                      <InspirationStashAction
+                        locale={locale}
+                        ready={stashReady}
+                        busy={stashing}
+                        saved={stashed}
+                        blocked={starting}
+                        onClick={onStashInspiration}
+                      />
+                    )}
+                    {handoffAction}
+                  </>
                 }
                 onGenerationTargetsChange={onGenerationTargetsChange}
                 onConfigureExtension={onConfigureExtension}

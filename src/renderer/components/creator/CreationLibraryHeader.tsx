@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react';
-import { CreationLibraryNewButton } from '@/renderer/components/creator/CreationLibraryNewButton';
+import { CreationNewButton } from '@/renderer/components/creator/CreationNewButton';
 import { CreationLibraryToolbar } from '@/renderer/components/creator/CreationLibraryToolbar';
 import { CreationLibraryFilterMenu } from '@/renderer/components/creator/CreationLibraryFilterMenu';
 import {
@@ -12,8 +12,8 @@ interface Props extends ComponentProps<typeof CreationLibraryToolbar> {
   busy: boolean;
   paneToggle: ReactNode;
   collapsedSearch: ReactNode;
-  onNewCreation(): void;
-  onNewDocument(mode: 'outline' | 'manuscript'): void;
+  onNewCreation: ComponentProps<typeof CreationNewButton>['onNewCreation'];
+  onNewAnimation?: ComponentProps<typeof CreationNewButton>['onNewAnimation'];
   onNewAlbum(): void;
   newAlbumLabel?: string;
 }
@@ -24,18 +24,18 @@ export function CreationLibraryHeader({
   paneToggle,
   collapsedSearch,
   onNewCreation,
-  onNewDocument,
+  onNewAnimation,
   onNewAlbum,
   newAlbumLabel,
   ...toolbar
 }: Props) {
   const creationActions = (
-    <CreationLibraryNewButton
+    <CreationNewButton
       busy={busy}
       collapsed={collapsed}
       newAlbumLabel={newAlbumLabel}
       onNewCreation={onNewCreation}
-      onNewDocument={onNewDocument}
+      onNewAnimation={onNewAnimation}
       onNewAlbum={onNewAlbum}
     />
   );

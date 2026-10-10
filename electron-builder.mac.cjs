@@ -10,11 +10,29 @@ module.exports = async () => {
   const nativeBinary = `prebuilds/darwin-${process.arch}.node`;
   config.directories.output = 'release/macos';
   config.files = config.files.map((entry) => {
-    if (typeof entry === 'string' || entry.from !== 'node_modules/better-sqlite3') return entry;
-    return {
-      ...entry,
-      filter: entry.filter.map((item) => (item === 'prebuilds/win32-x64.node' ? nativeBinary : item)),
-    };
+    if (typeof entry === 'string') return entry;
+    if (entry.from === 'node_modules/better-sqlite3')
+      return {
+        ...entry,
+        filter: entry.filter.map((item) => (item === 'prebuilds/win32-x64.node' ? nativeBinary : item)),
+      };
+    if (entry.from === 'node_modules/onnxruntime-node')
+      return {
+        ...entry,
+        filter: [...entry.filter, `bin/napi-v6/darwin/${process.arch}/**`],
+      };
+    if (entry.from === 'node_modules/@img/sharp-win32-x64')
+      return {
+        ...entry,
+        from: `node_modules/@img/sharp-darwin-${process.arch}`,
+        to: `node_modules/@img/sharp-darwin-${process.arch}`,
+      };
+    return entry;
+  });
+  config.files.push({
+    from: `node_modules/@img/sharp-libvips-darwin-${process.arch}`,
+    to: `node_modules/@img/sharp-libvips-darwin-${process.arch}`,
+    filter: ['package.json', 'lib/**', 'versions.json', 'README.md'],
   });
   config.asarUnpack = config.asarUnpack.map((item) =>
     item === 'node_modules/better-sqlite3/prebuilds/win32-x64.node'

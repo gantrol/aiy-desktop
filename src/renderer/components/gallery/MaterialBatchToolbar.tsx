@@ -1,6 +1,8 @@
 import {
   BookOpenIcon,
   CornerDownRightIcon,
+  EyeIcon,
+  EyeOffIcon,
   ListPlusIcon,
   LoaderCircleIcon,
   PlusIcon,
@@ -17,6 +19,8 @@ import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Separator } from '@/renderer/components/ui/separator';
 import { buildMaterialAlbumTree, flattenMaterialAlbumTree } from '@/renderer/components/gallery/materialAlbumTree';
 import { MaterialAlbumPreview } from '@/renderer/components/gallery/MaterialAlbumPreview';
+import { useImageVisibility } from '@/renderer/components/media/ImageVisibilityProvider';
+import { useI18n } from '@/renderer/i18n/useI18n';
 
 interface Labels {
   selected(count: number): string;
@@ -38,6 +42,7 @@ interface Labels {
 }
 
 interface Props {
+  imageAssetIds?: readonly string[];
   count: number;
   albums: MaterialAlbumDto[];
   terms: TermListItem[];
@@ -53,6 +58,7 @@ const albumPrefix = 'album:';
 const termPrefix = 'term:';
 
 export function MaterialBatchToolbar({
+  imageAssetIds = [],
   count,
   albums,
   terms,
@@ -63,6 +69,8 @@ export function MaterialBatchToolbar({
   onCreateAndCollect,
   onClear,
 }: Props) {
+  const visibility = useImageVisibility();
+  const copy = useI18n().messages.assetFile;
   const [pickerOpen, setPickerOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [destinations, setDestinations] = useState<Set<string>>(() => new Set());
@@ -70,7 +78,7 @@ export function MaterialBatchToolbar({
   const [title, setTitle] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const pending = busy || submitting;
+  const pending = busy || submitting || Boolean(visibility?.busy);
 
   useEffect(() => {
     if (!pickerOpen) {
@@ -174,9 +182,33 @@ export function MaterialBatchToolbar({
         data-operation-state={pending ? 'pending' : 'idle'}
         role="toolbar"
         aria-label={labels.selected(count)}
-        className="flex min-h-11 shrink-0 items-center gap-2 border-b border-selected-border bg-selected px-4 text-selected-foreground sm:px-6"
+        className="flex min-h-11 shrink-0 flex-wrap items-center gap-2 border-b border-selected-border bg-selected px-4 py-1 text-selected-foreground sm:px-6"
       >
         <span className="mr-auto text-sm font-medium tabular-nums">{labels.selected(count)}</span>
+        {visibility && imageAssetIds.length > 0 && (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={pending || !visibility.ready || imageAssetIds.every((id) => visibility.hiddenIds.has(id))}
+              onClick={() => void visibility.setHidden(imageAssetIds, true)}
+            >
+              <EyeOffIcon className="size-3.5" />
+              {copy.hideImages}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={pending || !visibility.ready || !imageAssetIds.some((id) => visibility.hiddenIds.has(id))}
+              onClick={() => void visibility.setHidden(imageAssetIds, false)}
+            >
+              <EyeIcon className="size-3.5" />
+              {copy.unhideImages}
+            </Button>
+          </>
+        )}
         <Button
           data-action="material-batch-add"
           type="button"

@@ -1,4 +1,7 @@
-import { copyFile, rm } from 'node:fs/promises';
+import { copyFile, rm, writeFile } from 'node:fs/promises';
+import { htmlFileLink, htmlFilesInMarkdown } from '@/shared/html-file-document';
+import { replaceMarkdownMedia } from '@/shared/content-markdown';
+import { readHtmlFile } from '@/main/embedded-web/html-file-store';
 import path from 'node:path';
 import type { ResolvedAssetFile } from '@/main/database/assets/asset-file-repository';
 import { safeAssetFileName } from '@/main/database/assets/asset-file-repository';
@@ -7,6 +10,7 @@ import { writeDirectoryAtomically, writeValidatedFileAtomically } from '@/main/v
 import type { ArticleDto, ArticleExportMarkdownInput, ArticleExportMarkdownResult } from '@/shared/contracts';
 
 interface ArticleExportDatabase {
+  readonly libraryRoot?: string;
   getArticle(id: string): ArticleDto;
   resolveAssetFilesAsync(assetIds: readonly string[]): Promise<ReadonlyMap<string, ResolvedAssetFile>>;
   contentLibrary: Pick<
@@ -71,7 +75,8 @@ export class ArticleExportService {
     let markdown = article.content.markdown;
     let exportedAssetDirectory: string | null = null;
 
-    if (article.content.mediaBindings.length) {
+    const htmlFiles = htmlFilesInMarkdown(markdown);
+    if (article.content.mediaBindings.length || htmlFiles.length) {
       const usedNames = new Set<string>();
       const files = await this.database.resolveAssetFilesAsync(
         article.content.mediaBindings.map((binding) => binding.assetId),
@@ -98,6 +103,15 @@ export class ArticleExportService {
             destinationsByAssetId.set(item.binding.assetId, destination);
           }
           markdown = rewriteArticleImageReferences(markdown, destinationsByPath, destinationsByAssetId);
+          const htmlPaths = new Map<string, string>();
+          for (const file of htmlFiles) {
+            if (!this.database.libraryRoot) throw new Error('HTML_FILE_UNAVAILABLE');
+            const name = uniqueAssetName(file.fileName, 'page', '.html', usedNames);
+            const bytes = await readHtmlFile(this.database.libraryRoot, file.objectHash);
+            await writeFile(path.join(temporaryDirectory, name), bytes, { flag: 'wx' });
+            htmlPaths.set(htmlFileLink(file.objectHash, file.spaceId), `${finalName}/${name}`);
+          }
+          markdown = replaceMarkdownMedia(markdown, htmlPaths);
         },
       );
       exportedAssetDirectory = bundle.directoryPath;

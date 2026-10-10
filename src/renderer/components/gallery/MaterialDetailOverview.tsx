@@ -5,7 +5,6 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
-  ExternalLinkIcon,
   FileTextIcon,
   HeartIcon,
   HeartOffIcon,
@@ -13,15 +12,18 @@ import {
   SquarePenIcon,
   Trash2Icon,
 } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useState, type ComponentProps, type ReactNode } from 'react';
 import type { AssetFileRevealContext } from '@/shared/contracts';
 import { AssetFileContextMenu } from '@/renderer/components/media/AssetFileContextMenu';
+import { AssetNavigationButton } from '@/renderer/components/media/AssetNavigationButton';
+import { useAssetNavigation } from '@/renderer/components/media/AssetNavigationProvider';
 import { useAssetMenuActions } from '@/renderer/components/media/AssetMenuActionsProvider';
 import { AssetMedia } from '@/renderer/components/media/AssetMedia';
 import { ImageAmbientBackdrop } from '@/renderer/components/media/AmbientImage';
 import { mediaThumbnailUrl } from '@/renderer/components/media/mediaThumbnailUrl';
 import { MaterialPinAction, materialPinSource } from '@/renderer/components/gallery/MaterialPinAction';
 import { Button } from '@/renderer/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/renderer/components/ui/tooltip';
 import { ActionMenuButton, type ActionMenuAction } from '@/renderer/components/ui/action-menu';
 import { MetaText } from '@/renderer/components/ui/meta-text';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
@@ -31,6 +33,21 @@ import {
   hasMaterialLifecycleEntity,
   type MaterialLibraryItem,
 } from '@/renderer/components/gallery/materialLibraryTypes';
+
+function MaterialActionButton({ label, children, ...props }: ComponentProps<typeof Button> & { label: string }) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button type="button" variant="ghost" size="icon-sm" {...props} aria-label={label}>
+            {children}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 interface MaterialDetailHeaderProps {
   navigationAction?: ReactNode;
@@ -194,6 +211,7 @@ export function MaterialDetailPreview({
           copyable={!video}
           usableInCreation={!video}
           lifecycleActions={lifecycleActions}
+          showMaterialNavigation={false}
         >
           <div
             className={cn(
@@ -261,6 +279,7 @@ export function MaterialDetailActions({
   const l = messages.gallery.inspector;
   const fileLabels = messages.assetFile;
   const assetActions = useAssetMenuActions();
+  const navigation = useAssetNavigation();
   const image = item.kind === 'TEXT' ? null : item.image;
   const lifecycleAvailable = hasMaterialLifecycleEntity(item);
   const [creationBusy, setCreationBusy] = useState(false);
@@ -279,11 +298,9 @@ export function MaterialDetailActions({
   }
 
   const favoriteButton = (image || favorited) && (
-    <Button
-      type="button"
+    <MaterialActionButton
+      label={favorited ? l.unfavorite : l.favorite}
       data-action="material-favorite-toggle"
-      variant="outline"
-      size="sm"
       disabled={favoriteBusy}
       aria-busy={favoriteBusy}
       aria-pressed={favorited}
@@ -296,8 +313,7 @@ export function MaterialDetailActions({
       ) : (
         <HeartIcon className="size-4" />
       )}
-      {favorited ? l.unfavorite : l.favorite}
-    </Button>
+    </MaterialActionButton>
   );
 
   const lifecycleMenu = lifecycleAvailable && (
@@ -326,12 +342,11 @@ export function MaterialDetailActions({
 
   if (item.kind === 'TEXT')
     return (
-      <div className="flex flex-wrap items-center gap-2">
-        <MaterialPinAction item={item} disabled={lifecycleBusy} notify={notify} />
-        <Button type="button" size="sm" onClick={() => onCopyText(item.text.text)}>
+      <div className="flex flex-wrap items-center gap-1">
+        <MaterialPinAction item={item} disabled={lifecycleBusy} notify={notify} iconOnly />
+        <MaterialActionButton label={l.copyText} onClick={() => onCopyText(item.text.text)}>
           <CopyIcon className="size-4" />
-          {l.copyText}
-        </Button>
+        </MaterialActionButton>
         {favoriteButton}
         {lifecycleMenu}
       </div>
@@ -339,24 +354,21 @@ export function MaterialDetailActions({
   if (!image) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <MaterialPinAction item={item} disabled={lifecycleBusy} notify={notify} />
+    <div className="flex flex-wrap items-center gap-1">
+      <MaterialPinAction item={item} disabled={lifecycleBusy} notify={notify} iconOnly />
       {!video && assetActions && (
-        <Button
-          type="button"
-          size="sm"
+        <MaterialActionButton
+          label={fileLabels.useInCreation}
           disabled={creationBusy}
           aria-busy={creationBusy}
           onClick={() => onRequestExit(() => void sendToCreation())}
         >
           {creationBusy ? <LoaderCircleIcon className="size-4 animate-spin" /> : <SquarePenIcon className="size-4" />}
-          {fileLabels.useInCreation}
-        </Button>
+        </MaterialActionButton>
       )}
       {video && image.materialId && assetActions && (
-        <Button
-          type="button"
-          size="sm"
+        <MaterialActionButton
+          label={messages.videoDocuments.createFromVideo}
           onClick={() =>
             onRequestExit(
               () =>
@@ -368,22 +380,21 @@ export function MaterialDetailActions({
           }
         >
           <FileTextIcon className="size-4" />
-          {messages.videoDocuments.createFromVideo}
-        </Button>
+        </MaterialActionButton>
       )}
-      {image.creation && (
-        <Button type="button" size="sm" onClick={() => onOpenResult(image.creation!.seriesId, image.asset.id)}>
+      {navigation && <AssetNavigationButton assetId={image.asset.id} intent="SOURCES" disabled={lifecycleBusy} />}
+      {!navigation && image.creation && (
+        <MaterialActionButton
+          label={l.openCreation}
+          onClick={() => onOpenResult(image.creation!.seriesId, image.asset.id)}
+        >
           <SquarePenIcon className="size-4" />
-          {l.openCreation}
-          <ExternalLinkIcon className="ml-auto size-3.5 opacity-60" />
-        </Button>
+        </MaterialActionButton>
       )}
-      {!image.creation && image.dictionary && (
-        <Button type="button" size="sm" onClick={() => onOpenTerm(image.dictionary!.termId)}>
+      {!navigation && image.dictionary && (
+        <MaterialActionButton label={l.openDictionary} onClick={() => onOpenTerm(image.dictionary!.termId)}>
           <BookOpenIcon className="size-4" />
-          {l.openDictionary}
-          <ExternalLinkIcon className="ml-auto size-3.5 opacity-60" />
-        </Button>
+        </MaterialActionButton>
       )}
       {favoriteButton}
       {lifecycleMenu}

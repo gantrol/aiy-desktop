@@ -3,6 +3,7 @@ import { ListOrderedIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import type { CreatorPromptComposerHandle } from '@/renderer/components/creator/CreatorPromptComposer';
 import { MAX_IMAGE_PROMPTS, readImagePromptPlan } from '@/renderer/components/creator/imagePromptPlan';
 import { Button } from '@/renderer/components/ui/button';
+import { ResponsiveButton } from '@/renderer/components/ui/responsive-button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/renderer/components/ui/dialog';
 import { Label } from '@/renderer/components/ui/label';
 import { Textarea } from '@/renderer/components/ui/textarea';
@@ -41,10 +42,17 @@ export function ImagePromptPlanButton({
 
   return (
     <>
-      <Button type="button" variant="ghost" size="sm" disabled={disabled || busy} onClick={() => void edit()}>
+      <ResponsiveButton
+        type="button"
+        variant="ghost"
+        size="sm"
+        label={copy.title}
+        disabled={disabled || busy}
+        aria-busy={busy}
+        onClick={() => void edit()}
+      >
         <ListOrderedIcon className="size-4" />
-        {copy.title}
-      </Button>
+      </ResponsiveButton>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col" aria-describedby={undefined}>
           <DialogHeader>

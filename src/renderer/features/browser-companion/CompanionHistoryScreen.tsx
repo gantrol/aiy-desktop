@@ -1,6 +1,6 @@
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { RefreshCwIcon, Trash2Icon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { BrowserCompanionHistoryItem, Locale } from '@/shared/contracts';
 import { Button } from '@/renderer/components/ui/button';
 import { Checkbox } from '@/renderer/components/ui/checkbox';
@@ -13,7 +13,8 @@ import {
   DialogTitle,
 } from '@/renderer/components/ui/dialog';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/renderer/components/ui/table';
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/renderer/components/ui/table';
+import { VirtualTableBody } from '@/renderer/components/ui/virtual-table-body';
 import { useStableCallback } from '@/renderer/lib/useStableCallback';
 import { CompanionBatchHistory } from '@/renderer/features/browser-companion/CompanionBatchHistory';
 
@@ -39,26 +40,41 @@ export function CompanionHistoryScreen({
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const generation = useRef(0);
+  const busy = useRef(false);
   const selectedCount = selectedIds.size;
   const allSelected = items.length > 0 && selectedCount === items.length;
   const loadHistory = useStableCallback(async (): Promise<void> => {
-    if (loading) return;
+    if (!active || busy.current) return;
+    busy.current = true;
+    const request = generation.current;
     setLoading(true);
     try {
       const next = await window.desktopApi.browserCompanionHistory();
+      if (request !== generation.current) return;
       setItems(next);
       setSelectedIds(
         (current) => new Set([...current].filter((handoffId) => next.some((item) => item.handoffId === handoffId))),
       );
     } catch (reason) {
-      notify(reason instanceof Error ? reason.message : String(reason));
+      if (request === generation.current) notify(reason instanceof Error ? reason.message : String(reason));
     } finally {
-      setLoading(false);
+      if (request === generation.current) {
+        busy.current = false;
+        setLoading(false);
+      }
     }
   });
 
   useEffect(() => {
+    const request = generation.current;
     if (active) void loadHistory();
+    else setLoading(false);
+    return () => {
+      generation.current = request + 1;
+      busy.current = false;
+    };
   }, [active, loadHistory]);
 
   function select(handoffId: string, checked: boolean): void {
@@ -121,18 +137,27 @@ export function CompanionHistoryScreen({
         </div>
       </header>
 
-      <ScrollArea type="always" className="min-h-0 flex-1">
+      <ScrollArea viewportRef={viewportRef} type="always" className="min-h-0 flex-1">
         <div className="p-5">
           <CompanionBatchHistory
             active={active}
-            refreshKey={items}
+            history={items}
+            onRefresh={() => void loadHistory()}
             onDeleted={(handoffIds) => {
               const deleted = new Set(handoffIds);
               setItems((current) => current.filter((item) => !deleted.has(item.handoffId)));
               setSelectedIds((current) => new Set([...current].filter((id) => !deleted.has(id))));
             }}
           />
-          <Table>
+          <Table className="table-fixed min-w-[760px]">
+            <colgroup>
+              <col className="w-10" />
+              <col />
+              <col className="w-24" />
+              <col className="w-24" />
+              <col className="w-28" />
+              <col className="w-44" />
+            </colgroup>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-10">
@@ -151,15 +176,21 @@ export function CompanionHistoryScreen({
                 <TableHead>{copy.history.time}</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {items.map((item) => {
+            <VirtualTableBody
+              items={items}
+              itemKey={handoffKey}
+              viewportRef={viewportRef}
+              columns={6}
+              active={active}
+              empty={!loading ? copy.history.empty : null}
+              rowProps={(item) => ({
+                'data-browser-companion-handoff': item.handoffId,
+                'aria-selected': selectedIds.has(item.handoffId),
+              })}
+              renderCells={(item) => {
                 const selected = selectedIds.has(item.handoffId);
                 return (
-                  <TableRow
-                    key={item.handoffId}
-                    data-browser-companion-handoff={item.handoffId}
-                    aria-selected={selected}
-                  >
+                  <>
                     <TableCell>
                       <Checkbox
                         aria-label={copy.history.selectRecord}
@@ -176,17 +207,10 @@ export function CompanionHistoryScreen({
                     <TableCell>{copy.history.kinds[item.contentKind]}</TableCell>
                     <TableCell data-handoff-state={item.state}>{copy.history.states[item.state]}</TableCell>
                     <TableCell>{displayTime(item.createdAt, locale)}</TableCell>
-                  </TableRow>
+                  </>
                 );
-              })}
-              {!loading && items.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                    {copy.history.empty}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
+              }}
+            />
           </Table>
         </div>
       </ScrollArea>
@@ -216,4 +240,8 @@ export function CompanionHistoryScreen({
       </Dialog>
     </main>
   );
+}
+
+function handoffKey(item: BrowserCompanionHistoryItem) {
+  return item.handoffId;
 }

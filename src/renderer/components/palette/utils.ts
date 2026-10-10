@@ -11,6 +11,7 @@ export function filterWordPalettes(palettes: WordPaletteDto[], query: string): W
       [
         palette.name,
         palette.description,
+        palette.method?.instructions ?? '',
         ...palette.localizations.flatMap((item) => [item.name, item.description]),
         ...palette.terms.flatMap((term) => [
           term.title,

@@ -9,14 +9,26 @@ export function ContentSearchStatus({
   paused,
   disabled,
   onPause,
+  statusCoverage,
+  statusKind,
 }: {
   result: ContentLookupResult | null;
   busy: boolean;
   paused: boolean;
   disabled: boolean;
   onPause(): void;
+  statusCoverage?: ContentLookupResult['coverage'];
+  statusKind?: 'IMAGE_TEXT' | 'CONTENT_AND_IMAGE_TEXT';
 }) {
-  const copy = useI18n().messages.referenceOutline.lookup;
+  if (result && statusCoverage) result = { ...result, coverage: statusCoverage };
+  const { messages, locale } = useI18n();
+  const copy = messages.referenceOutline.lookup;
+  const indexingCopy =
+    statusKind === 'IMAGE_TEXT'
+      ? messages.imageSearch.ocrIndexing
+      : statusKind === 'CONTENT_AND_IMAGE_TEXT'
+        ? messages.imageSearch.contentAndOcrIndexing
+        : null;
   if (!result && !busy) return null;
   const pending = Boolean(result?.coverage.pending);
   if (result && !pending && !result.coverage.unavailable && !result.coverage.limited && !result.reset) return null;
@@ -35,7 +47,18 @@ export function ContentSearchStatus({
                 {!paused && (
                   <LoaderCircleIcon aria-hidden="true" className="size-3 animate-spin motion-reduce:animate-none" />
                 )}
-                {paused ? copy.paused : copy.preparing}
+                {indexingCopy
+                  ? paused
+                    ? indexingCopy.paused
+                    : indexingCopy.active
+                  : paused
+                    ? copy.paused
+                    : copy.preparing}
+                <span className="tabular-nums">
+                  {new Intl.NumberFormat(locale).format(result.coverage.ready)}
+                  {' / '}
+                  {new Intl.NumberFormat(locale).format(result.coverage.total)}
+                </span>
               </span>
             )}
             {result.coverage.unavailable > 0 && (

@@ -145,9 +145,9 @@ export function AiActivityRow({
       data-ai-activity-id={record.id}
       aria-current={selected ? 'true' : undefined}
       className={cn(
-        'grid h-auto w-full grid-cols-[34px_minmax(0,1fr)_auto] items-start gap-3 whitespace-normal rounded-none border-l-2 border-l-transparent px-3 py-3 text-left font-normal focus-visible:ring-inset focus-visible:ring-offset-0',
+        'grid h-auto w-full grid-cols-[34px_minmax(0,1fr)_auto] items-start gap-3 whitespace-normal rounded-none px-3 py-3 text-left font-normal focus-visible:ring-inset focus-visible:ring-offset-0',
         variant === 'OUTLINE' && 'grid-cols-[30px_minmax(0,1fr)_auto] gap-2.5 px-2.5 py-2.5',
-        selected && 'border-l-selected-foreground bg-selected hover:bg-selected active:bg-selected',
+        selected && 'bg-selected hover:bg-selected active:bg-selected',
       )}
       onClick={() => onSelect(record.id)}
     >

@@ -94,6 +94,11 @@ export const codexVisualizationSnapshotSchema = z
 
 export const codexVisualizationArtifactActionInputSchema = z.object({ artifactId: artifactIdSchema }).strict();
 
+export const codexVisualizationHtmlPreviewInputSchema = codexVisualizationArtifactActionInputSchema.extend({
+  interactive: z.boolean().optional(),
+});
+export type CodexVisualizationHtmlPreviewInput = z.infer<typeof codexVisualizationHtmlPreviewInputSchema>;
+
 export const codexVisualizationSessionActionInputSchema = z.object({ sessionId: sessionIdSchema }).strict();
 
 const htmlPreviewIdSchema = z.string().regex(/^[a-f0-9]{48}$/);
@@ -104,6 +109,7 @@ export const codexVisualizationHtmlPreviewSchema = z
     artifactId: artifactIdSchema,
     url: z.string().regex(/^aiy-visualization-preview:\/\/[a-f0-9]{48}\//),
     expiresAt: isoTimestampSchema,
+    scriptsAllowed: z.boolean().optional(),
   })
   .strict();
 

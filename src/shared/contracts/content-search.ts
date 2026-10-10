@@ -21,6 +21,7 @@ export const contentLookupResultSchema = z
     scope: z.literal('CURRENT_SAVED_DOCUMENTS'),
     snapshot: z.string(),
     reset: z.boolean(),
+    warning: z.enum(['DISABLED', 'NOT_CONFIGURED', 'UNAVAILABLE', 'GPU_UNAVAILABLE']).optional(),
     coverage: z
       .object({
         total: z.number().int().nonnegative(),
@@ -40,7 +41,9 @@ export const contentLookupResultSchema = z
             bodyIndexed: z.boolean(),
             updatedAt: z.string(),
             branchRole: z.string().nullable(),
-            match: z.enum(['ID', 'TITLE', 'BODY', 'RECENT']),
+            match: z.enum(['ID', 'TITLE', 'BODY', 'RECENT', 'SEMANTIC']),
+            score: z.number().min(-1).max(1).optional(),
+            borderline: z.boolean().optional(),
           })
           .strict(),
       )

@@ -12,8 +12,8 @@ import {
   activeLocation,
   activeWorkspaceGroup,
   activeWorkspaceTab,
-  closeOtherWorkspaceTabs,
   closeWorkspaceTab,
+  closeWorkspaceTabs,
   findWorkspaceTab,
   navigateWorkspaceHistory,
   navigateWorkspaceArticleLocation,
@@ -27,10 +27,13 @@ import {
   resetWorkspace,
   restoreWorkspaceState,
   setWorkspaceGroupTabsCollapsed,
+  setWorkspaceTabPinned,
   setWorkspaceSplitRatio,
   splitWorkspace,
   updateWorkspaceArticleLocation,
   type WorkspaceRuntimeState,
+  type WorkspaceTabCloseScope,
+  type WorkspaceTabMove,
 } from '@/renderer/components/workspace/workspace-state';
 
 interface PersistenceContext {
@@ -173,13 +176,18 @@ export function useWorkspaceController(data: BootstrapDto | null) {
     [update],
   );
   const closeTab = useCallback((tabId: string) => update((current) => closeWorkspaceTab(current, tabId)), [update]);
-  const closeOtherTabs = useCallback(
-    (groupId: string, tabId: string) => update((current) => closeOtherWorkspaceTabs(current, groupId, tabId)),
+  const reorderTab = useCallback(
+    (groupId: string, tabId: string, move: WorkspaceTabMove) =>
+      update((current) => reorderWorkspaceTab(current, groupId, tabId, move)),
     [update],
   );
-  const reorderTab = useCallback(
-    (groupId: string, tabId: string, delta: -1 | 1) =>
-      update((current) => reorderWorkspaceTab(current, groupId, tabId, delta)),
+  const setTabPinned = useCallback(
+    (tabId: string, pinned: boolean) => update((current) => setWorkspaceTabPinned(current, tabId, pinned)),
+    [update],
+  );
+  const closeTabs = useCallback(
+    (groupId: string, tabId: string, scope: WorkspaceTabCloseScope) =>
+      update((current) => closeWorkspaceTabs(current, groupId, tabId, scope)),
     [update],
   );
   const reset = useCallback(() => update(resetWorkspace), [update]);
@@ -273,7 +281,8 @@ export function useWorkspaceController(data: BootstrapDto | null) {
     activateGroupByIndex,
     activateTabByIndex,
     closeTab,
-    closeOtherTabs,
+    closeTabs,
+    setTabPinned,
     reorderTab,
     reset,
     split,

@@ -1,5 +1,6 @@
 import type { ExtensionDto } from '@/shared/contracts';
 import { CODEX_EXTENSION_ID } from '@/shared/extension-ids';
+import { isBuiltinToolExtension } from '@/shared/builtin-tools';
 
 export type ExtensionPluginGroup = 'models' | 'frontendDesign' | 'features' | 'languages';
 
@@ -11,6 +12,7 @@ export const extensionPluginGroupOrder: readonly ExtensionPluginGroup[] = [
 ];
 
 export function extensionPluginGroup(extension: ExtensionDto): ExtensionPluginGroup {
+  if (isBuiltinToolExtension(extension)) return 'features';
   if (extension.manifest.kind === 'LANGUAGE') return 'languages';
   if (extension.manifest.id === CODEX_EXTENSION_ID) return 'features';
   if ((extension.manifest.contributes.modelProviders?.length ?? 0) > 0) return 'models';
@@ -20,6 +22,10 @@ export function extensionPluginGroup(extension: ExtensionDto): ExtensionPluginGr
 
 export function firstGroupedExtensionId(extensions: readonly ExtensionDto[]) {
   for (const group of extensionPluginGroupOrder) {
+    if (group === 'features') {
+      const tool = extensions.find(isBuiltinToolExtension);
+      if (tool) return tool.manifest.id;
+    }
     const first = extensions.find((extension) => extensionPluginGroup(extension) === group);
     if (first) return first.manifest.id;
   }

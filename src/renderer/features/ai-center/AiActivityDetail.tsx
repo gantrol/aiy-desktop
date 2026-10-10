@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TaskRecipeHistory } from '@/renderer/components/palette/TaskRecipeHistory';
 import {
   ImageIcon,
   MessageSquarePlusIcon,
@@ -418,6 +419,7 @@ function ArticleCheckDetail({ record, locale }: { record: ArticleCheckActivityRe
           <Fact label={l.fields.createdAt}>{dateTime(run.startedAt, locale)}</Fact>
           <Fact label={l.fields.finishedAt}>{dateTime(run.finishedAt, locale)}</Fact>
         </dl>
+        <TaskRecipeHistory recipe={run.recipe} />
       </DetailSection>
       {run.errorMessage && (
         <div className="grid gap-1 rounded-md bg-destructive-surface p-3 text-xs text-destructive">

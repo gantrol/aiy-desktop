@@ -151,7 +151,7 @@ export function VideoDocumentOutlineRail({ items, activeId, ariaLabel, onSelect 
       {openGroup && (
         <div
           className={cn(
-            'absolute left-8 z-40 w-64 border border-selected-border border-l-2 border-l-selected-foreground bg-overlay/95 py-1 shadow-overlay backdrop-blur-sm transition-[opacity,transform] duration-150 ease-out',
+            'absolute left-8 z-40 w-64 border border-border bg-overlay/95 py-1 shadow-overlay backdrop-blur-sm transition-[opacity,transform] duration-150 ease-out',
             opensUpward ? 'bottom-0' : 'top-0',
             detailsVisible ? 'translate-x-0 opacity-100' : '-translate-x-1 opacity-0',
           )}
@@ -165,11 +165,11 @@ export function VideoDocumentOutlineRail({ items, activeId, ariaLabel, onSelect 
                   key={item.id}
                   type="button"
                   className={cn(
-                    'block w-full border-l-2 border-l-transparent py-1 pr-3 text-left leading-5 outline-none transition-colors hover:bg-hover focus-visible:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                    'block w-full py-1 pr-3 text-left leading-5 outline-none transition-colors hover:bg-hover focus-visible:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                     depth === 0 && 'text-sm font-medium text-foreground',
                     depth === 1 && 'text-[13px] text-foreground',
                     depth === 2 && 'text-xs text-muted-foreground',
-                    active && 'border-l-selected-foreground bg-selected/55 text-selected-foreground',
+                    active && 'bg-selected/55 text-selected-foreground',
                   )}
                   style={{ paddingLeft: 10 + depth * 14 }}
                   aria-current={active ? 'location' : undefined}

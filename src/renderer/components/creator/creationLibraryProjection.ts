@@ -1,5 +1,5 @@
 import type {
-  ArticleDto,
+  ArticleListItem,
   AssetDto,
   CreationFormDto,
   CreationFormEntityRef,
@@ -39,14 +39,18 @@ type ArticleEntityRef = Extract<CreationFormEntityRef, { kind: 'ARTICLE' }>;
 type VideoDocumentEntityRef = Extract<CreationFormEntityRef, { kind: 'VIDEO_DOCUMENT' }>;
 type DerivedVisualEntityRef = Extract<CreationFormEntityRef, { kind: 'DERIVED_VISUAL' }>;
 
+type InspirationListItem = Pick<InspirationStashDto, 'id' | 'title' | 'displayTitle' | 'updatedAt'> & {
+  content: Pick<InspirationStashDto['content'], 'referenceAssets'>;
+};
+
 export type CreationFormEntity =
   | GifDocumentSummary
   | PromptSeriesDto
   | ImageBreakdownDto
   | EvaluationSuiteDto
-  | InspirationStashDto
+  | InspirationListItem
   | SocialPostDto
-  | ArticleDto
+  | ArticleListItem
   | VideoDocumentSummaryDto
   | DerivedVisualDto;
 
@@ -55,9 +59,9 @@ export interface CreationFormEntityIndex {
   promptSeriesById: ReadonlyMap<string, PromptSeriesDto>;
   imageBreakdownById: ReadonlyMap<string, ImageBreakdownDto>;
   evaluationSuiteById: ReadonlyMap<string, EvaluationSuiteDto>;
-  inspirationStashById: ReadonlyMap<string, InspirationStashDto>;
+  inspirationStashById: ReadonlyMap<string, InspirationListItem>;
   socialPostById: ReadonlyMap<string, SocialPostDto>;
-  articleById: ReadonlyMap<string, ArticleDto>;
+  articleById: ReadonlyMap<string, ArticleListItem>;
   videoDocumentById: ReadonlyMap<string, VideoDocumentSummaryDto>;
   derivedVisualById: ReadonlyMap<string, DerivedVisualDto>;
   sessionBySeriesId: ReadonlyMap<string, CreationSessionProjection>;
@@ -71,7 +75,7 @@ export interface CreationFormEntitySource {
   sessions: readonly CreationSessionProjection[];
   inspirationStashes: readonly InspirationStashDto[];
   socialPosts: readonly SocialPostDto[];
-  articles: readonly ArticleDto[];
+  articles: readonly ArticleListItem[];
   videoDocuments: readonly VideoDocumentSummaryDto[];
   derivedVisuals: readonly DerivedVisualDto[];
 }
@@ -105,7 +109,20 @@ export function buildCreationFormEntityIndex({
     promptSeriesById: indexById(series),
     imageBreakdownById: indexById(imageBreakdowns),
     evaluationSuiteById: indexById(evaluationSuites),
-    inspirationStashById: indexById(inspirationStashes),
+    inspirationStashById: indexById<InspirationListItem>([
+      ...inspirationStashes,
+      ...articles
+        .filter((article) =>
+          'hasCreationInput' in article ? article.hasCreationInput : Boolean(article.content.creationInput),
+        )
+        .map((article) => ({
+          id: article.id,
+          title: article.content.title,
+          displayTitle: article.content.title,
+          updatedAt: article.updatedAt,
+          content: { referenceAssets: article.content.mediaAssets },
+        })),
+    ]),
     socialPostById: indexById(socialPosts),
     articleById: indexById(articles),
     videoDocumentById: indexById(videoDocuments),
@@ -133,12 +150,15 @@ export function resolveCreationFormEntity(
 export function resolveCreationFormEntity(
   ref: InspirationStashEntityRef,
   index: CreationFormEntityIndex,
-): InspirationStashDto | null;
+): InspirationListItem | null;
 export function resolveCreationFormEntity(
   ref: SocialPostEntityRef,
   index: CreationFormEntityIndex,
 ): SocialPostDto | null;
-export function resolveCreationFormEntity(ref: ArticleEntityRef, index: CreationFormEntityIndex): ArticleDto | null;
+export function resolveCreationFormEntity(
+  ref: ArticleEntityRef,
+  index: CreationFormEntityIndex,
+): ArticleListItem | null;
 export function resolveCreationFormEntity(
   ref: VideoDocumentEntityRef,
   index: CreationFormEntityIndex,
@@ -187,7 +207,7 @@ interface CreationFormProjectionBase<TForm extends CreationFormDto, TEntity exte
 
 export type InspirationCreationFormProjection = CreationFormProjectionBase<
   InspirationCreationFormDto,
-  InspirationStashDto
+  InspirationListItem
 >;
 
 export type ImageBreakdownCreationFormProjection = CreationFormProjectionBase<
@@ -205,7 +225,7 @@ export type ImageCreationFormProjection = CreationFormProjectionBase<ImageCreati
 };
 
 export type SocialPostCreationFormProjection = CreationFormProjectionBase<SocialPostCreationFormDto, SocialPostDto>;
-export type ArticleCreationFormProjection = CreationFormProjectionBase<ArticleCreationFormDto, ArticleDto>;
+export type ArticleCreationFormProjection = CreationFormProjectionBase<ArticleCreationFormDto, ArticleListItem>;
 export type VideoDocumentCreationFormProjection = CreationFormProjectionBase<
   VideoDocumentCreationFormDto,
   VideoDocumentSummaryDto

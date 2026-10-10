@@ -16,8 +16,10 @@ import { Checkbox } from '@/renderer/components/ui/checkbox';
 import { Input } from '@/renderer/components/ui/input';
 import { Label } from '@/renderer/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/renderer/components/ui/popover';
+import { ResponsiveButton } from '@/renderer/components/ui/responsive-button';
 import { Segmented, SegmentedItem } from '@/renderer/components/ui/segmented';
 import { Separator } from '@/renderer/components/ui/separator';
+import { cn } from '@/renderer/lib/utils';
 import type {
   GalleryContentType,
   GalleryRelationship,
@@ -120,6 +122,7 @@ function CreationRelationFilterControl({
       value={value}
       onValueChange={(next) => next && onChange(next as CreationRelationFilter)}
       aria-label={l.creationImageRelationship}
+      className="h-auto max-w-full flex-wrap [&>button]:shrink-0 [&>button]:whitespace-nowrap"
     >
       <SegmentedItem value="ALL" data-action="material-creation-relation-all">
         {l.allRelated}
@@ -150,6 +153,7 @@ function MaterialSourceFilterControl({
       value={value}
       onValueChange={(next) => next && onChange(next as MaterialSourceFilter)}
       aria-label={l.creationRelationship}
+      className="h-auto max-w-full flex-wrap [&>button]:shrink-0 [&>button]:whitespace-nowrap"
     >
       <SegmentedItem value="ALL" data-action="material-source-all">
         {l.scopeAll}
@@ -181,6 +185,38 @@ function FavoriteScopeButton({ active, label, onToggle }: { active: boolean; lab
   );
 }
 
+function MaterialSearchInput({ query, onQueryChange }: Pick<Props, 'query' | 'onQueryChange'>) {
+  const { messages } = useI18n();
+  const l = messages.gallery.library;
+  return (
+    <div className="relative min-w-0 flex-1 basis-48">
+      <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        type="search"
+        data-action="material-search"
+        value={query}
+        onChange={(event) => onQueryChange(event.target.value)}
+        placeholder={l.searchPlaceholder}
+        aria-label={l.searchLabel}
+        className="h-9 pl-9 pr-9"
+      />
+      {query && (
+        <Button
+          type="button"
+          data-action="material-clear-search"
+          variant="ghost"
+          size="icon"
+          className="absolute right-1 top-1/2 size-7 -translate-y-1/2"
+          aria-label={l.clearSearch}
+          onClick={() => onQueryChange('')}
+        >
+          <XIcon className="size-3.5" />
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function MaterialLibraryToolbar({
   query,
   scope,
@@ -208,6 +244,9 @@ export function MaterialLibraryToolbar({
   const { messages } = useI18n();
   const l = messages.gallery.library;
   const contentTypeOptions = availableContentTypes;
+  const hasScopeTabs = Boolean(
+    (creationRelationFilter && onCreationRelationFilterChange) || (sourceFilter && onSourceFilterChange),
+  );
   const activeFilterCount =
     Number(!relationshipLocked && relationship !== 'ANY') +
     Number(contentTypes.length !== contentTypeOptions.length) +
@@ -220,184 +259,171 @@ export function MaterialLibraryToolbar({
   }
 
   return (
-    <div className="shrink-0 border-b bg-background px-4 py-3 sm:px-6">
+    <div className="@container shrink-0 border-b bg-background px-4 py-3 sm:px-6">
       <div className="flex flex-wrap items-center gap-2">
-        <CreationRelationFilterControl value={creationRelationFilter} onChange={onCreationRelationFilterChange} />
+        <div className={cn('flex min-w-0 flex-wrap items-center gap-2', hasScopeTabs && 'w-full @min-[960px]:w-auto')}>
+          <CreationRelationFilterControl value={creationRelationFilter} onChange={onCreationRelationFilterChange} />
 
-        <MaterialSourceFilterControl value={sourceFilter} onChange={onSourceFilterChange} />
+          <MaterialSourceFilterControl value={sourceFilter} onChange={onSourceFilterChange} />
 
-        <FavoriteScopeButton
-          active={scope === 'FAVORITE'}
-          label={l.scopeFavorite}
-          onToggle={() => onScopeChange(scope === 'FAVORITE' ? 'ALL' : 'FAVORITE')}
-        />
-
-        <div className="relative min-w-[220px] flex-1 sm:max-w-xl">
-          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            data-action="material-search"
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder={l.searchPlaceholder}
-            aria-label={l.searchLabel}
-            className="h-9 pl-9 pr-9"
+          <FavoriteScopeButton
+            active={scope === 'FAVORITE'}
+            label={l.scopeFavorite}
+            onToggle={() => onScopeChange(scope === 'FAVORITE' ? 'ALL' : 'FAVORITE')}
           />
-          {query && (
-            <Button
-              type="button"
-              data-action="material-clear-search"
-              variant="ghost"
-              size="icon"
-              className="absolute right-1 top-1/2 size-7 -translate-y-1/2"
-              aria-label={l.clearSearch}
-              onClick={() => onQueryChange('')}
-            >
-              <XIcon className="size-3.5" />
-            </Button>
-          )}
         </div>
 
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
+        <MaterialSearchInput query={query} onQueryChange={onQueryChange} />
+
+        <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <ResponsiveButton
+                type="button"
+                variant={activeFilterCount ? 'secondary' : 'outline'}
+                size="sm"
+                className="h-9"
+                label={l.filter}
+                aria-label={l.filterLabel}
+              >
+                <SlidersHorizontalIcon className="size-4" />
+                {activeFilterCount > 0 && (
+                  <Badge variant="secondary" className="h-5 min-w-5 justify-center rounded-full px-1 text-[10px]">
+                    {activeFilterCount}
+                  </Badge>
+                )}
+              </ResponsiveButton>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="max-h-[min(32rem,calc(100vh-6rem))] w-80 max-w-[calc(100vw-2rem)] space-y-4 overflow-y-auto p-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <strong className="text-sm">{l.filterTitle}</strong>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  disabled={!activeFilterCount}
+                  onClick={clearFilters}
+                >
+                  {l.clearAll}
+                </Button>
+              </div>
+
+              {!relationshipLocked && (
+                <fieldset className="space-y-3">
+                  <legend className="text-xs font-semibold">{l.relationshipTitle}</legend>
+                  <Segmented
+                    type="single"
+                    value={relationship}
+                    className="grid h-auto grid-cols-3"
+                    onValueChange={(value) => value && onRelationshipChange(value as GalleryRelationship)}
+                  >
+                    <SegmentedItem value="ANY" className="px-2">
+                      {l.relationshipAny}
+                    </SegmentedItem>
+                    <SegmentedItem value="CREATION" className="px-2">
+                      {l.relationshipCreation}
+                    </SegmentedItem>
+                    <SegmentedItem value="DICTIONARY" className="px-2">
+                      {l.relationshipDictionary}
+                    </SegmentedItem>
+                  </Segmented>
+                  <p className="text-[11px] leading-4 text-muted-foreground">{l.relationshipHint}</p>
+                </fieldset>
+              )}
+
+              {contentTypeOptions.length > 1 && (
+                <>
+                  {!relationshipLocked && <Separator />}
+                  <fieldset className="space-y-3">
+                    <legend className="text-xs font-semibold">{l.contentTypeTitle}</legend>
+                    {contentTypeOptions.map((option) => {
+                      const id = `gallery-content-${option.toLowerCase()}`;
+                      const checked = contentTypes.includes(option);
+                      return (
+                        <div key={option} className="flex items-center gap-2">
+                          <Checkbox
+                            id={id}
+                            checked={checked}
+                            disabled={checked && contentTypes.length === 1}
+                            onCheckedChange={(value) =>
+                              onContentTypesChange(
+                                toggleValue(contentTypes, option, value === true, contentTypeOptions),
+                              )
+                            }
+                          />
+                          <Label htmlFor={id} className="font-normal">
+                            {l[option]}
+                          </Label>
+                        </div>
+                      );
+                    })}
+                  </fieldset>
+                </>
+              )}
+
+              <Separator />
+              <fieldset className="space-y-3">
+                <legend className="text-xs font-semibold">{l.unratedTitle}</legend>
+                {ratingOptions.map((option) => {
+                  const id = `gallery-unrated-${option.toLowerCase()}`;
+                  return (
+                    <div key={option} className="flex items-center gap-2">
+                      <Checkbox
+                        id={id}
+                        checked={unratedDimensions.includes(option)}
+                        onCheckedChange={(value) =>
+                          onUnratedDimensionsChange(
+                            toggleValue(unratedDimensions, option, value === true, ratingOptions),
+                          )
+                        }
+                      />
+                      <Label htmlFor={id} className="font-normal">
+                        {l[option]}
+                      </Label>
+                    </div>
+                  );
+                })}
+                <p className="text-[11px] leading-4 text-muted-foreground">{l.unratedHint}</p>
+              </fieldset>
+            </PopoverContent>
+          </Popover>
+
+          {viewMode !== 'LIST' && (
+            <MaterialLayoutControl
+              showNamesControl={imageNamesAvailable}
+              showArrangementControl={imageNamesAvailable}
+            />
+          )}
+
+          {viewMode && onViewModeChange && (
+            <MaterialViewToggle
+              value={viewMode}
+              label={l.viewLabel}
+              gridLabel={l.gridView}
+              stackLabel={l.stackView}
+              onChange={onViewModeChange}
+            />
+          )}
+
+          {selectionAvailable && (
+            <ResponsiveButton
               type="button"
-              variant={activeFilterCount ? 'secondary' : 'outline'}
+              data-action="material-selection-mode"
+              variant={selectionMode ? 'secondary' : 'outline'}
               size="sm"
               className="h-9"
-              aria-label={l.filterLabel}
+              label={selectionMode ? l.doneSelecting : l.select}
+              aria-pressed={selectionMode}
+              onClick={() => onSelectionModeChange(!selectionMode)}
             >
-              <SlidersHorizontalIcon className="size-4" />
-              {l.filter}
-              {activeFilterCount > 0 && (
-                <Badge variant="secondary" className="h-5 min-w-5 justify-center rounded-full px-1 text-[10px]">
-                  {activeFilterCount}
-                </Badge>
-              )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent
-            align="end"
-            className="max-h-[min(32rem,calc(100vh-6rem))] w-80 space-y-4 overflow-y-auto p-4"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <strong className="text-sm">{l.filterTitle}</strong>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                disabled={!activeFilterCount}
-                onClick={clearFilters}
-              >
-                {l.clearAll}
-              </Button>
-            </div>
-
-            {!relationshipLocked && (
-              <fieldset className="space-y-3">
-                <legend className="text-xs font-semibold">{l.relationshipTitle}</legend>
-                <Segmented
-                  type="single"
-                  value={relationship}
-                  className="grid h-auto grid-cols-3"
-                  onValueChange={(value) => value && onRelationshipChange(value as GalleryRelationship)}
-                >
-                  <SegmentedItem value="ANY" className="px-2">
-                    {l.relationshipAny}
-                  </SegmentedItem>
-                  <SegmentedItem value="CREATION" className="px-2">
-                    {l.relationshipCreation}
-                  </SegmentedItem>
-                  <SegmentedItem value="DICTIONARY" className="px-2">
-                    {l.relationshipDictionary}
-                  </SegmentedItem>
-                </Segmented>
-                <p className="text-[11px] leading-4 text-muted-foreground">{l.relationshipHint}</p>
-              </fieldset>
-            )}
-
-            {contentTypeOptions.length > 1 && (
-              <>
-                {!relationshipLocked && <Separator />}
-                <fieldset className="space-y-3">
-                  <legend className="text-xs font-semibold">{l.contentTypeTitle}</legend>
-                  {contentTypeOptions.map((option) => {
-                    const id = `gallery-content-${option.toLowerCase()}`;
-                    const checked = contentTypes.includes(option);
-                    return (
-                      <div key={option} className="flex items-center gap-2">
-                        <Checkbox
-                          id={id}
-                          checked={checked}
-                          disabled={checked && contentTypes.length === 1}
-                          onCheckedChange={(value) =>
-                            onContentTypesChange(toggleValue(contentTypes, option, value === true, contentTypeOptions))
-                          }
-                        />
-                        <Label htmlFor={id} className="font-normal">
-                          {l[option]}
-                        </Label>
-                      </div>
-                    );
-                  })}
-                </fieldset>
-              </>
-            )}
-
-            <Separator />
-            <fieldset className="space-y-3">
-              <legend className="text-xs font-semibold">{l.unratedTitle}</legend>
-              {ratingOptions.map((option) => {
-                const id = `gallery-unrated-${option.toLowerCase()}`;
-                return (
-                  <div key={option} className="flex items-center gap-2">
-                    <Checkbox
-                      id={id}
-                      checked={unratedDimensions.includes(option)}
-                      onCheckedChange={(value) =>
-                        onUnratedDimensionsChange(toggleValue(unratedDimensions, option, value === true, ratingOptions))
-                      }
-                    />
-                    <Label htmlFor={id} className="font-normal">
-                      {l[option]}
-                    </Label>
-                  </div>
-                );
-              })}
-              <p className="text-[11px] leading-4 text-muted-foreground">{l.unratedHint}</p>
-            </fieldset>
-          </PopoverContent>
-        </Popover>
-
-        {viewMode !== 'LIST' && (
-          <MaterialLayoutControl showNamesControl={imageNamesAvailable} showArrangementControl={imageNamesAvailable} />
-        )}
-
-        {viewMode && onViewModeChange && (
-          <MaterialViewToggle
-            value={viewMode}
-            label={l.viewLabel}
-            gridLabel={l.gridView}
-            stackLabel={l.stackView}
-            onChange={onViewModeChange}
-          />
-        )}
-
-        {selectionAvailable && (
-          <Button
-            type="button"
-            data-action="material-selection-mode"
-            variant={selectionMode ? 'secondary' : 'outline'}
-            size="sm"
-            className="h-9"
-            aria-pressed={selectionMode}
-            onClick={() => onSelectionModeChange(!selectionMode)}
-          >
-            <CheckSquare2Icon className="size-4" />
-            {selectionMode ? l.doneSelecting : l.select}
-          </Button>
-        )}
+              <CheckSquare2Icon className="size-4" />
+            </ResponsiveButton>
+          )}
+        </div>
       </div>
 
       {activeFilterCount > 0 && (

@@ -13,10 +13,12 @@ export function MaterialPinAction({
   item,
   disabled,
   notify,
+  iconOnly,
 }: {
   item: MaterialLibraryItem;
   disabled?: boolean;
   notify(message: string): void;
+  iconOnly?: boolean;
 }) {
-  return <PinContentButton source={materialPinSource(item)} disabled={disabled} notify={notify} />;
+  return <PinContentButton source={materialPinSource(item)} disabled={disabled} notify={notify} iconOnly={iconOnly} />;
 }

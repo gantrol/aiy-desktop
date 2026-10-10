@@ -104,9 +104,15 @@ function standardCreatorInitialSession(
       ? (data.socialPosts ?? []).find((post) => post.id === location.postId)
       : undefined;
   const initialArticle =
-    location.surface === 'article' || location.surface === 'inspiration-stash'
+    location.surface === 'article' || location.surface === 'inspiration-stash' || location.surface === 'social-post'
       ? (data.articles ?? []).find(
-          (article) => article.id === (location.surface === 'article' ? location.articleId : location.stashId),
+          (article) =>
+            article.id ===
+            (location.surface === 'article'
+              ? location.articleId
+              : location.surface === 'social-post'
+                ? location.postId
+                : location.stashId),
         )
       : undefined;
   const resumableDerivedVisual = (data.derivedVisuals ?? []).find(

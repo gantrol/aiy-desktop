@@ -5,6 +5,7 @@ import { Button } from '@/renderer/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/renderer/components/ui/dialog';
 import { MetaText } from '@/renderer/components/ui/meta-text';
 import { useI18n } from '@/renderer/i18n/useI18n';
+import { articleManagementError } from '@/renderer/components/creator/articleManagementError';
 
 export interface ContentLifecycleActionRequest {
   action: ContentLifecycleAction;
@@ -35,7 +36,7 @@ export function useContentLifecycleActions({
   const [error, setError] = useState('');
 
   function failureMessage(reason: unknown) {
-    const detail = reason instanceof Error ? reason.message : String(reason);
+    const detail = articleManagementError(reason, messages.creator.album);
     return detail.includes('IMAGE_ASSET_USED_BY_ACTIVE_CONTENT') ? l.notices.assetInUse : detail;
   }
 

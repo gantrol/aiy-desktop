@@ -5,6 +5,7 @@ import { useI18n } from '@/renderer/i18n/useI18n';
 import { cn } from '@/renderer/lib/utils';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/renderer/components/ui/select';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { filterWordPalettes } from '@/renderer/components/palette/utils';
 import { WordPaletteLibraryItem } from '@/renderer/components/palette/WordPaletteLibraryItem';
@@ -41,10 +42,23 @@ export function WordPaletteLibrary({
   const newRecipe = messages.dictionary.wordPalette.newRecipe;
   const rootRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState('');
-  const visiblePalettes = useMemo(() => filterWordPalettes(palettes, query), [palettes, query]);
+  const [task, setTask] = useState('ALL');
+  const visiblePalettes = useMemo(
+    () =>
+      filterWordPalettes(
+        palettes.filter((palette) =>
+          action === 'apply' ? !palette.method : task === 'ALL' || (palette.method?.task ?? 'IMAGE_PROMPT') === task,
+        ),
+        query,
+      ),
+    [palettes, query, task, action],
+  );
 
   useEffect(() => {
-    if (focusPaletteId) setQuery('');
+    if (focusPaletteId) {
+      setQuery('');
+      setTask('ALL');
+    }
   }, [focusPaletteId]);
 
   useEffect(() => {
@@ -61,6 +75,21 @@ export function WordPaletteLibrary({
   return (
     <section ref={rootRef} className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)]">
       <div className="flex gap-2 border-b p-3">
+        {action === 'filter' && (
+          <Select value={task} onValueChange={setTask}>
+            <SelectTrigger className="w-40" aria-label={messages.recipe.task.task}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">{messages.recipe.task.all}</SelectItem>
+              {Object.entries(messages.recipe.task.tasks).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <div className="relative min-w-0 flex-1">
           <SearchIcon
             aria-hidden="true"

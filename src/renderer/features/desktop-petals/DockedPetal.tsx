@@ -1,7 +1,9 @@
 import { useId, type ComponentProps } from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { RosePetal, RosePaint } from '@/renderer/features/desktop-petals/RosePetal';
-import { FLOWER_PETAL_COUNT, ROSE_BUD_SIZE, roseBudCenter } from '@/shared/flower-geometry';
+import { FLOWER_PETAL_COUNT, ROSE_BUD_SCALE, flowerDockSize, roseBudCenter } from '@/shared/flower-geometry';
+
+const dockSize = flowerDockSize();
 
 /** A top-view bud uses the same pose and lighting at each desktop edge. */
 export function DockedPetal({
@@ -22,13 +24,14 @@ export function DockedPetal({
       onClick={onClick}
     >
       <svg
-        viewBox="0 0 200 200"
-        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 group-hover:brightness-105"
-        style={{ width: ROSE_BUD_SIZE, height: ROSE_BUD_SIZE }}
+        viewBox={`0 0 ${dockSize.width} ${dockSize.height}`}
+        className="pointer-events-none block size-full group-hover:brightness-105"
         aria-hidden="true"
       >
         <RosePaint id={id} fold={1} />
-        <g transform={`translate(100 100) translate(${-roseBudCenter.x} ${-roseBudCenter.y})`}>
+        <g
+          transform={`translate(${dockSize.width / 2} ${dockSize.height / 2}) scale(${ROSE_BUD_SCALE}) translate(${-roseBudCenter.x} ${-roseBudCenter.y})`}
+        >
           {Array.from({ length: FLOWER_PETAL_COUNT }, (_, index) => (
             <RosePetal key={index} paintId={id} index={index} fold={1} />
           ))}

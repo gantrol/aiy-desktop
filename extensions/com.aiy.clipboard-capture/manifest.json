@@ -1,0 +1,23 @@
+{
+  "manifestVersion": 1,
+  "kind": "CAPABILITY",
+  "id": "com.aiy.clipboard-capture",
+  "version": "0.1.0",
+  "displayName": "Capture & Notes",
+  "description": "Screen capture, desktop notes and capture history.",
+  "engines": { "aiy": "^0.3.10" },
+  "runtime": { "kind": "HOST", "id": "clipboard-capture" },
+  "contributes": { "commands": ["clipboardCapture.open", "clipboardCapture.capture"] },
+  "permissions": [],
+  "optionalPermissions": ["screen.capture:region", "library.create:creations"],
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "displayName": "Capture & Notes",
+        "description": "Screen capture, desktop notes and capture history."
+      },
+      "zh": { "displayName": "截图与便签", "description": "截图、桌面便签与截图历史。" }
+    }
+  }
+}

@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  projectCommandListSchema,
+  projectCommandScanInputSchema,
+  projectCommandCancelInputSchema,
+  projectCommandScanSchema,
+} from '@/shared/contracts/project-commands';
 
 export const maintenanceToolIds = [
   'searchConsole',
@@ -56,6 +62,8 @@ export type MaintenanceProjectDraft = z.infer<typeof maintenanceProjectDraftSche
 export const maintenanceProjectSchema = maintenanceProjectDraftSchema.extend({
   id: identifier,
   guides: z.array(maintenanceGuideReferenceSchema).max(20),
+  commandDirectory: z.string().max(4096).optional(),
+  commands: projectCommandListSchema.optional(),
 });
 export type MaintenanceProject = z.infer<typeof maintenanceProjectSchema>;
 export const maintenanceStateSchema = z
@@ -79,6 +87,7 @@ export const maintenanceMutationSchema = z.discriminatedUnion('kind', [
   }),
   z.object({ kind: z.literal('removeProject'), revision, projectId: identifier }),
   z.object({ kind: z.literal('removeGuide'), revision, projectId: identifier, guideId: identifier }),
+  z.object({ kind: z.literal('saveCommands'), revision, projectId: identifier, commands: projectCommandListSchema }),
 ]);
 export type MaintenanceMutation = z.infer<typeof maintenanceMutationSchema>;
 export const maintenanceProjectInputSchema = z.object({ revision, projectId: identifier });
@@ -99,6 +108,8 @@ export const maintenanceErrorSchema = z.enum([
   'fileTooLarge',
   'storageUnavailable',
   'openFailed',
+  'permissionRequired',
+  'canceled',
 ]);
 export type MaintenanceErrorCode = z.infer<typeof maintenanceErrorSchema>;
 export const maintenanceResultSchema = <T extends z.ZodType>(schema: T) =>
@@ -108,6 +119,10 @@ export const maintenanceResultSchema = <T extends z.ZodType>(schema: T) =>
   ]);
 export type MaintenanceResult<T> = { ok: true; value: T } | { ok: false; code: MaintenanceErrorCode };
 export interface MaintenanceGuideApi {
+  scanCommands(
+    input: z.infer<typeof projectCommandScanInputSchema>,
+  ): Promise<MaintenanceResult<{ state: MaintenanceState; scan: z.infer<typeof projectCommandScanSchema> } | null>>;
+  cancelCommandScan(input: z.infer<typeof projectCommandCancelInputSchema>): Promise<MaintenanceResult<null>>;
   list(): Promise<MaintenanceResult<MaintenanceState>>;
   mutate(input: MaintenanceMutation): Promise<MaintenanceResult<MaintenanceState>>;
   attachGuide(input: z.infer<typeof maintenanceProjectInputSchema>): Promise<MaintenanceResult<MaintenanceState>>;

@@ -446,7 +446,8 @@ export class WorkbenchPreparationRepository extends WorkbenchReader {
           `SELECT revision.id, revision.palette_id
             FROM word_palette_revisions revision
             JOIN word_palettes palette ON palette.id = revision.palette_id
-            WHERE revision.id IN (${placeholders}) AND palette.archived_at IS NULL AND palette.deleted_at IS NULL`,
+            WHERE revision.id IN (${placeholders}) AND palette.archived_at IS NULL AND palette.deleted_at IS NULL
+              AND revision.method_json IS NULL`,
         )
         .all(...batch) as JsonMap[];
       for (const row of revisionRows) paletteIdByRevision.set(text(row.id), text(row.palette_id));

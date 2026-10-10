@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, ReactNode, HTMLAttributes } from 'react';
 import { cn } from '@/renderer/lib/utils';
 import './content-surface.css';
 
@@ -14,6 +14,8 @@ interface Props {
   resize?: ReactNode;
   style?: CSSProperties;
   className?: string;
+  compact?: boolean;
+  headerDrag?: HTMLAttributes<HTMLElement>;
 }
 
 /** One content-first shell: paper needs reading space; media must not acquire a paper frame. */
@@ -29,6 +31,8 @@ export function ContentSurface({
   resize,
   style,
   className = '',
+  compact = false,
+  headerDrag,
 }: Props) {
   return (
     <section
@@ -36,7 +40,9 @@ export function ContentSurface({
         'content-surface group/content-surface relative isolate flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md',
         kind === 'media'
           ? 'bg-[var(--media-surround-dark)] text-[var(--media-checker-a)]'
-          : 'bg-[var(--petal-surface,var(--surface))] text-[var(--petal-ink,var(--foreground))]',
+          : compact
+            ? 'bg-surface text-foreground'
+            : 'bg-[var(--petal-surface,var(--surface))] text-[var(--petal-ink,var(--foreground))]',
         className,
       )}
       data-surface-kind={kind}
@@ -44,16 +50,21 @@ export function ContentSurface({
       aria-label={title}
     >
       <header
+        {...headerDrag}
+        data-pointer-drag={headerDrag ? true : undefined}
         className={cn(
           'content-surface__chrome flex min-h-10 shrink-0 items-center gap-1 px-2 py-1 select-none',
           kind === 'media' &&
             'pointer-events-none absolute inset-x-0 top-0 z-30 bg-linear-to-b from-[color-mix(in_srgb,var(--media-surround-dark)_85%,transparent)] to-transparent opacity-0 transition-opacity duration-fast group-hover/content-surface:pointer-events-auto group-hover/content-surface:opacity-100 group-focus-within/content-surface:pointer-events-auto group-focus-within/content-surface:opacity-100 group-has-[[data-state=open]]/content-surface:pointer-events-auto group-has-[[data-state=open]]/content-surface:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100',
+          compact && 'min-h-8 px-1 py-0.5',
+          compact && kind === 'media' && 'bg-none bg-[var(--media-surround-dark)]',
+          status && 'pointer-events-auto opacity-100',
         )}
       >
         {leading && <div className="content-surface__tools flex shrink-0 items-center">{leading}</div>}
         <span className="content-surface__drag-title min-w-4 flex-1 truncate text-[13px] font-medium" title={title}>
-          {kind !== 'media' && <span className="block truncate">{title}</span>}
-          {contextLabel && (
+          {(kind !== 'media' || compact) && <span className="block truncate">{title}</span>}
+          {contextLabel && !compact && (
             <span className="block truncate text-[10px] font-normal opacity-65" title={contextLabel}>
               {contextLabel}
             </span>
@@ -75,7 +86,7 @@ export function ContentSurface({
       >
         {children}
       </div>
-      {kind === 'media' && titlesVisible && (
+      {kind === 'media' && titlesVisible && !compact && (
         <div className="content-surface__caption pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-[image:var(--image-overlay-copy-scrim)] px-3.5 pt-10 pb-3.5 text-[13px] leading-normal">
           <strong className="block truncate font-medium">{title}</strong>
         </div>

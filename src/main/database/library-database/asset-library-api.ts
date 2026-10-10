@@ -1,4 +1,5 @@
 import type { MaterialAlbumMembershipApplyInput } from '@/shared/contracts/material-album-membership';
+import { createAssetNavigationApi } from '@/main/database/assets/asset-navigation';
 import type { LibraryDatabaseRepositories } from '@/main/database/library-database/repositories';
 import type {
   AddMaterialsToDestinationsInput,
@@ -76,9 +77,7 @@ export function createAssetLibraryApi(
       return repositories.gallery.list(input);
     },
 
-    getGalleryMaterial(materialId: string, locale: Locale) {
-      return repositories.gallery.getMaterial(materialId, locale);
-    },
+    ...createAssetNavigationApi(repositories.db, repositories.gallery),
 
     listTransitionPreviewSources(limit?: number) {
       return repositories.gallery.listTransitionPreviewSources(limit);

@@ -1,4 +1,5 @@
-import type { BootstrapDto, WorkspaceTarget } from '@/shared/contracts';
+import type { BootstrapDto, Locale, WorkspaceTarget } from '@/shared/contracts';
+import { localizeExtensionManifest } from '@/shared/extension-localization';
 import {
   derivedVisualForLocation,
   derivedVisualParentLocation,
@@ -160,6 +161,16 @@ function normalizeDerivedVisualLocation(location: CreatorLocation, data: Bootstr
   return null;
 }
 
+function normalizeInspirationStashLocation(
+  location: Extract<CreatorLocation, { surface: 'inspiration-stash' }>,
+  data: BootstrapDto,
+): CreatorLocation {
+  const available =
+    data.articles?.some((article) => article.id === location.stashId) ||
+    data.inspirationStashes?.some((stash) => stash.id === location.stashId);
+  return available ? location : { surface: 'default' };
+}
+
 function normalizeCreatorLocation(location: CreatorLocation, data: BootstrapDto): CreatorLocation {
   const derived = normalizeDerivedVisualLocation(location, data);
   if (derived) return derived;
@@ -169,11 +180,11 @@ function normalizeCreatorLocation(location: CreatorLocation, data: BootstrapDto)
     case 'article':
       return data.articles?.some((article) => article.id === location.articleId) ? location : { surface: 'default' };
     case 'social-post':
-      return data.socialPosts?.some((post) => post.id === location.postId) ? location : { surface: 'default' };
-    case 'inspiration-stash':
-      return data.inspirationStashes?.some((stash) => stash.id === location.stashId)
-        ? location
+      return data.articles?.some((article) => article.id === location.postId)
+        ? { surface: 'article', articleId: location.postId }
         : { surface: 'default' };
+    case 'inspiration-stash':
+      return normalizeInspirationStashLocation(location, data);
     case 'image-breakdown':
       return data.imageBreakdowns?.some((breakdown) => breakdown.id === location.breakdownId)
         ? location
@@ -233,6 +244,7 @@ export function workspaceLocationKey(location: AppLocation) {
 }
 
 interface WorkspaceTabTitleLabels {
+  locale: Locale;
   animation?: string;
   outline: string;
   views: Record<AppLocation['view'] | 'settings', string>;
@@ -276,6 +288,14 @@ function derivedVisualTabTitle(creator: CreatorLocation, data: BootstrapDto, fal
   return null;
 }
 
+function inspirationStashTabTitle(stashId: string, data: BootstrapDto, fallback: string) {
+  return displayTitle(
+    data.articles?.find((article) => article.id === stashId)?.content.title ??
+      data.inspirationStashes?.find((stash) => stash.id === stashId)?.displayTitle,
+    fallback,
+  );
+}
+
 function creatorTabTitle(
   creator: Exclude<CreatorLocation, { surface: 'animation' }>,
   data: BootstrapDto,
@@ -296,10 +316,7 @@ function creatorTabTitle(
         ? displayTitle(data.creationDraft.title, labels.newCreation)
         : labels.newCreation;
     case 'inspiration-stash':
-      return displayTitle(
-        data.inspirationStashes?.find((stash) => stash.id === creator.stashId)?.title,
-        kinds.inspirationStash,
-      );
+      return inspirationStashTabTitle(creator.stashId, data, kinds.inspirationStash);
     case 'image-breakdown':
       return displayTitle(
         data.imageBreakdowns?.find((breakdown) => breakdown.id === creator.breakdownId)?.title,
@@ -365,6 +382,12 @@ export function workspaceTabTitle(location: AppLocation, data: BootstrapDto, lab
   if (location.view === 'gallery' && location.gallery.collection.kind === 'album') {
     const albumId = location.gallery.collection.albumId;
     return displayTitle(data.albums.find((album) => album.id === albumId)?.title, labels.views.gallery);
+  }
+  if (location.view === 'packs' && location.extensions.tab === 'plugins' && location.extensions.pluginId) {
+    const extension = data.extensions?.find((item) => item.manifest.id === location.extensions.pluginId);
+    if (extension) {
+      return displayTitle(localizeExtensionManifest(extension.manifest, labels.locale).displayName, labels.views.packs);
+    }
   }
   if (location.view === 'contentManagement') {
     return labels.views.settings;

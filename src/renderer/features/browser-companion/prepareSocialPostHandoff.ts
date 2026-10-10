@@ -1,4 +1,9 @@
-import { prepareImagePostHandoff } from '@/renderer/features/browser-companion/prepareImagePostHandoff';
+import {
+  prepareTableImagePost,
+  discardTablePreviews,
+} from '@/renderer/features/browser-companion/prepareTableImagePost';
+import type { BrowserCompanionWatermarkSelection } from '@/shared/contracts';
+import { publicationContainsTables, assertPublicationTableReferences } from '@/shared/publication-tables';
 import {
   prepareWechatContentHandoff,
   type WechatArticleHandoffCopy,
@@ -24,6 +29,9 @@ interface PrepareSocialPostOptions {
   copy: DesktopPetalMessages['document'];
   wechatMode?: 'article' | 'images';
   wechatArticle?: { referenceTitle: string; copy: WechatArticleHandoffCopy };
+  watermark?: BrowserCompanionWatermarkSelection;
+  tableLabel?: string;
+  signal?: AbortSignal;
 }
 
 export interface PreparedSocialPostTarget {
@@ -46,6 +54,9 @@ export async function prepareSocialPostHandoffs({
   copy,
   wechatMode = 'images',
   wechatArticle,
+  watermark,
+  tableLabel,
+  signal,
 }: PrepareSocialPostOptions & {
   targets: readonly BrowserCompanionTarget[];
 }): Promise<PreparedSocialPostTarget[] | null> {
@@ -62,8 +73,10 @@ export async function prepareSocialPostHandoffs({
       : { markdown: snapshot.body, media: [] };
   const source = { kind: 'social-post' as const, id: postId };
   const mediaAssetIds = [...new Set([...snapshot.mediaAssetIds, ...expanded.media.map((media) => media.assetId)])];
-  return Promise.all(
-    [...new Set(targets)].map(async (target) => {
+  const results: PreparedSocialPostTarget[] = [];
+  try {
+    for (const target of new Set(targets)) {
+      signal?.throwIfAborted();
       let error: string | null = null;
       const notify = (message: string) => {
         error = message;
@@ -92,27 +105,49 @@ export async function prepareSocialPostHandoffs({
             notify,
           });
         } else {
-          prepared = prepareImagePostHandoff({
-            source,
-            title: fields.title,
-            body: expanded.markdown,
-            format: snapshot.format === 'markdown' ? 'markdown' : 'plain',
-            leadingMediaAssetIds: target === 'xiaohongshu' && fields.coverAssetId ? [fields.coverAssetId] : [],
-            mediaAssetIds,
-            mediaBindings: expanded.media,
-            target,
-            copy,
-            notify,
-            preferredMediaAssetIds: overrides?.mediaOrder,
-            titleInBody: overrides?.titleInBody,
-          });
+          if (snapshot.format === 'markdown') assertPublicationTableReferences(snapshot.body, expanded.markdown);
+          prepared = await prepareTableImagePost(
+            {
+              source,
+              title: fields.title,
+              body: expanded.markdown,
+              format: snapshot.format === 'markdown' ? 'markdown' : 'plain',
+              leadingMediaAssetIds: target === 'xiaohongshu' && fields.coverAssetId ? [fields.coverAssetId] : [],
+              mediaAssetIds:
+                snapshot.format === 'markdown' && publicationContainsTables(expanded.markdown)
+                  ? snapshot.mediaAssetIds
+                  : mediaAssetIds,
+              mediaBindings: expanded.media,
+              target,
+              copy,
+              notify,
+              preferredMediaAssetIds: overrides?.mediaOrder,
+              titleInBody: overrides?.titleInBody,
+            },
+            spaceId,
+            watermark,
+            tableLabel,
+            signal,
+          );
         }
-        return { target, prepared, error: prepared ? null : (error ?? copy.failure), sourceKey };
+        results.push({ target, prepared, error: prepared ? null : (error ?? copy.failure), sourceKey });
       } catch (reason) {
-        return { target, prepared: null, error: reason instanceof Error ? reason.message : String(reason), sourceKey };
+        results.push({
+          target,
+          prepared: null,
+          error: reason instanceof Error ? reason.message : String(reason),
+          sourceKey,
+        });
       }
-    }),
-  );
+    }
+  } finally {
+    if (signal?.aborted)
+      discardTablePreviews(
+        spaceId,
+        results.flatMap((row) => (row.prepared ? [row.prepared] : [])),
+      );
+  }
+  return results;
 }
 
 export async function prepareSocialPostHandoff(

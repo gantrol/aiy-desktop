@@ -19,7 +19,7 @@ export class MaintenanceGuideError extends Error {
   }
 }
 
-function approvedLocalPath(filePath: string) {
+export function approvedLocalPath(filePath: string) {
   if (
     !path.isAbsolute(filePath) ||
     /trash/i.test(filePath) ||
@@ -131,6 +131,8 @@ export class MaintenanceGuideStore {
       } else if (input.kind === 'removeProject') {
         this.project(state, input.projectId);
         state.projects = state.projects.filter((project) => project.id !== input.projectId);
+      } else if (input.kind === 'saveCommands') {
+        this.project(state, input.projectId).commands = input.commands;
       } else {
         const project = this.project(state, input.projectId);
         project.guides = project.guides.filter((guide) => guide.id !== input.guideId);
@@ -149,6 +151,7 @@ export class MaintenanceGuideStore {
         for (const guide of project.guides) approvedLocalPath(guide.path);
         state.projects.push({
           ...project,
+          commandDirectory: undefined,
           id: randomUUID(),
           guides: project.guides.map((guide) => ({ ...guide, id: randomUUID() })),
         });

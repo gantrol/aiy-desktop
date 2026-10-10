@@ -281,6 +281,17 @@ async function launchPreview(outputs) {
 }
 
 async function main() {
+  // Optional machine-local feature setup; never written into a distributed package.
+  try {
+    const local = JSON.parse(await readFile(path.join(applicationRoot, '.tmp', 'image-search-preview.json'), 'utf8'));
+    if (typeof local.enabled !== 'boolean' || typeof local.model !== 'string' || !path.isAbsolute(local.model)) {
+      throw new Error('Invalid local image-search Preview configuration.');
+    }
+    process.env.AIY_IMAGE_SEARCH_ENABLED = local.enabled ? '1' : '0';
+    process.env.AIY_IMAGE_SEARCH_MODEL = local.model;
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   // Custom electron-vite modes/configs retain their original CLI behavior and
   // never populate the default production cache with incompatible artifacts.
   if (forwardedArguments.length) {

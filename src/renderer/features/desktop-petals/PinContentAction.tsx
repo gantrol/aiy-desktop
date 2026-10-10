@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pin } from 'lucide-react';
+import { PinToDesktopIcon } from '@/renderer/features/desktop-petals/PinToDesktopIcon';
 import { Button } from '@/renderer/components/ui/button';
 import { ContextMenuItem, ContextMenuIcon } from '@/renderer/components/ui/context-menu';
 import type { ActionMenuAction } from '@/renderer/components/ui/action-menu';
@@ -42,7 +42,7 @@ export function PinContentButton(props: Props & { iconOnly?: boolean }) {
       aria-label={label}
       onClick={() => void pin(props.source)}
     >
-      <Pin className="size-3.5" />
+      <PinToDesktopIcon className="size-3.5" />
       {!props.iconOnly && label}
     </Button>
   );
@@ -52,7 +52,7 @@ export function PinContentMenuItem(props: Props) {
   return (
     <ContextMenuItem disabled={props.disabled || busy} onSelect={() => void pin(props.source)}>
       <ContextMenuIcon>
-        <Pin />
+        <PinToDesktopIcon />
       </ContextMenuIcon>
       {label}
     </ContextMenuItem>
@@ -64,7 +64,7 @@ export function usePinContentAction(notify: Props['notify']) {
   return (source: PinSource, disabled = false): ActionMenuAction => ({
     id: 'pin-to-desktop',
     label,
-    icon: Pin,
+    icon: PinToDesktopIcon,
     disabled: disabled || busy,
     onSelect: () => void pin(source),
   });

@@ -39,8 +39,7 @@ interface DocumentItemProps {
 
 const compactItemClassName =
   'relative grid size-16 shrink-0 place-items-center overflow-visible rounded-xl bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-ring';
-const compactSelectedClassName =
-  'after:pointer-events-none after:absolute after:top-1/2 after:-left-1 after:h-6 after:w-0.5 after:-translate-y-1/2 after:rounded-full after:bg-selected-foreground';
+const compactSelectedClassName = 'bg-selected text-selected-foreground';
 
 export function creationAlbumCanExpand(
   visibleChildCount: number,

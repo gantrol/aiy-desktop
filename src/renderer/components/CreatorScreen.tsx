@@ -28,6 +28,7 @@ export function CreatorScreen(inputProps: CreatorScreenProps) {
   const { messages } = useI18n();
   const c = messages.creator.workbench;
   const selection = useCreatorSelectionSession({
+    notify,
     data: props.data,
     locale: props.locale,
     location: props.location,

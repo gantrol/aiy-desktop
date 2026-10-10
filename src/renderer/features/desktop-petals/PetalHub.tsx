@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
-import { Layers, Pin, Plus, Images, MoreHorizontal, Eye, EyeOff, Undo2, SlidersHorizontal } from 'lucide-react';
+import { Layers, Plus, Images, MoreHorizontal, Eye, EyeOff, Undo2, SlidersHorizontal } from 'lucide-react';
+import { PinToDesktopIcon } from '@/renderer/features/desktop-petals/PinToDesktopIcon';
 import { PetalList } from '@/renderer/features/desktop-petals/PetalList';
 import {
   DropdownMenu,
@@ -89,19 +90,9 @@ export function PetalHub({ snapshot }: { snapshot: DesktopPetalSnapshot }) {
         }}
       >
         {snapshot.dock?.collapsed ? (
-          <div
-            className="absolute"
-            style={
-              petalBounds
-                ? {
-                    left: petalBounds.x,
-                    top: petalBounds.y,
-                    width: petalBounds.width,
-                    height: petalBounds.height,
-                  }
-                : { inset: 0 }
-            }
-          >
+          // The compact native window is already at its dock position. Fill its
+          // actual viewport so page zoom and delayed screen coordinates cannot clip the bud.
+          <div className="absolute inset-0">
             <DockedPetal
               label={copy.dock.reveal}
               onPointerEnter={(event) => {
@@ -137,7 +128,7 @@ export function PetalHub({ snapshot }: { snapshot: DesktopPetalSnapshot }) {
                   </DropdownMenuTrigger>
                   <PetalMenuContent align="end" className="w-56">
                     <DropdownMenuItem onSelect={() => view('sources')}>
-                      <Pin />
+                      <PinToDesktopIcon />
                       {copy.board.pin}
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => view('layers')}>
@@ -209,6 +200,16 @@ export function PetalHub({ snapshot }: { snapshot: DesktopPetalSnapshot }) {
                 magnifierRunning ? undefined : flowerCenterProgress(snapshot.hubSettings, snapshot.timer, quota, now)
               }
             />
+            {snapshot.collectionPreview && (
+              <span
+                role="status"
+                className="pointer-events-none absolute inset-0 grid place-items-center text-center text-xs font-medium"
+              >
+                <span className="rounded-sm bg-surface px-2 py-1 text-foreground ring-1 ring-ring">
+                  {copy.actions.collectOnRelease}
+                </span>
+              </span>
+            )}
             {magnifierRunning && !settingsOpen && (
               <PetalIconButton
                 label={copy.settings.petals.adjust}

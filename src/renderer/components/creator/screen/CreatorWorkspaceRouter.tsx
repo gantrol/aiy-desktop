@@ -80,7 +80,9 @@ interface Props {
     moveAlbum: AlbumProps['onMoveAlbum'];
     moveCreationItem: AlbumProps['onMoveCreationItem'];
     archive: AlbumProps['onArchive'];
-    createCreation(albumId: string): void;
+    createCreation: AlbumProps['onCreateCreation'];
+    createAnimation?: AlbumProps['onCreateAnimation'];
+    createAlbum: AlbumProps['onCreateAlbum'];
     delete: AlbumProps['onDelete'];
     openMaterial: AlbumProps['onOpenMaterial'];
     rename: AlbumProps['onRename'];
@@ -261,7 +263,9 @@ export function CreatorWorkspaceRouter(props: Props) {
             onDelete={props.albumActions.delete}
             onTogglePin={props.albumActions.togglePin}
             onArchive={props.albumActions.archive}
-            onCreateCreation={() => props.albumActions.createCreation(props.album!.id)}
+            onCreateCreation={props.albumActions.createCreation}
+            onCreateAnimation={props.albumActions.createAnimation}
+            onCreateAlbum={props.albumActions.createAlbum}
             onSettings={props.albumActions.settings}
             notify={props.notify}
           />

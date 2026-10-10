@@ -1,4 +1,5 @@
 import { createAssistantApi } from '@/main/database/library-database/assistant-api';
+import { createImageVisibilityRepository } from '@/main/database/assets/image-visibility';
 import { createGifMakingApi } from '@/main/database/library-database/gif-making-api';
 import { createAgentApi } from '@/main/database/library-database/agent-api';
 import { createArticleDeliveryApi } from '@/main/database/library-database/article-delivery-api';
@@ -29,6 +30,7 @@ import type { RecordedLibraryChange } from '@/main/database/core/storage';
 export function createLibraryDatabaseApi(repositories: LibraryDatabaseRepositories) {
   const content = createContentLibraryApi(repositories);
   return {
+    imageVisibility: createImageVisibilityRepository(repositories.db),
     subscribeContentChanges: (listener: (changes: readonly RecordedLibraryChange[]) => void) =>
       repositories.storage.changes.subscribe(listener),
     ...createAgentApi(repositories),

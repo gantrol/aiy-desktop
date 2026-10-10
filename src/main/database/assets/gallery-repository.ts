@@ -3,6 +3,7 @@ import {
   creationRelationshipsCte,
 } from '@/main/database/assets/gallery-creation-relationships-sql';
 import path from 'node:path';
+import { readImageSearchSources } from '@/main/database/search/image-search-sources';
 import type {
   ExternalMaterialMetadataDto,
   GalleryItemDto,
@@ -307,6 +308,11 @@ export class GalleryRepository {
     this.db = storage.db;
   }
 
+  listImageSearchSources(after = '', ids?: string[], includeTitles = true) {
+    const visible = `${this.countPredicate('LIBRARY')} OR ${this.countPredicate('DICTIONARY')}`;
+    return readImageSearchSources(this.db, visible, after, ids, includeTitles);
+  }
+
   /** Score-weighted, session-diverse previews rank outputs, dictionary images, and owner-rated images first. */
   listTransitionPreviewSources(limit = 24): TransitionPreviewSource[] {
     const normalizedLimit = Math.max(1, Math.min(24, Math.trunc(limit)));
@@ -347,6 +353,10 @@ export class GalleryRepository {
             AND asset.width > 0 AND asset.height > 0
             AND ${transitionPreviewVisibilityPredicate}
             AND ${transitionPreviewReachabilityPredicate}
+            AND NOT EXISTS (
+              SELECT 1 FROM app_meta hidden_image
+              WHERE hidden_image.key = 'image_visibility:' || asset.id AND hidden_image.value = 'hidden'
+            )
           GROUP BY asset.id, transition_session.session_key, creation.series_id
         ),
         transition_preview_ranked AS (
@@ -404,7 +414,18 @@ export class GalleryRepository {
     return this.readPage(input);
   }
 
-  private readPage(input: GalleryListInput, materialId?: string): GalleryPageDto {
+  getAsset(assetId: string, locale: Locale): GalleryItemDto | null {
+    return (
+      this.readPage(
+        { locale, source: 'ALL', unratedDimensions: [], cursor: null, limit: 1, knownTotal: 1 },
+        undefined,
+        assetId,
+      ).items[0] ?? null
+    );
+  }
+
+  private readPage(input: GalleryListInput, materialId?: string, assetId?: string): GalleryPageDto {
+    const assetFilter = this.navigationAssetFilter(assetId);
     const limit = Math.max(1, Math.min(60, Math.trunc(input.limit)));
     const cursor = decodeCursor(input.cursor);
     const albumId = input.albumId;
@@ -533,6 +554,7 @@ export class GalleryRepository {
         ${favoriteOnlyClause} ${assetKindClause} ${materialAlbumClause} ${placementClause}
         ${scopedDictionary.predicate} ${searchClause} ${unratedClause} ${cursorClause}
         ${materialId ? 'AND gallery_material.id = ?' : ''}
+        ${assetFilter.clause}
       ORDER BY ${creationSortExpression} DESC, asset.id DESC
       LIMIT ?
     `,
@@ -546,6 +568,7 @@ export class GalleryRepository {
         ...searchParameters,
         ...(cursor ? [cursor.createdAt, cursor.createdAt, cursor.id] : []),
         ...(materialId ? [materialId] : []),
+        ...assetFilter.parameters,
         limit + 1,
       ) as JsonMap[];
 
@@ -580,7 +603,7 @@ export class GalleryRepository {
       )
     )`;
     const total =
-      (materialId ? rows.length : input.cursor === null ? undefined : input.knownTotal) ??
+      (materialId || assetId ? rows.length : input.cursor === null ? undefined : input.knownTotal) ??
       Number(
         (
           this.db
@@ -618,6 +641,15 @@ export class GalleryRepository {
       total,
       nextCursor: hasMore && last ? encodeCursor({ createdAt: text(last.sort_created_at), id: text(last.id) }) : null,
     };
+  }
+
+  private navigationAssetFilter(assetId?: string) {
+    return assetId
+      ? {
+          clause: `AND asset.id = ? AND (${this.countPredicate('LIBRARY')} OR ${this.countPredicate('DICTIONARY')})`,
+          parameters: [assetId],
+        }
+      : { clause: '', parameters: [] };
   }
 
   private countPredicate(source: GallerySourceFilter) {

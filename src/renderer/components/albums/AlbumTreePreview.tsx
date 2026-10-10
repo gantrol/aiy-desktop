@@ -278,7 +278,9 @@ export function AlbumTreePreview({
         'has-[[data-content-expanded=true]]:z-30',
         className,
       )}
-      style={{ width: previewWidth, height: rowHeight }}
+      // Content icons reserve their expanded width so the title cannot show through their gaps.
+      // The first icon and its tree connections keep the same leading inset.
+      style={{ minWidth: previewWidth, width: compactIcon ? undefined : previewWidth, height: rowHeight }}
       {...previewGesture.bindings}
     >
       {branchTopology && (

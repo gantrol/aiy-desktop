@@ -19,14 +19,15 @@ interface Options {
   data: BootstrapDto;
   locale: Locale;
   location: CreatorLocation;
+  notify(message: string): void;
 }
 
-export function useCreatorSelectionSession({ data, locale, location }: Options) {
+export function useCreatorSelectionSession({ data, locale, location, notify }: Options) {
   const creationSessions = useMemo(
     () => buildCreationSessionProjection(data.series, data.styleExplorationBatches),
     [data.series, data.styleExplorationBatches],
   );
-  const contentSelection = useCreatorContentSelection(data, location);
+  const contentSelection = useCreatorContentSelection(data, location, notify);
   const initial = creatorInitialSession(data, location, creationSessions);
   const [creationMode, setCreationMode] = useState(initial.initialCreationMode);
   const [creationStartMode, setCreationStartMode] = useState(() => creationStartModeForDraft(initial.initialDraft));
@@ -57,6 +58,7 @@ export function useCreatorSelectionSession({ data, locale, location }: Options) 
   });
   const [inputSessionRevision, setInputSessionRevision] = useState(0);
   const workbenchProjection = useCreatorWorkbenchProjection({
+    notify,
     creationDraftId: creationDraftSession.draftId,
     creationMode,
     creationSessions,

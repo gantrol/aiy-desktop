@@ -1,3 +1,4 @@
+import { ScratchImage } from '@/renderer/components/media/ScratchImage';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -143,7 +144,7 @@ export function SocialPostMediaPreview({
         <AssetFileContextMenu assetId={selectedAsset.id} notify={notify}>
           <div className="relative isolate size-full overflow-hidden">
             <ImageAmbientBackdrop src={selectedAsset.mediaUrl} />
-            <img
+            <ScratchImage
               src={selectedAsset.mediaUrl}
               alt={copy.previewImage.replace('{index}', String(selectedIndex + 1))}
               width={selectedAsset.width}
@@ -208,7 +209,7 @@ export function SocialPostMediaPreview({
               aria-pressed={asset.id === selectedAsset.id}
               onClick={() => onOpenAssetIdChange(asset.id)}
             >
-              <img
+              <ScratchImage
                 src={mediaThumbnailUrl(asset, 192)}
                 alt=""
                 loading="lazy"

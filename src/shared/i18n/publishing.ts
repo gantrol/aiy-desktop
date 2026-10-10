@@ -1,4 +1,15 @@
 export const publishingMessages = {
+  tables: {
+    table: 'Table {number}',
+    summary: 'Tables: {tables} → images: {images} · attachments: {total}',
+    original: 'Original table',
+    image: 'Converted image',
+    moveEarlier: 'Move group earlier',
+    moveLater: 'Move group later',
+    linksAsText: 'Links inside table images are not clickable.',
+    confirm: 'Confirm and fill {count} channels',
+    confirmDelivery: 'Confirm delivery to {count} destinations',
+  },
   mask: {
     edit: 'Edit channel draft',
     title: 'Title',
@@ -63,6 +74,7 @@ export const publishingMessages = {
   deleteCandidate: 'Delete this channel’s record',
   deleteFailed: 'Could not delete the record. Refresh its status and try again.',
   notAttempted: 'Not processed yet',
+  batchStopped: 'Batch stopped: a channel failed.',
   openNotConfirmed: 'Draft saved · editor opening was not confirmed',
   restage: 'No handoff was created. Prepare this channel again from the manuscript.',
 };

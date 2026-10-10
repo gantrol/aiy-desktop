@@ -127,7 +127,7 @@
     }
 
     :scope h3 {
-      @apply mb-4 mt-10 border-l-[3px] border-[var(--button-primary)] pl-3 text-[1.1875rem] leading-[1.5] font-semibold text-[var(--button-primary)];
+      @apply mb-4 mt-10 text-[1.1875rem] leading-[1.5] font-semibold text-[var(--button-primary)];
     }
 
     :scope h4 {

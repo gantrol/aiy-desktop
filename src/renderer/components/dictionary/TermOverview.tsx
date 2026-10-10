@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import type { FacetDefinitionDto, Locale, TermCategoryDto, TermListItem, WordPaletteDto } from '@/shared/contracts';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import { DeleteEntityDialog } from '@/renderer/components/app/DeleteEntityDialog';
@@ -11,6 +11,7 @@ import type { DictionaryBrowseContext } from '@/renderer/components/dictionary/d
 type PaletteWorkspace = { mode: 'create'; initialTermIds: string[] } | { mode: 'edit'; palette: WordPaletteDto };
 
 interface Props {
+  active?: boolean;
   locale: Locale;
   terms: TermListItem[];
   visibleTerms?: TermListItem[];
@@ -29,7 +30,7 @@ interface Props {
   notify(message: string): void;
 }
 
-export function TermOverview({
+function TermOverviewContent({
   locale,
   terms,
   visibleTerms = terms,
@@ -179,3 +180,7 @@ export function TermOverview({
     </div>
   );
 }
+
+// Keep the browse position and palette editor mounted without reconciling the
+// hidden overview on every detail change. React supplies fresh props on return.
+export const TermOverview = memo(TermOverviewContent, (_previous, next) => next.active === false);

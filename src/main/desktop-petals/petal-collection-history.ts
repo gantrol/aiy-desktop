@@ -4,15 +4,30 @@ import type { PetalWindow } from '@/main/desktop-petals/petal-windows';
 
 /** One short-lived collection undo; editor content and its undo stack are independent. */
 export class PetalCollectionHistory {
-  private last?: { entry: PetalWindow; bounds: Rectangle; token: string; expiresAt: number };
+  private last?: {
+    entry: PetalWindow;
+    libraryId: string;
+    bounds: Rectangle;
+    expanded: boolean;
+    token: string;
+    expiresAt: number;
+  };
   private timer?: ReturnType<typeof setTimeout>;
   constructor(
     private readonly changed: () => void,
     private readonly canRestore: (entry: PetalWindow) => boolean,
   ) {}
-  record(entry: PetalWindow, bounds: Rectangle) {
+  record(entry: PetalWindow, bounds: Rectangle, libraryId = entry.libraryId) {
     this.clear();
-    this.last = { entry, bounds, token: randomUUID(), expiresAt: Date.now() + 10_000 };
+    // Undo belongs to the receiving flower; temporary content keeps its own library identity.
+    this.last = {
+      entry,
+      libraryId,
+      bounds,
+      expanded: entry.expanded,
+      token: randomUUID(),
+      expiresAt: Date.now() + 10_000,
+    };
     this.timer = setTimeout(() => this.clear(), 10_000);
     this.changed();
   }
@@ -20,11 +35,10 @@ export class PetalCollectionHistory {
     const last = this.last;
     if (
       !last ||
-      last.entry.libraryId !== libraryId ||
+      last.libraryId !== libraryId ||
       last.expiresAt <= Date.now() ||
       last.entry.window.isDestroyed() ||
       last.entry.window.isVisible() ||
-      last.entry.expanded ||
       !this.canRestore(last.entry)
     )
       return null;

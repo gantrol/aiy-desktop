@@ -1,5 +1,6 @@
 import { lazy, useState, type ComponentProps } from 'react';
 import type { ContentSource } from '@/shared/contracts/content-source';
+import { inspirationArticleIds } from '@/shared/article-summary';
 import { CreatorScreen } from '@/renderer/features/creator/lazyCreatorScreen';
 import { WorkspaceDetailLoadingBoundary } from '@/renderer/components/app/WorkspaceDetailLoadingBoundary';
 import { contentSearchLocation } from '@/renderer/features/content-search/content-search-navigation';
@@ -55,7 +56,7 @@ export function AppContentSearchEditor({
     source.kind === 'VIDEO_DOCUMENT' ||
     (source.kind === 'ARTICLE' && host.data.articles?.some((article) => article.id === source.id)) ||
     (source.kind === 'SOCIAL_POST' && host.data.socialPosts?.some((post) => post.id === source.id)) ||
-    (source.kind === 'INSPIRATION_STASH' && host.data.inspirationStashes?.some((note) => note.id === source.id));
+    (source.kind === 'INSPIRATION_STASH' && inspirationArticleIds(host.data).includes(source.id));
   if (!available)
     return (
       <div role="alert" className="p-4 text-sm">

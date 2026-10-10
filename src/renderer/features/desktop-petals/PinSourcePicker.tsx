@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, LoaderCircle, Pin } from 'lucide-react';
+import { Check, LoaderCircle } from 'lucide-react';
+import { PinToDesktopIcon } from '@/renderer/features/desktop-petals/PinToDesktopIcon';
 import { Input } from '@/renderer/components/ui/input';
 import { Button } from '@/renderer/components/ui/button';
 import { PetalPanel, PetalSelect, PetalIconButton } from '@/renderer/features/desktop-petals/PetalControls';
@@ -120,7 +121,7 @@ export function PinSourcePicker({ onBack, onError }: { onBack: () => void; onErr
                 disabled={Boolean(pinning) || busy || done}
                 onClick={() => void pin(item.source)}
               >
-                {pinning === key ? <LoaderCircle className="animate-spin" /> : done ? <Check /> : <Pin />}
+                {pinning === key ? <LoaderCircle className="animate-spin" /> : done ? <Check /> : <PinToDesktopIcon />}
               </PetalIconButton>
             </div>
           );

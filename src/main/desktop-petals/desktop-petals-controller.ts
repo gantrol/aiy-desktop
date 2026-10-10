@@ -72,6 +72,10 @@ const noteCommands = new Set(['save', 'checkpoint', 'appearance']);
 
 /** Owns a narrow IPC surface. Petal windows never receive the main-window API. */
 export class DesktopPetalsController {
+  async acceptClipboardSnapshot(...input: Parameters<TemporaryPetals['acceptSnapshot']>) {
+    await this.ready;
+    return this.temporary.acceptSnapshot(...input);
+  }
   private readonly windows: PetalWindows;
   private readonly ready: Promise<void>;
   private readonly hub: PetalHubService;
@@ -242,9 +246,10 @@ export class DesktopPetalsController {
     if (this.suspended && !['save', 'checkpoint', 'snapshot', 'image-edit'].includes(command))
       throw petalError('saving');
     if (command === 'temporary-files') return this.temporary.manage(input, entry);
+    if (command === 'window-tools') return this.windows.tools.execute(this.windows, entry, input);
     if (entry && this.temporary.owns(entry)) {
       if (['begin-drag', 'move', 'end-drag'].includes(command))
-        return executePetalDrag(this.windows, this.dragOrigins, command, input, event.sender.id, entry);
+        return this.temporary.drag(this.dragOrigins, command, input, event.sender.id, entry);
       if (command === 'menu-open') return this.executePresentation(command, input, entry);
       if (command === 'overlay-ready')
         return this.windows.overlays.present(entry, petalOverlayReadySchema.parse(input));

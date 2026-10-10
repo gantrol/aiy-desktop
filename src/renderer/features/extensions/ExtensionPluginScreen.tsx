@@ -1,10 +1,13 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode, type Ref } from 'react';
 import type { ArticleDto, BootstrapDto, ExtensionDto } from '@/shared/contracts';
 import { PackagePlusIcon, PowerIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/renderer/components/ui/tabs';
-import { CollectionDetailLayout } from '@/renderer/components/workbench/CollectionDetailLayout';
+import {
+  CollectionDetailLayout,
+  type CollectionDetailLayoutHandle,
+} from '@/renderer/components/workbench/CollectionDetailLayout';
 import { cn } from '@/renderer/lib/utils';
 import { useI18n } from '@/renderer/i18n/useI18n';
 import type { NavigationMode } from '@/renderer/components/app/app-navigation';
@@ -24,6 +27,8 @@ import type { TransitionShowcaseNavigationState } from '@/renderer/features/exte
 
 interface Props {
   active: boolean;
+  collectionRef?: Ref<CollectionDetailLayoutHandle>;
+  collectionHeader?: ReactNode;
   data: BootstrapDto;
   dataRevision: number;
   requestedId: string | null;
@@ -37,6 +42,26 @@ interface Props {
 }
 const emptyExtensions: readonly ExtensionDto[] = [];
 type Manager = ReturnType<typeof useExtensionManager>;
+
+function ExtensionInstallAction({ manager, onInstalled }: { manager: Manager; onInstalled(): void }) {
+  const l = useI18n().messages.extensions;
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      disabled={Boolean(manager.busyKey)}
+      onClick={() =>
+        void manager.install(l.notices.installed).then((installed) => {
+          if (installed) onInstalled();
+        })
+      }
+    >
+      <PackagePlusIcon className="size-4" />
+      {l.actions.installLocal}
+    </Button>
+  );
+}
 
 function ExtensionActions({
   extension,
@@ -67,6 +92,7 @@ function ExtensionActions({
       <Button
         type="button"
         variant={extension.enabled ? 'outline' : 'default'}
+        size="sm"
         disabled={Boolean(manager.busyKey) || lastLanguage}
         title={lastLanguage ? l.notices.languageRequired : undefined}
         onClick={() =>
@@ -88,6 +114,7 @@ function ExtensionActions({
         <Button
           type="button"
           variant="outline"
+          size="sm"
           disabled={Boolean(manager.busyKey)}
           onClick={() => void manager.update(extension.manifest.id, l.notices.updated)}
         >
@@ -95,7 +122,7 @@ function ExtensionActions({
         </Button>
       )}
       {extension.source === 'LOCAL' && (
-        <Button type="button" variant="outline" disabled={Boolean(manager.busyKey)} onClick={onUninstall}>
+        <Button type="button" size="sm" variant="outline" disabled={Boolean(manager.busyKey)} onClick={onUninstall}>
           <Trash2Icon className="size-4" />
           {l.actions.uninstall}
         </Button>
@@ -122,17 +149,21 @@ function ExtensionDetail({
   const hasFeature = hasExtensionPluginFeature(extension);
   const missing = extension.permissions.some((permission) => permission.required && !permission.granted);
   const [tab, setTab] = useState(missing ? 'permissions' : hasFeature ? 'feature' : 'settings');
+  const historyRequest = useClipboardHistoryRequest();
+  useEffect(() => {
+    if (historyRequest && extension.manifest.id === CLIPBOARD_HISTORY_ID) setTab(missing ? 'permissions' : 'feature');
+  }, [historyRequest, extension.manifest.id, missing]);
   return (
-    <article className="mx-auto grid w-full max-w-6xl gap-5 p-4 @5xl/extension-detail:p-6">
+    <article className="mx-auto grid w-full max-w-6xl min-w-0 gap-4 p-4 @5xl/extension-detail:p-6">
       <ExtensionPluginHeader extension={extension} actions={actions} navigationAction={navigationAction} />
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="max-w-full flex-wrap">
+        <TabsList density="compact" className="max-w-full flex-wrap">
           {hasFeature && <TabsTrigger value="feature">{l.pluginTabs.feature}</TabsTrigger>}
           <TabsTrigger value="permissions">{messages.extensionManager.permissions}</TabsTrigger>
           <TabsTrigger value="settings">{l.pluginTabs.settings}</TabsTrigger>
         </TabsList>
         {hasFeature && (
-          <TabsContent value="feature">
+          <TabsContent value="feature" className="pt-4">
             <ExtensionFeatureErrorBoundary scope={`${extension.manifest.id}:feature`}>
               <ExtensionPluginFeaturePage
                 active={props.active}
@@ -142,12 +173,13 @@ function ExtensionDetail({
                 extensions={manager.extensions}
                 notify={props.notify}
                 onOpenCreation={props.onOpenCreation}
+                onOpenPermissions={() => setTab('permissions')}
                 onArticleSaved={props.onArticleSaved}
               />
             </ExtensionFeatureErrorBoundary>
           </TabsContent>
         )}
-        <TabsContent value="permissions">
+        <TabsContent value="permissions" className="pt-4">
           <ExtensionPermissionPanel
             key={extension.manifest.id}
             extension={extension}
@@ -177,9 +209,11 @@ function ExtensionDetail({
             }
           />
         </TabsContent>
-        <TabsContent value="settings">
+        <TabsContent value="settings" className="pt-4">
           <ExtensionFeatureErrorBoundary scope={`${extension.manifest.id}:settings`}>
             <ExtensionPluginSettingsPage
+              data={props.data}
+              onRecipesChanged={props.onExtensionsChange}
               active={props.active}
               busyKey={manager.busyKey}
               extension={extension}
@@ -219,26 +253,16 @@ export function ExtensionPluginScreen(props: Props) {
       )}
       <div className="min-h-0 min-w-0 flex-1">
         <CollectionDetailLayout
+          ref={props.collectionRef}
           layoutKey="extensions"
           collectionLabel={l.tabs.plugins}
           collectionWidth={280}
           selectionKey={props.requestedId}
-          collectionHeader={({ revealDetail }) => (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="min-w-0 flex-1"
-              disabled={busy}
-              onClick={() =>
-                void manager.install(l.notices.installed).then((installed) => {
-                  if (installed) revealDetail();
-                })
-              }
-            >
-              <PackagePlusIcon className="size-4" />
-              {l.actions.installLocal}
-            </Button>
+          collectionHeader={props.collectionHeader ? () => props.collectionHeader : undefined}
+          toolbar={({ revealDetail }) => (
+            <div className="flex min-h-9 items-center justify-end border-b px-3">
+              <ExtensionInstallAction manager={manager} onInstalled={revealDetail} />
+            </div>
           )}
           collection={({ revealDetail }) => (
             <ScrollArea className="min-h-0 flex-1">
@@ -254,35 +278,37 @@ export function ExtensionPluginScreen(props: Props) {
           )}
         >
           {({ toggle }) => (
-            <div className="@container/extension-detail flex min-h-0 min-w-0 flex-1 flex-col">
-              <ScrollArea className="min-h-0 min-w-0 flex-1">
-                {selected ? (
-                  <ExtensionDetail
-                    key={selected.manifest.id}
-                    extension={selected}
-                    manager={manager}
-                    props={props}
-                    navigationAction={toggle}
-                    actions={
-                      <ExtensionActions
-                        extension={selected}
-                        manager={manager}
-                        lastLanguage={Boolean(lastLanguage)}
-                        onUninstall={() => {
-                          manager.clearError();
-                          setUninstallTarget(selected);
-                        }}
-                      />
-                    }
-                  />
-                ) : (
-                  <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
-                    {toggle}
-                    <p>{messages.extensionManager.noSelection}</p>
-                  </div>
-                )}
-              </ScrollArea>
-            </div>
+            <>
+              <div className="@container/extension-detail flex min-h-0 min-w-0 flex-1 flex-col">
+                <ScrollArea className="min-h-0 min-w-0 flex-1">
+                  {selected ? (
+                    <ExtensionDetail
+                      key={selected.manifest.id}
+                      extension={selected}
+                      manager={manager}
+                      props={props}
+                      navigationAction={toggle}
+                      actions={
+                        <ExtensionActions
+                          extension={selected}
+                          manager={manager}
+                          lastLanguage={Boolean(lastLanguage)}
+                          onUninstall={() => {
+                            manager.clearError();
+                            setUninstallTarget(selected);
+                          }}
+                        />
+                      }
+                    />
+                  ) : (
+                    <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
+                      {toggle}
+                      <p>{messages.extensionManager.noSelection}</p>
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
+            </>
           )}
         </CollectionDetailLayout>
       </div>
@@ -313,3 +339,5 @@ export function ExtensionPluginScreen(props: Props) {
     </div>
   );
 }
+import { useClipboardHistoryRequest } from '@/renderer/features/clipboard-capture/clipboard-history-navigation';
+import { CLIPBOARD_HISTORY_ID } from '@/shared/contracts/clipboard-capture';

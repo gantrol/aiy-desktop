@@ -1,5 +1,18 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { Check, Copy, ExternalLink, EyeOff, Layers, Maximize2, Palette, Pin, PinOff, Pencil } from 'lucide-react';
+import {
+  Check,
+  Copy,
+  ExternalLink,
+  EyeOff,
+  Layers,
+  Maximize2,
+  MonitorDown,
+  Palette,
+  Pin,
+  PinOff,
+  Pencil,
+  Save,
+} from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuItem,
@@ -46,6 +59,7 @@ interface Props extends PetalNoteMenuActions {
   trigger: ReactNode;
   align?: 'start' | 'end';
   onCloseAutoFocus?: (event: Event) => void;
+  windowTools?: ReactNode;
 }
 
 /** Collapsed petals and expanded notes share commands, grouping and appearance controls. */
@@ -77,6 +91,7 @@ export function PetalNoteMenu({
   trigger,
   align = 'end',
   onCloseAutoFocus,
+  windowTools,
 }: Props) {
   const { messages } = useI18n();
   const api = usePetalMenuApi();
@@ -139,7 +154,7 @@ export function PetalNoteMenu({
         )}
         {onPromote && (
           <DropdownMenuItem disabled={blocked} onSelect={item(onPromote, [])}>
-            <Pin />
+            <Save />
             {copy.temporary.promote}
             {promotionTarget ? ` · ${promotionTarget}` : ''}
           </DropdownMenuItem>
@@ -206,6 +221,7 @@ export function PetalNoteMenu({
               {layerItems}
             </>
           ))}
+        {windowTools}
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled={blocked} onSelect={item(api.hide, [])}>
           <EyeOff />
@@ -213,7 +229,7 @@ export function PetalNoteMenu({
         </DropdownMenuItem>
         {persisted && !temporary && (
           <DropdownMenuItem disabled={blocked} onSelect={item(api.remove, [])}>
-            <PinOff />
+            <MonitorDown />
             {copy.actions.remove}
           </DropdownMenuItem>
         )}

@@ -1,19 +1,16 @@
 import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 import { WorkspaceSidebarMotion } from '@/renderer/components/workspace/WorkspaceSidebarMotion';
 import { useWorkspaceSidebarLayout } from '@/renderer/components/workspace/useWorkspaceSidebarLayout';
 
-interface SidebarHeader {
+interface SidebarLayout {
   tabId: string;
   width: number | null;
   animate: boolean;
 }
 
 const HeaderContext = createContext<{
-  enabled: boolean;
-  hosts: ReadonlyMap<string, HTMLDivElement>;
-  sidebars: ReadonlyMap<string, SidebarHeader>;
-  register(sidebar: SidebarHeader): () => void;
+  sidebars: ReadonlyMap<string, SidebarLayout>;
+  register(sidebar: SidebarLayout): () => void;
 } | null>(null);
 const TabContext = createContext<string | null>(null);
 const NestedSidebarContext = createContext(false);
@@ -22,56 +19,22 @@ export function WorkspaceSidebarContent({ children }: { children: ReactNode }) {
   return <NestedSidebarContext value={true}>{children}</NestedSidebarContext>;
 }
 
-function SidebarHeaderSlot({
-  tabId,
-  visible,
-  onHostChange,
-}: {
-  tabId: string;
-  visible: boolean;
-  onHostChange(tabId: string, host: HTMLDivElement | null): void;
-}) {
-  const ref = useCallback((host: HTMLDivElement | null) => onHostChange(tabId, host), [tabId, onHostChange]);
-  return (
-    <div
-      ref={ref}
-      data-workspace-sidebar-tab-id={tabId}
-      hidden={!visible}
-      inert={!visible}
-      className="h-full w-full overflow-hidden"
-    />
-  );
-}
-
-/** The header moves; sidebar selection, scroll and editing sessions stay inside their tab. */
+/** Tabs own the top row; sidebar geometry and sessions remain scoped to their tab. */
 export function WorkspaceHeader({
   tabId,
-  mountedTabIds,
-  enabled,
   navigationKey,
   surfaceKey,
   strip,
   children,
 }: {
   tabId: string;
-  mountedTabIds: readonly string[];
-  enabled: boolean;
   navigationKey: string;
   surfaceKey: string;
   strip: ReactNode;
   children: ReactNode;
 }) {
-  const [hosts, setHosts] = useState(new Map<string, HTMLDivElement>());
-  const [sidebars, setSidebars] = useState(new Map<string, SidebarHeader>());
-  const onHostChange = useCallback((id: string, host: HTMLDivElement | null) => {
-    setHosts((current) => {
-      const next = new Map(current);
-      if (host) next.set(id, host);
-      else next.delete(id);
-      return next;
-    });
-  }, []);
-  const register = useCallback((next: SidebarHeader) => {
+  const [sidebars, setSidebars] = useState(new Map<string, SidebarLayout>());
+  const register = useCallback((next: SidebarLayout) => {
     setSidebars((current) => new Map(current).set(next.tabId, next));
     return () =>
       setSidebars((current) => {
@@ -81,7 +44,7 @@ export function WorkspaceHeader({
         return remaining;
       });
   }, []);
-  const value = useMemo(() => ({ enabled, hosts, sidebars, register }), [enabled, hosts, sidebars, register]);
+  const value = useMemo(() => ({ sidebars, register }), [sidebars, register]);
   const sidebar = sidebars.get(tabId);
   const layout = useWorkspaceSidebarLayout(sidebar ? sidebar.width : 0, sidebar?.animate ?? false, navigationKey);
   return (
@@ -94,19 +57,7 @@ export function WorkspaceHeader({
         width={layout.width}
         animate={layout.animate}
       >
-        <div className="flex min-w-0 shrink-0">
-          <div
-            data-workspace-sidebar-header
-            hidden={!enabled || layout.width === 0}
-            className="h-9 shrink-0 overflow-hidden border-r border-b bg-surface-sunken"
-            style={{ width: 'var(--workspace-sidebar-width)' }}
-          >
-            {mountedTabIds.map((id) => (
-              <SidebarHeaderSlot key={id} tabId={id} visible={enabled && id === tabId} onHostChange={onHostChange} />
-            ))}
-          </div>
-          {strip}
-        </div>
+        {strip && <div className="flex min-w-0 shrink-0">{strip}</div>}
         {children}
       </WorkspaceSidebarMotion>
     </HeaderContext>
@@ -140,19 +91,4 @@ export function WorkspaceSidebarLoading({ children }: { children: ReactNode }) {
     return register({ tabId, width: null, animate: false });
   }, [register, tabId, nested]);
   return children;
-}
-
-export function useWorkspaceSidebarHeaderHost() {
-  const context = useContext(HeaderContext);
-  const tabId = useContext(TabContext);
-  const nested = useContext(NestedSidebarContext);
-  // Keep each mounted tab's portal target stable so switching tabs does not remount search controls.
-  return !nested && context?.enabled && tabId && Boolean(context.sidebars.get(tabId)?.width)
-    ? (context.hosts.get(tabId) ?? null)
-    : null;
-}
-
-export function WorkspaceSidebarHeader({ children, enabled = true }: { children: ReactNode; enabled?: boolean }) {
-  const host = useWorkspaceSidebarHeaderHost();
-  return enabled && host ? createPortal(children, host) : children;
 }

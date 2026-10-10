@@ -21,7 +21,7 @@ import {
 } from '@/renderer/components/workspace/workspace-location';
 
 const MAX_HISTORY_ENTRIES = 100;
-const MAX_TABS_PER_GROUP = 24;
+export const MAX_TABS_PER_GROUP = 24;
 
 export type WorkspaceReferencePlacement = 'current' | 'tab' | 'beside';
 
@@ -38,6 +38,7 @@ interface WorkspaceHistory {
 
 export interface WorkspaceRuntimeTab {
   id: string;
+  pinned?: boolean;
   history: WorkspaceHistory;
   visitedViews: AppView[];
 }
@@ -47,6 +48,35 @@ export interface WorkspaceRuntimeGroup {
   activeTabId: string;
   tabsCollapsed?: boolean;
   tabs: WorkspaceRuntimeTab[];
+}
+
+export interface WorkspaceTabPlacement {
+  pinned: boolean;
+  beforeId: string | null;
+  orderKey: string;
+}
+export type WorkspaceTabMove = -1 | 1 | 'start' | 'end' | WorkspaceTabPlacement;
+
+/** The gesture may commit only against the same membership, order and pin states. */
+export function workspaceTabOrderKey(tabs: readonly WorkspaceRuntimeTab[]) {
+  return JSON.stringify(tabs.map((tab) => [tab.id, Boolean(tab.pinned)]));
+}
+export type WorkspaceTabCloseScope = 'others' | 'left' | 'right' | 'all';
+
+function pinnedTabsFirst(tabs: WorkspaceRuntimeTab[]) {
+  return [...tabs.filter((tab) => tab.pinned), ...tabs.filter((tab) => !tab.pinned)];
+}
+
+/** Batch actions never close pinned tabs; explicit single-tab close still can. */
+export function workspaceTabsToClose(group: WorkspaceRuntimeGroup, tabId: string, scope: WorkspaceTabCloseScope) {
+  const index = group.tabs.findIndex((tab) => tab.id === tabId);
+  if (index < 0) return [];
+  return group.tabs.filter((tab, candidateIndex) => {
+    if (tab.pinned) return false;
+    if (scope === 'left') return candidateIndex < index;
+    if (scope === 'right') return candidateIndex > index;
+    return scope === 'all' || tab.id !== tabId;
+  });
 }
 
 export interface WorkspaceRuntimeState {
@@ -131,7 +161,7 @@ export function collapseWorkspaceGroups(state: WorkspaceRuntimeState): Workspace
     ...state,
     activeGroupId: activeGroup.id,
     arrangement: { kind: 'single', groupId: activeGroup.id },
-    groups: [{ ...activeGroup, tabsCollapsed: false, tabs }],
+    groups: [{ ...activeGroup, tabsCollapsed: false, tabs: pinnedTabsFirst(tabs) }],
   };
 }
 
@@ -168,6 +198,7 @@ export function restoreWorkspaceState(data: BootstrapDto): WorkspaceRuntimeState
       const index = Math.min(tab.historyIndex ?? entries.length - 1, entries.length - 1);
       const restoredTab = {
         id: tab.id,
+        ...(tab.pinned ? { pinned: true } : {}),
         history: { entries, index },
         // Back/forward history survives a restart, but mounted views are scoped
         // to the current renderer session. Recreating every historical surface
@@ -183,7 +214,7 @@ export function restoreWorkspaceState(data: BootstrapDto): WorkspaceRuntimeState
       id: group.id,
       activeTabId: activeTabId ?? tabs[0].id,
       tabsCollapsed: group.tabsCollapsed ?? false,
-      tabs,
+      tabs: pinnedTabsFirst(tabs),
     });
   }
   if (!groups.length) return createDefaultWorkspaceState(data.spaceId, snapshot.revision);
@@ -230,6 +261,7 @@ export function persistedWorkspaceState(state: WorkspaceRuntimeState): Workspace
       ...(group.tabsCollapsed ? { tabsCollapsed: true } : {}),
       tabs: group.tabs.map((tab) => ({
         id: tab.id,
+        ...(tab.pinned ? { pinned: true } : {}),
         target: appLocationToWorkspaceTarget(activeLocation(tab)),
         history: tab.history.entries.map((entry) => ({
           id: entry.id,
@@ -518,21 +550,79 @@ export function closeOtherWorkspaceTabs(state: WorkspaceRuntimeState, groupId: s
     groups: state.groups.map((group) => {
       if (group.id !== groupId) return group;
       const tab = group.tabs.find((candidate) => candidate.id === tabId);
-      return tab ? { ...group, activeTabId: tabId, tabs: [tab] } : group;
+      if (!tab) return group;
+      const tabs = group.tabs.filter((candidate) => candidate.id === tabId || candidate.pinned);
+      const activeTabId = tabs.some((candidate) => candidate.id === group.activeTabId) ? group.activeTabId : tabId;
+      return { ...group, activeTabId, tabs };
     }),
   };
 }
 
-export function reorderWorkspaceTab(state: WorkspaceRuntimeState, groupId: string, tabId: string, delta: -1 | 1) {
+export function closeWorkspaceTabs(
+  state: WorkspaceRuntimeState,
+  groupId: string,
+  tabId: string,
+  scope: WorkspaceTabCloseScope,
+) {
+  if (scope === 'others') return closeOtherWorkspaceTabs(state, groupId, tabId);
+  const group = state.groups.find((candidate) => candidate.id === groupId);
+  if (!group) return state;
+  return workspaceTabsToClose(group, tabId, scope).reduce((current, tab) => closeWorkspaceTab(current, tab.id), state);
+}
+
+export function setWorkspaceTabPinned(state: WorkspaceRuntimeState, tabId: string, pinned: boolean) {
+  const found = findWorkspaceTab(state, tabId);
+  if (!found || Boolean(found.tab.pinned) === pinned) return state;
+  const tabs = found.group.tabs.filter((tab) => tab.id !== tabId);
+  const boundary = tabs.filter((tab) => tab.pinned).length;
+  tabs.splice(boundary, 0, { ...found.tab, pinned });
+  return {
+    ...state,
+    groups: state.groups.map((group) => (group.id === found.group.id ? { ...group, tabs } : group)),
+  };
+}
+
+export function reorderWorkspaceTab(
+  state: WorkspaceRuntimeState,
+  groupId: string,
+  tabId: string,
+  move: WorkspaceTabMove,
+) {
+  if (typeof move === 'object') {
+    const group = state.groups.find((candidate) => candidate.id === groupId);
+    if (!group || workspaceTabOrderKey(group.tabs) !== move.orderKey) return state;
+    const tab = group.tabs.find((candidate) => candidate.id === tabId);
+    if (!tab || move.beforeId === tabId) return state;
+    const tabs = group.tabs.filter((candidate) => candidate.id !== tabId);
+    const boundary = tabs.filter((candidate) => candidate.pinned).length;
+    const index =
+      move.beforeId === null
+        ? move.pinned
+          ? boundary
+          : tabs.length
+        : tabs.findIndex((candidate) => candidate.id === move.beforeId);
+    if (index < 0 || (move.beforeId !== null && Boolean(tabs[index].pinned) !== move.pinned)) return state;
+    tabs.splice(index, 0, Boolean(tab.pinned) === move.pinned ? tab : { ...tab, pinned: move.pinned });
+    if (workspaceTabOrderKey(tabs) === move.orderKey) return state;
+    return {
+      ...state,
+      groups: state.groups.map((candidate) => (candidate === group ? { ...group, tabs } : candidate)),
+    };
+  }
   return {
     ...state,
     groups: state.groups.map((group) => {
       if (group.id !== groupId) return group;
       const index = group.tabs.findIndex((tab) => tab.id === tabId);
-      const nextIndex = index + delta;
-      if (index < 0 || nextIndex < 0 || nextIndex >= group.tabs.length) return group;
+      if (index < 0) return group;
+      const pinnedCount = group.tabs.filter((tab) => tab.pinned).length;
+      const first = group.tabs[index].pinned ? 0 : pinnedCount;
+      const last = group.tabs[index].pinned ? pinnedCount - 1 : group.tabs.length - 1;
+      const nextIndex = move === 'start' ? first : move === 'end' ? last : index + move;
+      if (nextIndex < first || nextIndex > last || nextIndex === index) return group;
       const tabs = [...group.tabs];
-      [tabs[index], tabs[nextIndex]] = [tabs[nextIndex], tabs[index]];
+      const [tab] = tabs.splice(index, 1);
+      tabs.splice(nextIndex, 0, tab);
       return { ...group, tabs };
     }),
   };
@@ -581,7 +671,7 @@ export function moveWorkspaceTabToOtherGroup(state: WorkspaceRuntimeState, tabId
   const targetGroup = state.groups.find((group) => group.id !== found.group.id)!;
   if (targetGroup.tabs.length >= MAX_TABS_PER_GROUP) return state;
   if (found.group.tabs.length === 1) {
-    const tabs = [...targetGroup.tabs, found.tab];
+    const tabs = pinnedTabsFirst([...targetGroup.tabs, found.tab]);
     return {
       ...state,
       activeGroupId: targetGroup.id,
@@ -598,7 +688,12 @@ export function moveWorkspaceTabToOtherGroup(state: WorkspaceRuntimeState, tabId
     groups: state.groups.map((group) => {
       if (group.id === found.group.id) return { ...group, activeTabId: sourceActiveTabId, tabs: sourceTabs };
       if (group.id === targetGroup.id) {
-        return { ...group, activeTabId: tabId, tabsCollapsed: false, tabs: [...group.tabs, found.tab] };
+        return {
+          ...group,
+          activeTabId: tabId,
+          tabsCollapsed: false,
+          tabs: pinnedTabsFirst([...group.tabs, found.tab]),
+        };
       }
       return group;
     }),
@@ -609,7 +704,7 @@ export function mergeWorkspaceGroups(state: WorkspaceRuntimeState, sourceGroupId
   if (state.groups.length !== 2) return state;
   const activeGroup = state.groups.find((group) => group.id === sourceGroupId) ?? activeWorkspaceGroup(state);
   const otherGroup = state.groups.find((group) => group.id !== activeGroup.id)!;
-  const tabs = [...activeGroup.tabs, ...otherGroup.tabs];
+  const tabs = pinnedTabsFirst([...activeGroup.tabs, ...otherGroup.tabs]);
   if (tabs.length > MAX_TABS_PER_GROUP) return state;
   return {
     ...state,

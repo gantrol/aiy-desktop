@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { gifAdoptionTargetSchema, gifWorkspaceStateSchema } from '@/shared/contracts/gif-making';
-import { contentLookupInputSchema } from '@/shared/contracts/content-search';
+import { workspaceSearchLocationSchema } from '@/shared/contracts/image-search';
 
 const workspaceIdSchema = z.string().min(1).max(200);
 const optionalWorkspaceIdSchema = workspaceIdSchema.nullable();
@@ -98,6 +98,7 @@ const galleryLocationSchema = z
     collection: galleryCollectionSchema,
     selectedMaterialKey: z.string().min(1).max(500).nullable(),
     requestedMaterialId: optionalWorkspaceIdSchema,
+    requestedAssetId: optionalWorkspaceIdSchema.optional(),
     browse: z
       .object({
         query: z.string(),
@@ -140,9 +141,7 @@ export const workspaceTargetSchema = z.discriminatedUnion('kind', [
     .strict(),
   z.object({ kind: z.literal('dictionary'), location: dictionaryLocationSchema }).strict(),
   z.object({ kind: z.literal('gallery'), location: galleryLocationSchema }).strict(),
-  z
-    .object({ kind: z.literal('search'), location: contentLookupInputSchema.pick({ query: true, type: true }) })
-    .strict(),
+  z.object({ kind: z.literal('search'), location: workspaceSearchLocationSchema }).strict(),
   z.object({ kind: z.literal('companion') }).strict(),
   z.object({ kind: z.literal('calendar') }).strict(),
   z.object({ kind: z.literal('me') }).strict(),
@@ -191,6 +190,7 @@ export const workspaceNavigationEntrySchema = z
 export const workspaceTabSchema = z
   .object({
     id: workspaceIdSchema,
+    pinned: z.boolean().optional(),
     target: workspaceTargetSchema,
     history: z.array(workspaceNavigationEntrySchema).min(1).max(100).optional(),
     historyIndex: z.number().int().nonnegative().max(99).optional(),

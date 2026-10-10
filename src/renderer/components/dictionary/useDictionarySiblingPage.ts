@@ -148,7 +148,13 @@ export function useDictionarySiblingPage(
   }, [active, context, error, initialLoading, pageInput]);
 
   const updateTerm = useCallback((term: TermListItem) => {
-    setTerms((current) => current.map((item) => (item.id === term.id ? term : item)));
+    setTerms((current) => {
+      const index = current.findIndex((item) => item.id === term.id);
+      if (index < 0 || current[index] === term) return current;
+      const updated = [...current];
+      updated[index] = term;
+      return updated;
+    });
   }, []);
 
   return { terms, total, initialLoading, loadingMore, hasMore, error, loadMore, updateTerm };

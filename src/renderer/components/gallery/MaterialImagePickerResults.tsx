@@ -1,12 +1,14 @@
-import { useRef, useState, type Ref } from 'react';
+import { useMemo, useRef, useState, type RefObject } from 'react';
 import { PlayIcon } from 'lucide-react';
 import type { AssetDto, GalleryItemDto } from '@/shared/contracts';
 import type { MaterialImagePickerImage } from '@/renderer/components/gallery/materialImagePicker';
 import type { useMaterialImagePickerMaterials } from '@/renderer/components/gallery/useMaterialImagePickerData';
 import { AssetThumbnail } from '@/renderer/components/media/AssetThumbnail';
+import { AssetNavigationButton } from '@/renderer/components/media/AssetNavigationButton';
 import { AssetMedia, isVideoAsset } from '@/renderer/components/media/AssetMedia';
 import { Dialog, DialogContent, DialogTitle } from '@/renderer/components/ui/dialog';
-import { useWorkspacePaneContainer } from '@/renderer/components/workspace/WorkspacePaneScope';
+import { useWorkspacePaneContainer, useWorkspaceVisible } from '@/renderer/components/workspace/WorkspacePaneScope';
+import { ShortestColumnMasonry } from '@/renderer/components/ui/shortest-column-masonry';
 import { formatVideoDocumentDuration } from '@/renderer/features/video-documents/useVideoDocumentLocalFile';
 import { Button } from '@/renderer/components/ui/button';
 import { ScrollArea } from '@/renderer/components/ui/scroll-area';
@@ -38,7 +40,7 @@ function MaterialImagePickerCandidate({
   const selected = selectedIndex >= 0;
   const labels = useI18n().messages.gallery.imagePicker;
   return (
-    <div className="relative min-w-0">
+    <div className="group/candidate relative min-w-0">
       <Button
         type="button"
         variant="ghost"
@@ -76,6 +78,9 @@ function MaterialImagePickerCandidate({
           </span>
         )}
       </Button>
+      <div className="absolute left-1 top-1 z-20 rounded-sm bg-overlay/90 opacity-0 group-hover/candidate:opacity-100 group-focus-within/candidate:opacity-100 [@media(hover:none)]:opacity-100">
+        <AssetNavigationButton assetId={asset.id} intent="MATERIAL" />
+      </div>
       {isVideoAsset(asset) && (
         <Button
           type="button"
@@ -110,11 +115,16 @@ export function MaterialImagePickerResults({
   selectionDisabledReason?(item: GalleryItemDto): string | undefined;
   chooseLabel: string;
   emptyLabel: string;
-  viewportRef: Ref<HTMLDivElement>;
+  viewportRef: RefObject<HTMLDivElement | null>;
   onToggle(assetId: string): void;
 }) {
   const { messages } = useI18n();
   const paneContainer = useWorkspacePaneContainer();
+  const visible = useWorkspaceVisible();
+  const layoutItems = useMemo(
+    () => state.images.map(({ asset }) => ({ id: asset.id, aspectRatio: 4 / 3 })),
+    [state.images],
+  );
   const [preview, setPreview] = useState<AssetDto | null>(null);
   const previewTrigger = useRef<HTMLElement | null>(null);
   return (
@@ -125,36 +135,50 @@ export function MaterialImagePickerResults({
         className="min-h-0 flex-1"
         viewportRef={viewportRef}
       >
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,9rem),1fr))] gap-2 p-3">
-          {pending &&
-            state.images.length === 0 &&
-            Array.from({ length: 8 }, (_, index) => (
-              <Skeleton key={index} className="aspect-[4/3] animate-none rounded-sm" />
-            ))}
-          {state.images.map(({ asset, item }, index) => {
-            const selectedIndex = selectedImages.findIndex((image) => image.id === asset.id);
-            const disabledReason = selectedIndex < 0 ? selectionDisabledReason?.(item) : undefined;
-            return (
-              <MaterialImagePickerCandidate
-                key={asset.id}
-                asset={asset}
-                index={index}
-                selectedIndex={selectedIndex}
-                disabled={
-                  state.stale || Boolean(disabledReason) || (selectedIndex < 0 && selectedImages.length >= maxSelected)
-                }
-                disabledReason={disabledReason}
-                durationMs={item.durationMs}
-                onPreview={() => {
-                  previewTrigger.current =
-                    document.activeElement instanceof HTMLElement ? document.activeElement : null;
-                  setPreview(asset);
-                }}
-                chooseLabel={chooseLabel}
-                onToggle={onToggle}
-              />
-            );
-          })}
+        <div className="p-3">
+          {pending && state.images.length === 0 && (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,9rem),1fr))] gap-2">
+              {Array.from({ length: 8 }, (_, index) => (
+                <Skeleton key={index} className="aspect-[4/3] animate-none rounded-sm" />
+              ))}
+            </div>
+          )}
+          <ShortestColumnMasonry
+            items={layoutItems}
+            viewportRef={viewportRef}
+            virtualize
+            minColumnWidth={144}
+            gap={8}
+            virtualOverscan={320}
+            renderItem={(_entry, index) => {
+              if (!visible) return null;
+              const { asset, item } = state.images[index];
+              const selectedIndex = selectedImages.findIndex((image) => image.id === asset.id);
+              const disabledReason = selectedIndex < 0 ? selectionDisabledReason?.(item) : undefined;
+              return (
+                <MaterialImagePickerCandidate
+                  key={asset.id}
+                  asset={asset}
+                  index={index}
+                  selectedIndex={selectedIndex}
+                  disabled={
+                    state.stale ||
+                    Boolean(disabledReason) ||
+                    (selectedIndex < 0 && selectedImages.length >= maxSelected)
+                  }
+                  disabledReason={disabledReason}
+                  durationMs={item.durationMs}
+                  onPreview={() => {
+                    previewTrigger.current =
+                      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                    setPreview(asset);
+                  }}
+                  chooseLabel={chooseLabel}
+                  onToggle={onToggle}
+                />
+              );
+            }}
+          />
           {state.loaded && !state.loading && !state.failed && !state.nextCursor && state.images.length === 0 && (
             <div role="status" className="col-span-full grid min-h-32 place-items-center text-sm text-muted-foreground">
               {emptyLabel}
